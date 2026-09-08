@@ -8,7 +8,7 @@ theme = "catppuccin-mocha"              # name of a built-in or ~/.config/yate/t
 passthrough = []                        # chords to hand to the terminal even if bound, e.g. ["ctrl+space"]
 
 [terminal]
-font = "JetBrains Mono, JetBrainsMono Nerd Font, Menlo, monospace"
+font = "JetBrainsMono Nerd Font, JetBrains Mono, Hack Nerd Font, Menlo, monospace"
 font_size = 13                          # px
 ligatures = true                        # programming ligatures (=>, !=, ...) where the font has them
 line_height = 1.2
@@ -77,7 +77,7 @@ command = "claude"
 notify = true
 
 [editor]
-font = "JetBrains Mono, JetBrainsMono Nerd Font, Menlo, monospace"
+font = "JetBrainsMono Nerd Font, JetBrains Mono, Hack Nerd Font, Menlo, monospace"
 font_size = 13                          # px
 ligatures = true
 line_height = 1.5

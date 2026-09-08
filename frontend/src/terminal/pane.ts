@@ -44,6 +44,12 @@ export class TerminalPane {
       allowProposedApi: true,
       allowTransparency: true,
       macOptionIsMeta: true,
+      theme: {
+        background: "#00000000",
+        scrollbarSliderBackground: "rgba(255,255,255,0.12)",
+        scrollbarSliderHoverBackground: "rgba(255,255,255,0.22)",
+        scrollbarSliderActiveBackground: "rgba(255,255,255,0.3)",
+      },
     };
     this.term = new Terminal(termOpts);
     this.term.loadAddon(this.fit);

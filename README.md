@@ -38,7 +38,9 @@ notifications, session sidebar) without any AI of its own.
 Everything is configurable in `~/.config/yate/config.toml` (created with the defaults on
 first start). `[keys.darwin]` overrides bindings on macOS only. Terminal and editor appearance
 are separate sections (`[terminal]`, `[editor]`): font, size, ligatures, line height, …
-Default font is JetBrains Mono at 13px with ligatures.
+Default font is JetBrains Mono at 13px with ligatures. Powerline/Nerd-Font prompts (p10k,
+starship) need a patched font: the default stack tries `JetBrainsMono Nerd Font` first —
+Arch: `ttf-jetbrains-mono-nerd`, macOS: `brew install font-jetbrains-mono-nerd-font`.
 
 ## Building
 

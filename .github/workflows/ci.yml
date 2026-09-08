@@ -50,3 +50,12 @@ jobs:
         with:
           name: yate-${{ matrix.os }}
           path: bin/
+      - name: Notify pipepush
+        if: always()
+        run: |
+          curl -sf -X POST "$PIPEPUSH_SERVER/api/webhook" \
+            -H "Content-Type: application/json" \
+            -d "{\"token\":\"$PIPEPUSH_TOKEN\",\"status\":\"${{ job.status }}\",\"pipeline\":\"${{ github.workflow }} (${{ matrix.os }})\",\"branch\":\"${{ github.ref_name }}\",\"commit\":\"${{ github.sha }}\",\"runId\":\"${{ github.run_number }}\"}"
+        env:
+          PIPEPUSH_TOKEN: ${{ secrets.PIPEPUSH_TOKEN }}
+          PIPEPUSH_SERVER: ${{ vars.PIPEPUSH_SERVER }}
