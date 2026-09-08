@@ -106,14 +106,9 @@ html, body {
   display: none;
 }
 .tab-content.active { display: flex; }
-.layout {
-  display: flex;
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 0;
-}
 .split {
   display: flex;
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
 }

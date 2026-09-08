@@ -26,7 +26,7 @@ notifications, session sidebar) without any AI of its own.
 | Split → new pane below | `Ctrl+Shift+Space` |
 | Focus pane left / right / up / down | `Shift+←` / `Shift+→` / `Shift+↑` / `Shift+↓` |
 | Close pane (last pane closes the tab) | `Ctrl+W` |
-| New tab / next / previous / tab *n* | `Ctrl+T` / `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Alt+n` |
+| New tab / next / previous / tab *n* | `Ctrl+Shift+T` / `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Alt+n` |
 | Copy / paste | `Ctrl+Shift+C` / `Ctrl+Shift+V` (macOS also `Cmd+C` / `Cmd+V`) |
 | Launch Claude Code in the current directory | `Ctrl+Shift+K` |
 | Toggle agent sidebar | `Ctrl+Shift+A` |
