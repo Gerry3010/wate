@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  WAILS_VERSION: v3.0.0-beta.18
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - name: Install wails3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+      - name: Frontend deps
+        run: npm ci
+        working-directory: frontend
+      - name: Build
+        run: wails3 build
+      - name: Go vet + test
+        run: |
+          go vet ./...
+          go test ./...
+      - name: Frontend typecheck + test
+        run: |
+          npm run typecheck
+          npm test
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yate-${{ matrix.os }}
+          path: bin/

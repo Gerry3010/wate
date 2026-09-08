@@ -1,0 +1,87 @@
+# yate configuration — https://github.com/Gerry3010/yate
+# This file is created from the built-in defaults; every key is optional.
+
+[general]
+shell = ""                              # empty = $SHELL
+shell_args = []
+theme = "catppuccin-mocha"              # name of a built-in or ~/.config/yate/themes/<name>.toml
+passthrough = []                        # chords to hand to the terminal even if bound, e.g. ["ctrl+space"]
+
+[terminal]
+font = "JetBrains Mono, JetBrainsMono Nerd Font, Menlo, monospace"
+font_size = 13                          # px
+ligatures = true                        # programming ligatures (=>, !=, ...) where the font has them
+line_height = 1.2
+scrollback = 10000
+cursor_style = "block"                  # "block" | "underline" | "bar"
+cursor_blink = true
+padding = 8                             # px around the terminal grid
+
+[background]
+mode = "solid"                          # "wallpaper" | "translucent" | "solid"
+wallpaper = ""                          # image path for mode = "wallpaper"
+blur = 24                               # px, wallpaper mode
+dim = 0.35                              # 0..1 darkening over the wallpaper
+opacity = 0.85                          # pane/UI background alpha in wallpaper/translucent mode
+
+[keys]
+split_right    = "ctrl+space"
+split_down     = "ctrl+shift+space"
+focus_left     = "shift+left"
+focus_right    = "shift+right"
+focus_up       = "shift+up"
+focus_down     = "shift+down"
+close_pane     = "ctrl+w"
+new_tab        = "ctrl+t"
+next_tab       = "ctrl+tab"
+prev_tab       = "ctrl+shift+tab"
+tab_1 = "alt+1"
+tab_2 = "alt+2"
+tab_3 = "alt+3"
+tab_4 = "alt+4"
+tab_5 = "alt+5"
+tab_6 = "alt+6"
+tab_7 = "alt+7"
+tab_8 = "alt+8"
+tab_9 = "alt+9"
+copy           = "ctrl+shift+c"
+paste          = "ctrl+shift+v"
+search         = "ctrl+shift+f"
+launch_claude  = "ctrl+shift+k"
+toggle_sidebar = "ctrl+shift+a"
+editor_mode    = "ctrl+shift+p"
+editor_save    = "ctrl+s"
+font_bigger    = "ctrl+plus"
+font_smaller   = "ctrl+minus"
+font_reset     = "ctrl+0"
+
+# macOS overrides (merged over [keys] on darwin only)
+[keys.darwin]
+copy    = "cmd+c"
+paste   = "cmd+v"
+new_tab = "cmd+t"
+close_pane = "cmd+w"
+editor_save = "cmd+s"
+tab_1 = "cmd+1"
+tab_2 = "cmd+2"
+tab_3 = "cmd+3"
+tab_4 = "cmd+4"
+tab_5 = "cmd+5"
+tab_6 = "cmd+6"
+tab_7 = "cmd+7"
+tab_8 = "cmd+8"
+tab_9 = "cmd+9"
+
+[claude]
+command = "claude"
+notify = true
+
+[editor]
+font = "JetBrains Mono, JetBrainsMono Nerd Font, Menlo, monospace"
+font_size = 13                          # px
+ligatures = true
+line_height = 1.5
+markdown_default_mode = "preview"       # "code" | "split" | "preview"
+tab_width = 4
+word_wrap = true
+line_numbers = true

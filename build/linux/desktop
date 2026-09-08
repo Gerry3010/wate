@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=yate
+Comment=yet another terminal emulator
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/yate %u
+Terminal=false
+Type=Application
+Icon=yate
+Categories=Utility;
+StartupWMClass=yate
+
+ 
