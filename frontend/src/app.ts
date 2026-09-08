@@ -392,6 +392,10 @@ export class YateApp {
 
   async run(action: string): Promise<void> {
     const tab = this.active;
+    if (action === "__debug") {
+      this.debugDump();
+      return;
+    }
     const m = /^tab_(\d)$/.exec(action);
     if (m) {
       const t = this.tabs[Number(m[1]) - 1];
@@ -466,6 +470,35 @@ export class YateApp {
       default:
         console.warn("unhandled action", action);
     }
+  }
+
+  /** Rendering/state summary for `yate ctl debug`; ends up in the Go log. */
+  private debugDump() {
+    const cs = getComputedStyle(document.body);
+    const root = document.documentElement;
+    const panes = this.allPanes().map((p) => {
+      const r = p.element.getBoundingClientRect();
+      const term = p instanceof TerminalPane ? p.term : null;
+      return {
+        id: p.id,
+        kind: p.kind,
+        rect: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)],
+        canvases: p.element.querySelectorAll("canvas").length,
+        cols: term?.cols,
+        rows: term?.rows,
+        line0: term?.buffer.active.getLine(0)?.translateToString(true).slice(0, 60),
+      };
+    });
+    console.warn("[debug]", {
+      theme: this.theme?.id,
+      bgMode: root.dataset.bgMode,
+      bodyBg: cs.backgroundColor,
+      vars: { bg: root.style.getPropertyValue("--bg"), surface: root.style.getPropertyValue("--surface") },
+      size: [window.innerWidth, window.innerHeight],
+      visibility: document.visibilityState,
+      tabs: this.tabs.length,
+      panes,
+    });
   }
 
   private focusDir(dir: Direction) {

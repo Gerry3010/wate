@@ -102,8 +102,9 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		}
 		app.Event.Emit("ctl:new-tab", OpenRequest{Path: p})
 		if w, ok := app.Window.GetByName("main"); ok {
-			w.UnMinimise()
-			w.Show()
+			if w.IsMinimised() {
+				w.UnMinimise()
+			}
 			w.Focus()
 		}
 		return ctl.Response{OK: true}
@@ -112,6 +113,10 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		if err := c.pty.WriteToPane(r.Pane, r.Text); err != nil {
 			return ctl.Response{Error: err.Error()}
 		}
+		return ctl.Response{OK: true}
+	case "debug":
+		// Asks the frontend to log a rendering/state summary (yate ctl debug → see stderr log).
+		app.Event.Emit("ctl:action", ActionRequest{Name: "__debug"})
 		return ctl.Response{OK: true}
 	case "action":
 		if strings.TrimSpace(r.Name) == "" {

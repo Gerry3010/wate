@@ -1,5 +1,3 @@
-import { Window } from "@wailsio/runtime";
-
 import { ConfigService, Events, LogService } from "./api";
 import { YateApp } from "./app";
 
@@ -36,7 +34,7 @@ async function boot() {
   });
   Events.On("ctl:action", (ev: { data: { name: string } }) => void app.run(ev.data.name));
   Events.On("ctl:new-tab", (ev: { data: { path: string } }) => {
-    void app.newTab({ cwd: ev.data.path }).then(() => Window.UnMinimise().then(() => Window.Focus()).catch(() => {}));
+    void app.newTab({ cwd: ev.data.path });
   });
   Events.On("agent:status", (ev: { data: Parameters<typeof app.onAgentStatus>[0] }) => app.onAgentStatus(ev.data));
   const restored = await app.restoreSession();

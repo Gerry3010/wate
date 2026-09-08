@@ -2,6 +2,13 @@
 
 # yate — yet another terminal emulator
 
+[![CI](https://github.com/Gerry3010/yate/actions/workflows/ci.yml/badge.svg)](https://github.com/Gerry3010/yate/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/github/go-mod/go-version/Gerry3010/yate?logo=go&logoColor=white)](go.mod)
+[![Wails v3](https://img.shields.io/badge/Wails-v3-df0000?logo=wails&logoColor=white)](https://v3.wails.io)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-8b5cf6)](#building)
+[![License: MIT](https://img.shields.io/badge/license-MIT-89b4fa.svg)](LICENSE)
+[![Latest commit](https://img.shields.io/github/last-commit/Gerry3010/yate?color=a6e3a1)](https://github.com/Gerry3010/yate/commits/main)
+
 A small, pretty terminal for Linux and macOS. Go backend, system WebView, no Electron.
 
 Why: Warp is nice to look at but drowning in AI features. yate keeps the good parts —
