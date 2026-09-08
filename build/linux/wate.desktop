@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=yate
-Exec=yate
-Icon=yate
+Name=wate
+Exec=wate
+Icon=wate
 Categories=Development;
 Terminal=false
 Keywords=wails

@@ -1,4 +1,4 @@
-// Package config loads yate's TOML configuration with embedded defaults.
+// Package config loads wate's TOML configuration with embedded defaults.
 package config
 
 import (
@@ -38,7 +38,7 @@ type General struct {
 	Shell     string   `toml:"shell" json:"shell"`
 	ShellArgs []string `toml:"shell_args" json:"shell_args"`
 	Theme     string   `toml:"theme" json:"theme"`
-	// ShellIntegration auto-loads yate's zsh snippet (OSC 7 cwd + OSC 133 prompt marks).
+	// ShellIntegration auto-loads wate's zsh snippet (OSC 7 cwd + OSC 133 prompt marks).
 	ShellIntegration bool `toml:"shell_integration" json:"shell_integration"`
 	// RestoreSession reopens last run's tabs, splits, directories and files.
 	RestoreSession bool `toml:"restore_session" json:"restore_session"`
@@ -93,16 +93,49 @@ func Defaults() Config {
 	return finish(c)
 }
 
-// Dir is the user config directory (~/.config/yate).
+// Dir is the user config directory (~/.config/wate).
 func Dir() string {
-	if d := os.Getenv("YATE_CONFIG_DIR"); d != "" {
+	if d := os.Getenv("WATE_CONFIG_DIR"); d != "" {
 		return d
 	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		base = filepath.Join(os.Getenv("HOME"), ".config")
 	}
-	return filepath.Join(base, "yate")
+	dir := filepath.Join(base, "wate")
+	migrateLegacyDir(filepath.Join(base, "yate"), dir)
+	return dir
+}
+
+// migrateLegacyDir moves a directory left behind by the project's old name (yate) into place,
+// once, when the new one does not exist yet.
+func migrateLegacyDir(old, cur string) {
+	if _, err := os.Stat(cur); err == nil {
+		return
+	}
+	if st, err := os.Stat(old); err != nil || !st.IsDir() {
+		return
+	}
+	if err := os.Rename(old, cur); err != nil {
+		return
+	}
+	// The shell shim embeds absolute paths; it is regenerated on the next start.
+	_ = os.RemoveAll(filepath.Join(cur, "shell"))
+}
+
+// StateDir is where session state lives (~/.local/state/wate), migrated from the old name too.
+func StateDir() string {
+	if d := os.Getenv("WATE_CONFIG_DIR"); d != "" {
+		return d
+	}
+	base := os.Getenv("XDG_STATE_HOME")
+	if base == "" {
+		home, _ := os.UserHomeDir()
+		base = filepath.Join(home, ".local", "state")
+	}
+	dir := filepath.Join(base, "wate")
+	migrateLegacyDir(filepath.Join(base, "yate"), dir)
+	return dir
 }
 
 // Path is the user config file.
@@ -142,7 +175,7 @@ func Parse(data []byte, base Config) (Config, error) {
 	return finish(c), nil
 }
 
-// UnknownKeysError is returned (with a usable Config) when the file contains keys yate doesn't know.
+// UnknownKeysError is returned (with a usable Config) when the file contains keys wate doesn't know.
 type UnknownKeysError struct{ Keys []string }
 
 func (e *UnknownKeysError) Error() string {

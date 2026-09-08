@@ -2,8 +2,8 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 
-/** CodeMirror theme driven entirely by the CSS variables the active yate theme sets. */
-export const yateEditorTheme = EditorView.theme(
+/** CodeMirror theme driven entirely by the CSS variables the active wate theme sets. */
+export const wateEditorTheme = EditorView.theme(
   {
     "&": { color: "var(--fg)", backgroundColor: "transparent", height: "100%" },
     ".cm-content": { caretColor: "var(--fg)", fontFamily: "var(--editor-font)", fontSize: "var(--editor-font-size)", lineHeight: "var(--editor-line-height)", padding: "8px 0" },
@@ -54,4 +54,4 @@ const highlight = HighlightStyle.define([
   { tag: t.invalid, color: "var(--red)", textDecoration: "underline wavy" },
 ]);
 
-export const yateHighlighting = syntaxHighlighting(highlight);
+export const wateHighlighting = syntaxHighlighting(highlight);

@@ -1,4 +1,4 @@
-// Package agent tracks Claude Code sessions running inside yate panes: which panes
+// Package agent tracks Claude Code sessions running inside wate panes: which panes
 // run one, and whether it is busy, waiting for the user, or done.
 package agent
 
@@ -19,7 +19,7 @@ const (
 	StatusDone    Status = "done"    // claude finished its turn
 )
 
-// Session is the state yate keeps per pane.
+// Session is the state wate keeps per pane.
 type Session struct {
 	PaneID    string    `json:"pane_id"`
 	TabID     string    `json:"tab_id"`

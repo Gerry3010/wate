@@ -11,8 +11,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"github.com/Gerry3010/yate/internal/ctl"
-	"github.com/Gerry3010/yate/internal/theme"
+	"github.com/Gerry3010/wate/internal/ctl"
+	"github.com/Gerry3010/wate/internal/theme"
 )
 
 // OpenRequest is emitted to the frontend as "ctl:open".
@@ -71,7 +71,7 @@ func (c *CtlService) ServiceShutdown() error {
 	return nil
 }
 
-// SocketPath is what shells get as $YATE_SOCKET.
+// SocketPath is what shells get as $WATE_SOCKET.
 func (c *CtlService) SocketPath() string {
 	if c.server == nil {
 		return ""
@@ -109,13 +109,13 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		}
 		return ctl.Response{OK: true}
 	case "input":
-		// Writes straight into the PTY of the pane (by YATE_PANE_ID) — no frontend round trip.
+		// Writes straight into the PTY of the pane (by WATE_PANE_ID) — no frontend round trip.
 		if err := c.pty.WriteToPane(r.Pane, r.Text); err != nil {
 			return ctl.Response{Error: err.Error()}
 		}
 		return ctl.Response{OK: true}
 	case "debug":
-		// Asks the frontend to log a rendering/state summary (yate ctl debug → see stderr log).
+		// Asks the frontend to log a rendering/state summary (wate ctl debug → see stderr log).
 		app.Event.Emit("ctl:action", ActionRequest{Name: "__debug"})
 		return ctl.Response{OK: true}
 	case "action":

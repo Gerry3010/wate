@@ -15,7 +15,7 @@ import { EditorPane } from "./editor/pane";
 import { SettingsPane } from "./settings/pane";
 
 /** Top-level UI state: tabs, panes, keybindings and the actions they trigger. */
-export class YateApp {
+export class WateApp {
   readonly tabs: Tab[] = [];
   active: Tab | null = null;
   private tabBar: TabBar;
@@ -261,7 +261,7 @@ export class YateApp {
 
   private refreshChrome(tab?: Tab) {
     this.tabBar.render(this.tabs, this.active);
-    if (this.active && (!tab || tab === this.active)) void Window.SetTitle(`${this.active.title} — yate`).catch(() => {});
+    if (this.active && (!tab || tab === this.active)) void Window.SetTitle(`${this.active.title} — wate`).catch(() => {});
   }
 
   // ---- panes ------------------------------------------------------------
@@ -472,7 +472,7 @@ export class YateApp {
     }
   }
 
-  /** Rendering/state summary for `yate ctl debug`; ends up in the Go log. */
+  /** Rendering/state summary for `wate ctl debug`; ends up in the Go log. */
   private debugDump() {
     const cs = getComputedStyle(document.body);
     const root = document.documentElement;

@@ -136,7 +136,7 @@ export class SettingsPane implements Pane {
     actions.className = "settings-actions";
     const importBtn = document.createElement("button");
     importBtn.textContent = "Import theme…";
-    importBtn.title = "Ghostty, Alacritty or yate theme file";
+    importBtn.title = "Ghostty, Alacritty or wate theme file";
     importBtn.addEventListener("click", () => void this.importTheme());
     const browse = document.createElement("button");
     browse.textContent = "Browse 400+ compatible themes ↗";
@@ -150,7 +150,7 @@ export class SettingsPane implements Pane {
     note.className = "settings-hint";
     note.innerHTML =
       "Any scheme from <b>iTerm2-Color-Schemes</b> works: download it from the <code>ghostty/</code> or <code>alacritty/</code> " +
-      "folder and import it here, or drop yate TOML files into the themes folder. Imported themes can be edited there.";
+      "folder and import it here, or drop wate TOML files into the themes folder. Imported themes can be edited there.";
     appearance.appendChild(note);
 
     const bg = this.section("Background", "background");
@@ -210,7 +210,7 @@ export class SettingsPane implements Pane {
 
   private async importTheme() {
     try {
-      const p = await Dialogs.OpenFile({ Title: "Import theme (Ghostty, Alacritty or yate TOML)" });
+      const p = await Dialogs.OpenFile({ Title: "Import theme (Ghostty, Alacritty or wate TOML)" });
       if (!p) return;
       const id = await ThemeService.Import(p);
       await this.set({ "general.theme": id });

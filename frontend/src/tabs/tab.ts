@@ -62,7 +62,7 @@ export class Tab {
 
   get title(): string {
     const p = this.focusedId ? this.panes.get(this.focusedId) : undefined;
-    return p?.title || "yate";
+    return p?.title || "wate";
   }
 
   get focused(): Pane | undefined {

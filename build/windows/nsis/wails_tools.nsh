@@ -5,13 +5,13 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "yate"
+    !define INFO_PROJECTNAME "wate"
 !endif
 !ifndef INFO_COMPANYNAME
     !define INFO_COMPANYNAME "Gerald Hofbauer"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "yate"
+    !define INFO_PRODUCTNAME "wate"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "0.1.0"

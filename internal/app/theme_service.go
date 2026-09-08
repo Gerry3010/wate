@@ -3,8 +3,8 @@ package app
 import (
 	"path/filepath"
 
-	"github.com/Gerry3010/yate/internal/config"
-	"github.com/Gerry3010/yate/internal/theme"
+	"github.com/Gerry3010/wate/internal/config"
+	"github.com/Gerry3010/wate/internal/theme"
 )
 
 // ThemeService resolves the configured theme for the frontend.
@@ -40,7 +40,7 @@ func (t *ThemeService) Preview(id string) (theme.Resolved, error) {
 	return theme.Load(id, userThemesDir())
 }
 
-// Import converts a Ghostty/Alacritty/yate theme file into the user themes dir and returns its id.
+// Import converts a Ghostty/Alacritty/wate theme file into the user themes dir and returns its id.
 func (t *ThemeService) Import(path string) (string, error) {
 	return theme.ImportFile(path, userThemesDir())
 }

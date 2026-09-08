@@ -8,13 +8,13 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="yate"
+        Path="wate"
         Arguments=""
-        InstallLocation="C:\Program Files\Gerald Hofbauer\yate">
+        InstallLocation="C:\Program Files\Gerald Hofbauer\wate">
     </Installer>
     <PackageInformation
-        PackageName="yate"
-        PackageDisplayName="yate"
+        PackageName="wate"
+        PackageDisplayName="wate"
         PublisherName="CN=Gerald Hofbauer"
         PublisherDisplayName="Gerald Hofbauer"
         Version="0.1.0.0"
@@ -25,10 +25,10 @@
         </Capabilities>
         <Applications>
             <Application
-                Id="io.github.gerry3010.yate"
+                Id="io.github.gerry3010.wate"
                 Description="yet another terminal emulator"
-                DisplayName="yate"
-                ExecutableName="yate"
+                DisplayName="wate"
+                ExecutableName="wate"
                 EntryPoint="Windows.FullTrustApplication">
                 
             </Application>
@@ -41,13 +41,13 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>yate</DisplayName>
+            <DisplayName>wate</DisplayName>
             <PublisherDisplayName>Gerald Hofbauer</PublisherDisplayName>
             <Description>yet another terminal emulator</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="yate.msix" />
+    <SaveLocation PackagePath="wate.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

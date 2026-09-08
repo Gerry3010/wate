@@ -3,14 +3,14 @@ package app
 import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"github.com/Gerry3010/yate/internal/config"
+	"github.com/Gerry3010/wate/internal/config"
 )
 
 // WindowOptions derives the main window options from the background config.
 func WindowOptions(cfg config.Config) application.WebviewWindowOptions {
 	opts := application.WebviewWindowOptions{
 		Name:      "main",
-		Title:     "yate",
+		Title:     "wate",
 		Width:     1100,
 		Height:    700,
 		MinWidth:  400,

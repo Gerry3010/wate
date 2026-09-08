@@ -1,5 +1,5 @@
 import { ConfigService, Events, LogService } from "./api";
-import { YateApp } from "./app";
+import { WateApp } from "./app";
 
 // Mirror console errors/warnings into the Go log so packaged builds are debuggable.
 for (const level of ["error", "warn"] as const) {
@@ -18,7 +18,7 @@ async function boot() {
   const { config, warning, path, initial_cwd } = await ConfigService.Get();
   if (warning) console.warn(warning);
 
-  const app = new YateApp(root, config);
+  const app = new WateApp(root, config);
   app.configPath = path;
   await app.loadTheme();
   Events.On("config:changed", (ev: { data: { config: typeof config; warning?: string } }) => {

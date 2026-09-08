@@ -1,11 +1,11 @@
-# yate configuration — https://github.com/Gerry3010/yate
+# wate configuration — https://github.com/Gerry3010/wate
 # This file is created from the built-in defaults; every key is optional.
 
 [general]
 shell = ""                              # empty = $SHELL
 shell_args = []
-theme = "catppuccin-mocha"              # name of a built-in or ~/.config/yate/themes/<name>.toml
-shell_integration = true                # zsh: auto-load ~/.config/yate/shell/yate.zsh (cwd + prompt marks)
+theme = "catppuccin-mocha"              # name of a built-in or ~/.config/wate/themes/<name>.toml
+shell_integration = true                # zsh: auto-load ~/.config/wate/shell/wate.zsh (cwd + prompt marks)
 restore_session = true                  # reopen tabs, splits, directories and editor files on start
 passthrough = []                        # chords to hand to the terminal even if bound, e.g. ["ctrl+space"]
 

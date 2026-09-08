@@ -1,4 +1,4 @@
-// Package app holds the Wails-bound services that make up yate's backend API.
+// Package app holds the Wails-bound services that make up wate's backend API.
 package app
 
 import (
@@ -12,10 +12,10 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"github.com/Gerry3010/yate/internal/config"
-	"github.com/Gerry3010/yate/internal/pty"
-	"github.com/Gerry3010/yate/internal/shell"
-	"github.com/Gerry3010/yate/internal/wsbridge"
+	"github.com/Gerry3010/wate/internal/config"
+	"github.com/Gerry3010/wate/internal/pty"
+	"github.com/Gerry3010/wate/internal/shell"
+	"github.com/Gerry3010/wate/internal/wsbridge"
 )
 
 // PtyService spawns terminal sessions for the frontend.
@@ -26,7 +26,7 @@ type PtyService struct {
 
 	mu     sync.RWMutex
 	socket string
-	// byPane maps YATE_PANE_ID → session id so the control socket can address panes.
+	// byPane maps WATE_PANE_ID → session id so the control socket can address panes.
 	byPane map[string]string
 	tabOf  map[string]string
 }
@@ -101,9 +101,9 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 	socket := p.socket
 	p.mu.RUnlock()
 	env := []string{
-		"YATE_PANE_ID=" + req.PaneID,
-		"YATE_TAB_ID=" + req.TabID,
-		"YATE_SOCKET=" + socket,
+		"WATE_PANE_ID=" + req.PaneID,
+		"WATE_TAB_ID=" + req.TabID,
+		"WATE_SOCKET=" + socket,
 	}
 	if cfg.General.ShellIntegration {
 		env = append(env, shell.Env(cmd[0], shellDir())...)
@@ -163,7 +163,7 @@ func (p *PtyService) SetSocketPath(path string) {
 	p.socket = path
 }
 
-// SessionForPane maps a YATE_PANE_ID to its session id.
+// SessionForPane maps a WATE_PANE_ID to its session id.
 func (p *PtyService) SessionForPane(paneID string) (string, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()

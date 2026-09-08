@@ -194,3 +194,21 @@ func TestSetLineHelpers(t *testing.T) {
 		t.Fatalf("multiline: %v", lines)
 	}
 }
+
+func TestMigrateLegacyDir(t *testing.T) {
+	base := t.TempDir()
+	old, cur := filepath.Join(base, "yate"), filepath.Join(base, "wate")
+	os.MkdirAll(filepath.Join(old, "shell"), 0o755)
+	os.WriteFile(filepath.Join(old, "config.toml"), []byte("[general]\n"), 0o644)
+	migrateLegacyDir(old, cur)
+	if _, err := os.Stat(filepath.Join(cur, "config.toml")); err != nil {
+		t.Fatal("config not migrated")
+	}
+	if _, err := os.Stat(filepath.Join(cur, "shell")); err == nil {
+		t.Fatal("stale shell shim should be dropped")
+	}
+	if _, err := os.Stat(old); err == nil {
+		t.Fatal("old dir should be gone")
+	}
+	migrateLegacyDir(old, cur) // no-op
+}

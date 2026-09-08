@@ -9,13 +9,14 @@ import (
 	"time"
 )
 
-// HookEvents are the Claude Code hook events yate listens to.
+// HookEvents are the Claude Code hook events wate listens to.
 var HookEvents = []string{"SessionStart", "UserPromptSubmit", "Notification", "Stop", "SessionEnd"}
 
-// yateHookRe recognises our own hook commands regardless of binary path or quoting.
-var yateHookRe = regexp.MustCompile(`yate"? hook \w+`)
+// wateHookRe recognises our own hook commands regardless of binary path or quoting.
+// Also matches hooks installed under the project's old name (yate) so they get replaced.
+var wateHookRe = regexp.MustCompile(`[wy]ate"? hook \w+`)
 
-// InstallHooks merges yate's hook commands into a Claude Code settings.json, idempotently,
+// InstallHooks merges wate's hook commands into a Claude Code settings.json, idempotently,
 // keeping every other hook and setting intact. A backup is written next to the file.
 func InstallHooks(path string) error {
 	settings := map[string]any{}
@@ -38,7 +39,7 @@ func InstallHooks(path string) error {
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		exe = "yate"
+		exe = "wate"
 	}
 	updated := MergeHooks(settings, exe)
 	out, err := json.MarshalIndent(updated, "", "  ")
@@ -48,8 +49,8 @@ func InstallHooks(path string) error {
 	return os.WriteFile(path, append(out, '\n'), 0o600)
 }
 
-// MergeHooks returns settings with a `yate hook <event>` command registered for each event.
-// Existing yate entries are replaced (so the binary path can change); other hooks are untouched.
+// MergeHooks returns settings with a `wate hook <event>` command registered for each event.
+// Existing wate entries are replaced (so the binary path can change); other hooks are untouched.
 func MergeHooks(settings map[string]any, exe string) map[string]any {
 	hooks, _ := settings["hooks"].(map[string]any)
 	if hooks == nil {
@@ -59,7 +60,7 @@ func MergeHooks(settings map[string]any, exe string) map[string]any {
 		var groups []any
 		if existing, ok := hooks[ev].([]any); ok {
 			for _, g := range existing {
-				if !isYateGroup(g) {
+				if !isWateGroup(g) {
 					groups = append(groups, g)
 				}
 			}
@@ -77,7 +78,7 @@ func MergeHooks(settings map[string]any, exe string) map[string]any {
 	return settings
 }
 
-func isYateGroup(g any) bool {
+func isWateGroup(g any) bool {
 	group, ok := g.(map[string]any)
 	if !ok {
 		return false
@@ -85,7 +86,7 @@ func isYateGroup(g any) bool {
 	list, _ := group["hooks"].([]any)
 	for _, h := range list {
 		hm, _ := h.(map[string]any)
-		if cmd, _ := hm["command"].(string); yateHookRe.MatchString(cmd) {
+		if cmd, _ := hm["command"].(string); wateHookRe.MatchString(cmd) {
 			return true
 		}
 	}

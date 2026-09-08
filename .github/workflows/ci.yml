@@ -48,7 +48,7 @@ jobs:
         working-directory: frontend
       - uses: actions/upload-artifact@v4
         with:
-          name: yate-${{ matrix.os }}
+          name: wate-${{ matrix.os }}
           path: bin/
       - name: Notify pipepush
         if: always()

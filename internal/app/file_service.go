@@ -3,7 +3,7 @@ package app
 import (
 	"errors"
 
-	"github.com/Gerry3010/yate/internal/files"
+	"github.com/Gerry3010/wate/internal/files"
 )
 
 // FileService backs the editor pane.

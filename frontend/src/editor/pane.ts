@@ -10,7 +10,7 @@ import { Dialogs } from "@wailsio/runtime";
 import { FileService, type Document, type EditorConfig } from "../api";
 import type { Pane } from "../pane";
 import { highlightCode, renderMarkdown } from "../preview/markdown";
-import { yateEditorTheme, yateHighlighting } from "./cmtheme";
+import { wateEditorTheme, wateHighlighting } from "./cmtheme";
 
 export type EditorMode = "code" | "split" | "preview";
 const MODES: EditorMode[] = ["code", "split", "preview"];
@@ -125,8 +125,8 @@ export class EditorPane implements Pane {
         keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
         this.language.of(lang ? [lang] : []),
         this.wrap.of(e.word_wrap ? EditorView.lineWrapping : []),
-        yateEditorTheme,
-        yateHighlighting,
+        wateEditorTheme,
+        wateHighlighting,
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
             this.setModified(true);

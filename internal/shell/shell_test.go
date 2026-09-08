@@ -19,10 +19,10 @@ func TestInstallAndEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(zshenv), filepath.Join(dir, "yate.zsh")) || strings.Contains(string(zshenv), "__YATE_SHELL_DIR__") {
+	if !strings.Contains(string(zshenv), filepath.Join(dir, "wate.zsh")) || strings.Contains(string(zshenv), "__WATE_SHELL_DIR__") {
 		t.Fatalf("zshenv not templated: %s", zshenv)
 	}
-	for _, f := range []string{"yate.zsh", "yate.bash", "yate.fish"} {
+	for _, f := range []string{"wate.zsh", "wate.bash", "wate.fish"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Fatal(err)
 		}
@@ -33,7 +33,7 @@ func TestInstallAndEnv(t *testing.T) {
 		t.Fatalf("env = %v", env)
 	}
 	t.Setenv("ZDOTDIR", "/home/x/.zsh")
-	if env := Env("/usr/bin/zsh", dir); len(env) != 2 || env[1] != "YATE_ZDOTDIR_ORIG=/home/x/.zsh" {
+	if env := Env("/usr/bin/zsh", dir); len(env) != 2 || env[1] != "WATE_ZDOTDIR_ORIG=/home/x/.zsh" {
 		t.Fatalf("env = %v", env)
 	}
 	if Env("/bin/bash", dir) != nil {

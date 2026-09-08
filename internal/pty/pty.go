@@ -83,7 +83,7 @@ func (m *Manager) Spawn(opts SpawnOptions) (*Session, error) {
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = opts.Cwd
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=yate")
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=wate")
 	cmd.Env = append(cmd.Env, opts.Env...)
 
 	cols, rows := opts.Cols, opts.Rows

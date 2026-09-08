@@ -3,7 +3,7 @@ package app
 import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"github.com/Gerry3010/yate/internal/opener"
+	"github.com/Gerry3010/wate/internal/opener"
 )
 
 // OpenerService resolves and opens click targets for the frontend.

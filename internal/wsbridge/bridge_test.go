@@ -11,7 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/Gerry3010/yate/internal/pty"
+	"github.com/Gerry3010/wate/internal/pty"
 )
 
 func TestRejectsBadToken(t *testing.T) {

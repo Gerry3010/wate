@@ -1,15 +1,15 @@
 [Desktop Entry]
 Version=1.0
-Name=yate
+Name=wate
 Comment=yet another terminal emulator
 # %f: an optional directory to start in ("Open With" on folders, Nautilus extension)
-Exec=/usr/local/bin/yate %f
+Exec=/usr/local/bin/wate %f
 Terminal=false
 Type=Application
-Icon=yate
+Icon=wate
 Categories=System;TerminalEmulator;Utility;
 Keywords=terminal;shell;console;
 MimeType=inode/directory;
-StartupWMClass=yate
+StartupWMClass=wate
 
  

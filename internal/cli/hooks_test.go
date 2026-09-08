@@ -17,23 +17,23 @@ func TestMergeHooksIdempotentAndPreserving(t *testing.T) {
 	    "Notification": [{"matcher": "", "hooks": [{"type": "command", "command": "/old/yate hook Notification"}]}]
 	  }
 	}`), &settings)
-	out := MergeHooks(settings, "/new/yate")
-	out = MergeHooks(out, "/new/yate") // second run must not duplicate
+	out := MergeHooks(settings, "/new/wate")
+	out = MergeHooks(out, "/new/wate") // second run must not duplicate
 	hooks := out["hooks"].(map[string]any)
 	if out["model"] != "opus" {
 		t.Fatal("unrelated settings lost")
 	}
 	stop := hooks["Stop"].([]any)
 	if len(stop) != 2 {
-		t.Fatalf("Stop groups = %d, want 2 (foreign + yate)", len(stop))
+		t.Fatalf("Stop groups = %d, want 2 (foreign + wate)", len(stop))
 	}
 	notif := hooks["Notification"].([]any)
 	if len(notif) != 1 {
-		t.Fatalf("Notification groups = %d, want 1 (old yate replaced)", len(notif))
+		t.Fatalf("Notification groups = %d, want 1 (old wate replaced)", len(notif))
 	}
 	b, _ := json.Marshal(notif)
-	if !strings.Contains(string(b), `\"/new/yate\" hook Notification`) || strings.Contains(string(b), "/old/yate") {
-		t.Fatalf("yate hook not replaced: %s", b)
+	if !strings.Contains(string(b), `\"/new/wate\" hook Notification`) || strings.Contains(string(b), "/old/yate") {
+		t.Fatalf("wate hook not replaced: %s", b)
 	}
 	for _, ev := range HookEvents {
 		if _, ok := hooks[ev]; !ok {

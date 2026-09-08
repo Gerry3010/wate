@@ -11,7 +11,7 @@ import (
 
 func TestSpawnEchoAndExit(t *testing.T) {
 	m := NewManager()
-	s, err := m.Spawn(SpawnOptions{Command: []string{"/bin/sh", "-c", "echo hello-$YATE_TEST; exit 3"}, Env: []string{"YATE_TEST=ok"}})
+	s, err := m.Spawn(SpawnOptions{Command: []string{"/bin/sh", "-c", "echo hello-$WATE_TEST; exit 3"}, Env: []string{"WATE_TEST=ok"}})
 	if err != nil {
 		t.Fatal(err)
 	}

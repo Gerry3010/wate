@@ -3,6 +3,8 @@ package app
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/Gerry3010/wate/internal/config"
 )
 
 // StateService persists the UI layout (tabs, splits, cwds, open files) between runs.
@@ -11,17 +13,7 @@ type StateService struct{}
 
 func (StateService) ServiceName() string { return "StateService" }
 
-func statePath() string {
-	if d := os.Getenv("YATE_CONFIG_DIR"); d != "" {
-		return filepath.Join(d, "session.json")
-	}
-	base := os.Getenv("XDG_STATE_HOME")
-	if base == "" {
-		home, _ := os.UserHomeDir()
-		base = filepath.Join(home, ".local", "state")
-	}
-	return filepath.Join(base, "yate", "session.json")
-}
+func statePath() string { return filepath.Join(config.StateDir(), "session.json") }
 
 // Load returns the saved session JSON ("" when none).
 func (StateService) Load() string {

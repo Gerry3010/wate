@@ -51,10 +51,10 @@ jobs:
         run: |
           v=${{ steps.v.outputs.version }}
           mkdir -p dist
-          tar -C bin -czf dist/yate-$v-linux-amd64.tar.gz yate
-          for f in bin/*.AppImage; do cp "$f" dist/yate-$v-linux-amd64.AppImage; done
-          for f in bin/*.deb; do cp "$f" dist/yate-$v-linux-amd64.deb; done
-          for f in bin/*.rpm; do cp "$f" dist/yate-$v-linux-x86_64.rpm; done
+          tar -C bin -czf dist/wate-$v-linux-amd64.tar.gz wate
+          for f in bin/*.AppImage; do cp "$f" dist/wate-$v-linux-amd64.AppImage; done
+          for f in bin/*.deb; do cp "$f" dist/wate-$v-linux-amd64.deb; done
+          for f in bin/*.rpm; do cp "$f" dist/wate-$v-linux-x86_64.rpm; done
           ls -la dist
       - uses: actions/upload-artifact@v4
         with:
@@ -93,8 +93,8 @@ jobs:
         run: |
           v=${{ steps.v.outputs.version }}
           mkdir -p dist
-          ditto -c -k --keepParent bin/yate.app dist/yate-$v-macos-universal.app.zip
-          for f in bin/*.dmg; do cp "$f" dist/yate-$v-macos-universal.dmg; done
+          ditto -c -k --keepParent bin/wate.app dist/wate-$v-macos-universal.app.zip
+          for f in bin/*.dmg; do cp "$f" dist/wate-$v-macos-universal.dmg; done
           ls -la dist
       - uses: actions/upload-artifact@v4
         with:
@@ -123,7 +123,7 @@ jobs:
             echo "| Platform | File |"
             echo "|---|---|"
             echo "| Linux x86_64 | AppImage, .deb, .rpm, .tar.gz |"
-            echo "| macOS (Apple Silicon + Intel) | .dmg, .app.zip — ad-hoc signed: on first start right-click → *Open*, or \`xattr -d com.apple.quarantine yate.app\` |"
+            echo "| macOS (Apple Silicon + Intel) | .dmg, .app.zip — ad-hoc signed: on first start right-click → *Open*, or \`xattr -d com.apple.quarantine wate.app\` |"
             echo
             echo "SHA-256 checksums in \`SHA256SUMS.txt\`."
           } > notes.md
@@ -133,7 +133,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "yate $GITHUB_REF_NAME" \
+            --title "wate $GITHUB_REF_NAME" \
             --notes-file notes.md \
             $([[ "$GITHUB_REF_NAME" == *-* ]] && echo --prerelease)
       - name: Notify pipepush

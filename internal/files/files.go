@@ -68,7 +68,7 @@ func Write(path, content, expectedHash string) (Document, error) {
 		mode = st.Mode().Perm()
 	}
 	// Write to a temp file in the same directory and rename: no torn files on crash.
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".yate-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".wate-*")
 	if err != nil {
 		return Document{}, err
 	}

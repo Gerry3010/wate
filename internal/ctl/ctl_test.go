@@ -33,7 +33,7 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestFindSocketPrefersEnv(t *testing.T) {
-	t.Setenv("YATE_SOCKET", "/tmp/x.sock")
+	t.Setenv("WATE_SOCKET", "/tmp/x.sock")
 	p, err := FindSocket()
 	if err != nil || p != "/tmp/x.sock" {
 		t.Fatalf("%q %v", p, err)

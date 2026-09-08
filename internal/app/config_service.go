@@ -7,7 +7,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"github.com/Gerry3010/yate/internal/config"
+	"github.com/Gerry3010/wate/internal/config"
 )
 
 // ConfigService exposes the effective configuration to the frontend.

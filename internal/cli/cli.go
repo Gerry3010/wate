@@ -1,4 +1,4 @@
-// Package cli implements the non-GUI subcommands: talking to a running yate.
+// Package cli implements the non-GUI subcommands: talking to a running wate.
 package cli
 
 import (
@@ -11,22 +11,22 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Gerry3010/yate/internal/ctl"
+	"github.com/Gerry3010/wate/internal/ctl"
 )
 
-const Usage = `yate — yet another terminal emulator
+const Usage = `wate — yet another terminal emulator
 
 usage:
-  yate [--config <file>] [<dir>]  start the app (in <dir>); a running yate opens <dir> as a new tab
-  yate open <file>[:line[:col]]   open a file in the editor of the running yate
-  yate ctl input <text>           type text into the current pane ($YATE_PANE_ID)
-  yate ctl action <name>          run a keybind action (split_right, new_tab, ...)
-  yate ctl ping                   check the control socket
-  yate theme import <file>        import a Ghostty/Alacritty/yate theme and activate it
-  yate hook <event>               Claude Code hook entry point (reads JSON on stdin)
-  yate install-hooks              register yate's hooks in ~/.claude/settings.json
+  wate [--config <file>] [<dir>]  start the app (in <dir>); a running wate opens <dir> as a new tab
+  wate open <file>[:line[:col]]   open a file in the editor of the running wate
+  wate ctl input <text>           type text into the current pane ($WATE_PANE_ID)
+  wate ctl action <name>          run a keybind action (split_right, new_tab, ...)
+  wate ctl ping                   check the control socket
+  wate theme import <file>        import a Ghostty/Alacritty/wate theme and activate it
+  wate hook <event>               Claude Code hook entry point (reads JSON on stdin)
+  wate install-hooks              register wate's hooks in ~/.claude/settings.json
 
-The running instance is found via $YATE_SOCKET (set in every yate shell).
+The running instance is found via $WATE_SOCKET (set in every wate shell).
 `
 
 var lineCol = regexp.MustCompile(`^(.+?)(?::(\d+))?(?::(\d+))?$`)
@@ -39,7 +39,7 @@ func Run(args []string) int {
 			fmt.Fprint(os.Stderr, Usage)
 			return 2
 		}
-		req := ctl.Request{Cmd: "open", Pane: os.Getenv("YATE_PANE_ID"), Tab: os.Getenv("YATE_TAB_ID")}
+		req := ctl.Request{Cmd: "open", Pane: os.Getenv("WATE_PANE_ID"), Tab: os.Getenv("WATE_TAB_ID")}
 		m := lineCol.FindStringSubmatch(args[1])
 		req.Path = m[1]
 		req.Line, _ = strconv.Atoi(m[2])
@@ -54,7 +54,7 @@ func Run(args []string) int {
 			fmt.Fprint(os.Stderr, Usage)
 			return 2
 		}
-		req := ctl.Request{Cmd: args[1], Pane: os.Getenv("YATE_PANE_ID"), Tab: os.Getenv("YATE_TAB_ID")}
+		req := ctl.Request{Cmd: args[1], Pane: os.Getenv("WATE_PANE_ID"), Tab: os.Getenv("WATE_TAB_ID")}
 		rest := strings.Join(args[2:], " ")
 		switch args[1] {
 		case "input":
@@ -89,7 +89,7 @@ func Run(args []string) int {
 			fmt.Fprintln(os.Stderr, "install-hooks:", err)
 			return 1
 		}
-		fmt.Println("yate hooks installed in", claudeSettingsPath())
+		fmt.Println("wate hooks installed in", claudeSettingsPath())
 		return 0
 	}
 	fmt.Fprint(os.Stderr, Usage)
@@ -99,16 +99,16 @@ func Run(args []string) int {
 func send(req ctl.Request) int {
 	sock, err := ctl.FindSocket()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "yate:", err)
+		fmt.Fprintln(os.Stderr, "wate:", err)
 		return 1
 	}
 	resp, err := ctl.Send(sock, req)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "yate:", err)
+		fmt.Fprintln(os.Stderr, "wate:", err)
 		return 1
 	}
 	if !resp.OK {
-		fmt.Fprintln(os.Stderr, "yate:", resp.Error)
+		fmt.Fprintln(os.Stderr, "wate:", resp.Error)
 		return 1
 	}
 	if resp.Data != nil {
@@ -117,10 +117,10 @@ func send(req ctl.Request) int {
 	return 0
 }
 
-// runHook forwards a Claude Code hook payload to the app. Outside a yate shell
-// ($YATE_SOCKET unset) it is a silent no-op so the hooks don't bother other terminals.
+// runHook forwards a Claude Code hook payload to the app. Outside a wate shell
+// ($WATE_SOCKET unset) it is a silent no-op so the hooks don't bother other terminals.
 func runHook(event string) int {
-	sock := os.Getenv("YATE_SOCKET")
+	sock := os.Getenv("WATE_SOCKET")
 	if sock == "" {
 		return 0
 	}
@@ -128,12 +128,12 @@ func runHook(event string) int {
 	if !json.Valid(data) {
 		data = nil
 	}
-	resp, err := ctl.Send(sock, ctl.Request{Cmd: "hook", Event: event, Pane: os.Getenv("YATE_PANE_ID"), Tab: os.Getenv("YATE_TAB_ID"), Data: data})
+	resp, err := ctl.Send(sock, ctl.Request{Cmd: "hook", Event: event, Pane: os.Getenv("WATE_PANE_ID"), Tab: os.Getenv("WATE_TAB_ID"), Data: data})
 	// The app may be gone; never fail the hook because of us, but say why on stderr.
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "yate hook:", err)
+		fmt.Fprintln(os.Stderr, "wate hook:", err)
 	} else if !resp.OK {
-		fmt.Fprintln(os.Stderr, "yate hook:", resp.Error)
+		fmt.Fprintln(os.Stderr, "wate hook:", resp.Error)
 	}
 	return 0
 }

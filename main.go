@@ -11,12 +11,12 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
-	"github.com/Gerry3010/yate/internal/agent"
-	"github.com/Gerry3010/yate/internal/app"
-	"github.com/Gerry3010/yate/internal/cli"
-	"github.com/Gerry3010/yate/internal/config"
-	"github.com/Gerry3010/yate/internal/ctl"
-	"github.com/Gerry3010/yate/internal/wallpaper"
+	"github.com/Gerry3010/wate/internal/agent"
+	"github.com/Gerry3010/wate/internal/app"
+	"github.com/Gerry3010/wate/internal/cli"
+	"github.com/Gerry3010/wate/internal/config"
+	"github.com/Gerry3010/wate/internal/ctl"
+	"github.com/Gerry3010/wate/internal/wallpaper"
 )
 
 // Frontend build output, embedded into the binary.
@@ -46,7 +46,7 @@ func main() {
 			initialCwd = args[i+1]
 			i++
 		case !strings.HasPrefix(args[i], "-"):
-			// `yate <dir>`: open a directory (Nautilus "Open in yate", launchers).
+			// `wate <dir>`: open a directory (Nautilus "Open in wate", launchers).
 			initialCwd = args[i]
 		}
 	}
@@ -57,7 +57,7 @@ func main() {
 		if st, err := os.Stat(initialCwd); err != nil || !st.IsDir() {
 			initialCwd = filepath.Dir(initialCwd)
 		}
-		// A running yate gets a new tab instead of a second window.
+		// A running wate gets a new tab instead of a second window.
 		if sock, err := ctl.FindSocket(); err == nil {
 			if resp, err := ctl.Send(sock, ctl.Request{Cmd: "new-tab", Path: initialCwd}); err == nil && resp.OK {
 				return
@@ -82,7 +82,7 @@ func main() {
 	application.RegisterEvent[agent.Session]("agent:status")
 
 	wapp := application.New(application.Options{
-		Name:        "yate",
+		Name:        "wate",
 		Description: "yet another terminal emulator",
 		Services: []application.Service{
 			application.NewService(cfgSvc),

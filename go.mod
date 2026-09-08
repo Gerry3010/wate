@@ -1,4 +1,4 @@
-module github.com/Gerry3010/yate
+module github.com/Gerry3010/wate
 
 go 1.25.0
 

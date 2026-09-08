@@ -1,5 +1,5 @@
 // Package opener decides what a clicked path is (text file → editor, anything else →
-// default application) and opens things outside of yate.
+// default application) and opens things outside of wate.
 package opener
 
 import (

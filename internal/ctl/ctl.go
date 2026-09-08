@@ -1,5 +1,5 @@
-// Package ctl is yate's control socket: a Unix socket speaking JSON lines that
-// the yate CLI (and Claude Code hooks) use to talk to the running app.
+// Package ctl is wate's control socket: a Unix socket speaking JSON lines that
+// the wate CLI (and Claude Code hooks) use to talk to the running app.
 package ctl
 
 import (
@@ -21,7 +21,7 @@ import (
 // Request is one command line.
 type Request struct {
 	Cmd string `json:"cmd"`
-	// Pane targets a specific pane (YATE_PANE_ID); empty means the focused one.
+	// Pane targets a specific pane (WATE_PANE_ID); empty means the focused one.
 	Pane string `json:"pane,omitempty"`
 	Tab  string `json:"tab,omitempty"`
 	// Text for "input"; Path/Line/Col for "open"; Name for "action"; Event/Data for "hook".
@@ -46,7 +46,7 @@ type Handler func(Request) Response
 
 // SocketPath returns the socket for this app instance.
 func SocketPath(pid int) string {
-	return filepath.Join(runtimeDir(), fmt.Sprintf("yate-%d.sock", pid))
+	return filepath.Join(runtimeDir(), fmt.Sprintf("wate-%d.sock", pid))
 }
 
 func runtimeDir() string {
@@ -114,15 +114,15 @@ func (s *Server) serve(c net.Conn, h Handler) {
 	}
 }
 
-// FindSocket picks the socket to talk to: $YATE_SOCKET, else the newest live yate-*.sock.
+// FindSocket picks the socket to talk to: $WATE_SOCKET, else the newest live wate-*.sock.
 func FindSocket() (string, error) {
-	if p := os.Getenv("YATE_SOCKET"); p != "" {
+	if p := os.Getenv("WATE_SOCKET"); p != "" {
 		return p, nil
 	}
-	matches, _ := filepath.Glob(filepath.Join(runtimeDir(), "yate-*.sock"))
+	matches, _ := filepath.Glob(filepath.Join(runtimeDir(), "wate-*.sock"))
 	var live []string
 	for _, m := range matches {
-		pidStr := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(m), "yate-"), ".sock")
+		pidStr := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(m), "wate-"), ".sock")
 		if pid, err := strconv.Atoi(pidStr); err == nil && processAlive(pid) {
 			live = append(live, m)
 		} else {
@@ -130,7 +130,7 @@ func FindSocket() (string, error) {
 		}
 	}
 	if len(live) == 0 {
-		return "", errors.New("no running yate found (is YATE_SOCKET set?)")
+		return "", errors.New("no running wate found (is WATE_SOCKET set?)")
 	}
 	sort.Slice(live, func(i, j int) bool {
 		si, _ := os.Stat(live[i])

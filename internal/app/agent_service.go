@@ -10,8 +10,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
-	"github.com/Gerry3010/yate/internal/agent"
-	"github.com/Gerry3010/yate/internal/config"
+	"github.com/Gerry3010/wate/internal/agent"
+	"github.com/Gerry3010/wate/internal/config"
 )
 
 // AgentService tracks Claude Code sessions per pane and tells the frontend about them.
@@ -89,7 +89,7 @@ func (a *AgentService) onChange(s agent.Session) {
 		title = "Claude Code finished"
 	}
 	err := a.notify.SendNotification(notifications.NotificationOptions{
-		ID:    "yate-" + s.PaneID,
+		ID:    "wate-" + s.PaneID,
 		Title: title,
 		Body:  fmt.Sprintf("%s — %s", s.Message, s.Cwd),
 	})

@@ -1,4 +1,4 @@
-# Nautilus extension: "Open in yate" for folders (right-click on a folder or the background).
+# Nautilus extension: "Open in wate" for folders (right-click on a folder or the background).
 # Install: make install-nautilus  (copies to ~/.local/share/nautilus-python/extensions and restarts Nautilus)
 # Requires the nautilus-python package.
 import os
@@ -8,7 +8,7 @@ from urllib.parse import unquote, urlparse
 
 from gi.repository import GObject, Nautilus
 
-YATE = shutil.which("yate") or os.path.expanduser("~/.local/bin/yate")
+WATE = shutil.which("wate") or os.path.expanduser("~/.local/bin/wate")
 
 
 def _path(file_info):
@@ -17,10 +17,10 @@ def _path(file_info):
     return unquote(urlparse(file_info.get_uri()).path)
 
 
-class YateMenuProvider(GObject.GObject, Nautilus.MenuProvider):
-    def _item(self, path, name="yate-open"):
-        item = Nautilus.MenuItem(name=name, label="Open in yate", tip=f"Open a terminal in {path}")
-        item.connect("activate", lambda _i: subprocess.Popen([YATE, path], start_new_session=True))
+class WateMenuProvider(GObject.GObject, Nautilus.MenuProvider):
+    def _item(self, path, name="wate-open"):
+        item = Nautilus.MenuItem(name=name, label="Open in wate", tip=f"Open a terminal in {path}")
+        item.connect("activate", lambda _i: subprocess.Popen([WATE, path], start_new_session=True))
         return item
 
     def get_file_items(self, *args):
@@ -33,4 +33,4 @@ class YateMenuProvider(GObject.GObject, Nautilus.MenuProvider):
     def get_background_items(self, *args):
         folder = args[-1]
         path = _path(folder)
-        return [self._item(path, "yate-open-here")] if path else []
+        return [self._item(path, "wate-open-here")] if path else []

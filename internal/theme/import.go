@@ -12,8 +12,8 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// ImportFile converts a terminal colour scheme into a yate theme and writes it to userDir.
-// Supported: yate's own TOML, Ghostty (`palette = N=#hex` lines) and Alacritty TOML —
+// ImportFile converts a terminal colour scheme into a wate theme and writes it to userDir.
+// Supported: wate's own TOML, Ghostty (`palette = N=#hex` lines) and Alacritty TOML —
 // both exported for every scheme in github.com/mbadolato/iTerm2-Color-Schemes.
 // Returns the new theme id.
 func ImportFile(path, userDir string) (string, error) {
@@ -33,7 +33,7 @@ func ImportFile(path, userDir string) (string, error) {
 		r, err = Parse(name, data)
 		t = r.Theme
 	default:
-		return "", fmt.Errorf("%s: unknown theme format (expected yate, Ghostty or Alacritty)", filepath.Base(path))
+		return "", fmt.Errorf("%s: unknown theme format (expected wate, Ghostty or Alacritty)", filepath.Base(path))
 	}
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", filepath.Base(path), err)
@@ -53,7 +53,7 @@ func ImportFile(path, userDir string) (string, error) {
 		return "", err
 	}
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "# imported by yate from %s\n", filepath.Base(path))
+	fmt.Fprintf(&buf, "# imported by wate from %s\n", filepath.Base(path))
 	if err := toml.NewEncoder(&buf).Encode(t); err != nil {
 		return "", err
 	}
