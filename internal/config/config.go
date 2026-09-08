@@ -37,6 +37,8 @@ type General struct {
 	Theme     string   `toml:"theme" json:"theme"`
 	// ShellIntegration auto-loads yate's zsh snippet (OSC 7 cwd + OSC 133 prompt marks).
 	ShellIntegration bool `toml:"shell_integration" json:"shell_integration"`
+	// RestoreSession reopens last run's tabs, splits, directories and files.
+	RestoreSession bool `toml:"restore_session" json:"restore_session"`
 	// Passthrough lists key chords that are sent to the terminal even if bound.
 	Passthrough []string `toml:"passthrough" json:"passthrough"`
 }

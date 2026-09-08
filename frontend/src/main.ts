@@ -33,7 +33,7 @@ async function boot() {
   });
   Events.On("ctl:action", (ev: { data: { name: string } }) => void app.run(ev.data.name));
   Events.On("agent:status", (ev: { data: Parameters<typeof app.onAgentStatus>[0] }) => app.onAgentStatus(ev.data));
-  await app.newTab();
+  if (!(await app.restoreSession())) await app.newTab();
 }
 
 boot().catch((err) => {

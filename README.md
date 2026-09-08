@@ -19,6 +19,7 @@ notifications, session sidebar) without any AI of its own.
 - [x] Ctrl-click: URLs → browser, text files → built-in editor, everything else → default app
 - [x] Editor pane (CodeMirror 6) with Code / Split / Preview modes for Markdown
 - [x] `yate open <file>[:line]` from any yate shell opens the editor next to it
+- [x] Session restore: tabs, splits, directories and open files come back on the next start
 - [x] Claude Code: launcher, tab badge, "waiting for input" notifications, session sidebar
 
 ## Keybindings (defaults)

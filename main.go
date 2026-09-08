@@ -65,6 +65,7 @@ func main() {
 			application.NewService(&app.LogService{}),
 			application.NewService(&app.OpenerService{}),
 			application.NewService(&app.FileService{}),
+			application.NewService(&app.StateService{}),
 			application.NewServiceWithOptions(wp, application.ServiceOptions{Name: "Wallpaper", Route: "/wallpaper"}),
 		},
 		Assets: application.AssetOptions{

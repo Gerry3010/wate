@@ -192,6 +192,11 @@ export class TerminalPane implements Pane {
     this.fitNow();
   }
 
+  /** Synchronous best guess (OSC 7 or the spawn cwd) for use where we can't await. */
+  lastKnownCwd(): string {
+    return this.osc7Cwd ?? this.opts.cwd ?? "";
+  }
+
   async cwd(): Promise<string> {
     if (this.osc7Cwd) return this.osc7Cwd;
     if (!this.sessionId) return this.opts.cwd ?? "";

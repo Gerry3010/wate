@@ -1,6 +1,7 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { AgentService, OpenerService, ThemeService, type Config, type Resolved, type Session, type Target } from "./api";
+import { AgentService, OpenerService, StateService, ThemeService, type Config, type Resolved, type Session, type Target } from "./api";
+import { parseSession, remapTree, type SavedPane, type SavedSession } from "./session";
 import { AgentStore } from "./agent/store";
 import { Sidebar } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
@@ -24,6 +25,8 @@ export class YateApp {
   private keymap: Keymap;
   private fontDelta = 0;
   private theme?: Resolved;
+  private saveTimer?: ReturnType<typeof setTimeout>;
+  private restoring = false;
 
   constructor(root: HTMLElement, public config: Config) {
     this.keymap = new Keymap(config.keys, config.general.passthrough ?? []);
@@ -47,6 +50,81 @@ export class YateApp {
     window.addEventListener("blur", () => this.reportFocus());
     this.agents.subscribe(() => this.onAgentsChanged());
     AgentService.List().then((l) => this.agents.replaceAll(l ?? [])).catch(() => {});
+    window.addEventListener("beforeunload", () => void this.saveSession(true));
+  }
+
+  // ---- session persistence ------------------------------------------------
+
+  /** Debounced: called after every structural change. */
+  scheduleSave() {
+    if (this.restoring || !this.config.general.restore_session) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => void this.saveSession(), 800);
+  }
+
+  async saveSession(immediate = false): Promise<void> {
+    if (this.restoring || !this.config.general.restore_session) return;
+    const tabs: SavedSession["tabs"] = [];
+    for (const t of this.tabs) {
+      if (!t.tree) continue;
+      const panes: SavedPane[] = [];
+      for (const p of t.panes.values()) {
+        if (p instanceof EditorPane) panes.push({ id: p.id, kind: "editor", path: p.path });
+        else if (p instanceof TerminalPane) panes.push({ id: p.id, kind: "terminal", cwd: immediate ? p.lastKnownCwd() : await p.cwd().catch(() => "") });
+      }
+      tabs.push({ tree: t.tree, focused: t.focusedId, panes });
+    }
+    const state: SavedSession = { version: 1, active: this.active ? this.tabs.indexOf(this.active) : 0, tabs };
+    await StateService.Save(JSON.stringify(state)).catch((err) => console.warn("session save:", err));
+  }
+
+  /** Rebuild tabs from the saved state; returns false when nothing was restored. */
+  async restoreSession(): Promise<boolean> {
+    if (!this.config.general.restore_session) return false;
+    const saved = parseSession(await StateService.Load().catch(() => ""));
+    if (!saved) return false;
+    this.restoring = true;
+    try {
+      for (const st of saved.tabs) {
+        const tab = new Tab();
+        tab.onChange = () => {
+          this.refreshChrome(tab);
+          if (tab === this.active) this.reportFocus();
+          this.scheduleSave();
+        };
+        const map = new Map<string, string>();
+        const panes: Pane[] = [];
+        const starts: Promise<unknown>[] = [];
+        for (const sp of st.panes) {
+          if (sp.kind === "editor") {
+            const pane = this.makeEditor(tab, sp.path);
+            map.set(sp.id, pane.id);
+            panes.push(pane);
+            starts.push(pane.load().catch((err) => {
+              console.warn("restore editor:", err);
+              tab.remove(pane.id);
+            }));
+          } else {
+            const pane = this.makeTerminal(tab, { cwd: sp.cwd });
+            map.set(sp.id, pane.id);
+            panes.push(pane);
+            starts.push(pane.start());
+          }
+        }
+        const tree = remapTree(st.tree, map);
+        if (!tree || panes.length === 0) continue;
+        this.tabs.push(tab);
+        this.activate(tab);
+        tab.restore(tree, panes, st.focused ? map.get(st.focused) ?? null : null);
+        await Promise.all(starts);
+      }
+      const active = this.tabs[saved.active];
+      if (active) this.activate(active);
+      this.active?.focusPane();
+      return this.tabs.length > 0;
+    } finally {
+      this.restoring = false;
+    }
   }
 
   // ---- Claude Code --------------------------------------------------------
@@ -117,6 +195,7 @@ export class YateApp {
     tab.onChange = () => {
       this.refreshChrome(tab);
       if (tab === this.active) this.reportFocus();
+      this.scheduleSave();
     };
     this.tabs.push(tab);
     this.activate(tab);
@@ -126,6 +205,7 @@ export class YateApp {
 
   activate(tab: Tab) {
     if (this.active === tab) return;
+    this.scheduleSave();
     this.active?.element.classList.remove("active");
     this.active = tab;
     tab.element.classList.add("active");
@@ -140,6 +220,7 @@ export class YateApp {
     if (i < 0) return;
     this.tabs.splice(i, 1);
     tab.dispose();
+    this.scheduleSave();
     if (this.active === tab) {
       this.active = null;
       const next = this.tabs[Math.min(i, this.tabs.length - 1)];
@@ -156,12 +237,11 @@ export class YateApp {
 
   // ---- panes ------------------------------------------------------------
 
-  private async addTerminal(tab: Tab, dir: Dir, opts: { cwd?: string; command?: string[] } = {}): Promise<TerminalPane> {
-    const cwd = opts.cwd ?? (await tab.focused?.cwd().catch(() => "")) ?? "";
-    const pane = new TerminalPane({
+  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[] }): TerminalPane {
+    const pane: TerminalPane = new TerminalPane({
       paneId: nextId("pane"),
       tabId: tab.id,
-      cwd,
+      cwd: opts.cwd ?? "",
       command: opts.command,
       terminal: this.config.terminal,
       theme: this.termTheme(),
@@ -171,7 +251,14 @@ export class YateApp {
       onTitle: () => tab.onChange?.(),
       onOpenFile: (t) => this.openTarget(tab, t),
     });
+    return pane;
+  }
+
+  private async addTerminal(tab: Tab, dir: Dir, opts: { cwd?: string; command?: string[] } = {}): Promise<TerminalPane> {
+    const cwd = opts.cwd ?? (await tab.focused?.cwd().catch(() => "")) ?? "";
+    const pane = this.makeTerminal(tab, { ...opts, cwd });
     tab.add(pane, dir);
+    this.scheduleSave();
     await pane.start();
     pane.focus();
     return pane;
@@ -196,7 +283,21 @@ export class YateApp {
         return;
       }
     }
-    const pane = new EditorPane({
+    const pane = this.makeEditor(tab, path, line, col);
+    try {
+      tab.add(pane, "row");
+      this.scheduleSave();
+      await pane.load();
+      pane.focus();
+    } catch (err) {
+      console.warn("editor:", err);
+      tab.remove(pane.id);
+      tab.focusPane();
+    }
+  }
+
+  private makeEditor(tab: Tab, path: string, line?: number, col?: number): EditorPane {
+    const pane: EditorPane = new EditorPane({
       paneId: nextId("pane"),
       path,
       line,
@@ -206,15 +307,7 @@ export class YateApp {
       onClose: () => void this.closePane(tab, pane),
       onLink: (href, fromDir) => this.openPreviewLink(tab, href, fromDir),
     });
-    try {
-      tab.add(pane, "row");
-      await pane.load();
-      pane.focus();
-    } catch (err) {
-      console.warn("editor:", err);
-      tab.remove(pane.id);
-      tab.focusPane();
-    }
+    return pane;
   }
 
   private openPreviewLink(tab: Tab, href: string, fromDir: string) {
@@ -241,6 +334,7 @@ export class YateApp {
     tab.remove(pane.id);
     if (tab.isEmpty) this.closeTab(tab);
     else tab.focusPane();
+    this.scheduleSave();
   }
 
   /** Editor font settings live in CSS variables so CodeMirror and the preview pick them up. */

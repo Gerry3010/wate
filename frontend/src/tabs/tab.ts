@@ -71,16 +71,29 @@ export class Tab {
 
   /** Add a pane; splits the focused leaf or becomes the root. */
   add(pane: Pane, dir: Dir = "row", target = this.focusedId): void {
-    this.panes.set(pane.id, pane);
+    this.attach(pane);
     if (!this.tree || !target) {
       this.tree = { kind: "leaf", id: pane.id };
     } else {
       this.tree = splitLeaf(this.tree, target, dir, pane.id);
     }
-    pane.element.addEventListener("focusin", () => this.setFocus(pane.id));
-    pane.element.addEventListener("pointerdown", () => this.setFocus(pane.id), { capture: true });
     this.render();
     this.setFocus(pane.id);
+  }
+
+  /** Session restore: install a whole tree at once. */
+  restore(tree: LayoutNode, panes: Pane[], focused: string | null): void {
+    for (const p of panes) this.attach(p);
+    this.tree = tree;
+    this.render();
+    const first = leaves(tree)[0];
+    this.setFocus(focused && this.panes.has(focused) ? focused : first);
+  }
+
+  private attach(pane: Pane) {
+    this.panes.set(pane.id, pane);
+    pane.element.addEventListener("focusin", () => this.setFocus(pane.id));
+    pane.element.addEventListener("pointerdown", () => this.setFocus(pane.id), { capture: true });
   }
 
   remove(id: string): void {
