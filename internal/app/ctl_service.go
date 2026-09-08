@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/Gerry3010/yate/internal/ctl"
+	"github.com/Gerry3010/yate/internal/theme"
 )
 
 // OpenRequest is emitted to the frontend as "ctl:open".
@@ -41,12 +42,15 @@ type HookEvent struct {
 // CtlService owns the control socket and exposes its path to the frontend/shell env.
 type CtlService struct {
 	pty    *PtyService
+	cfg    *ConfigService
 	server *ctl.Server
 	// OnHook is set by the agent service.
 	OnHook func(HookEvent)
 }
 
-func NewCtlService(pty *PtyService) *CtlService { return &CtlService{pty: pty} }
+func NewCtlService(pty *PtyService, cfg *ConfigService) *CtlService {
+	return &CtlService{pty: pty, cfg: cfg}
+}
 
 func (c *CtlService) ServiceName() string { return "CtlService" }
 
@@ -103,6 +107,15 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		}
 		app.Event.Emit("ctl:action", ActionRequest{Name: r.Name, Pane: r.Pane, Tab: r.Tab})
 		return ctl.Response{OK: true}
+	case "import-theme":
+		id, err := theme.ImportFile(r.Path, userThemesDir())
+		if err != nil {
+			return ctl.Response{Error: err.Error()}
+		}
+		if _, err := c.cfg.Set(map[string]any{"general.theme": id}); err != nil {
+			return ctl.Response{Error: err.Error()}
+		}
+		return ctl.Response{OK: true, Data: id}
 	case "hook":
 		ev := HookEvent{Event: r.Event, Pane: r.Pane, Tab: r.Tab, Data: r.Data}
 		if c.OnHook != nil {

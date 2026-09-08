@@ -27,7 +27,7 @@ func main() {
 		case "-h", "--help", "help":
 			fmt.Print(cli.Usage)
 			return
-		case "open", "ctl", "hook", "install-hooks":
+		case "open", "ctl", "hook", "install-hooks", "theme":
 			os.Exit(cli.Run(os.Args[1:]))
 		}
 	}
@@ -40,7 +40,7 @@ func main() {
 
 	cfgSvc := app.NewConfigService(cfgPath)
 	ptySvc := app.NewPtyService(cfgSvc.Current)
-	ctlSvc := app.NewCtlService(ptySvc)
+	ctlSvc := app.NewCtlService(ptySvc, cfgSvc)
 	themeSvc := app.NewThemeService(cfgSvc.Current)
 	notifySvc := notifications.New()
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc)

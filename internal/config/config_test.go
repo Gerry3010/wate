@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -128,5 +129,68 @@ func TestSetPreservesOtherKeys(t *testing.T) {
 	}
 	if runtime.GOOS == "darwin" && c.Keys["new_tab"] != "ctrl+n" {
 		t.Fatalf("darwin override not applied: %v", c.Keys)
+	}
+}
+
+func TestSetKeepsCommentsAndLayout(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.toml")
+	if err := WriteDefaultIfMissing(p); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(p)
+	if err := Set(p, map[string]any{
+		"terminal.font_size": 14.0,
+		"general.theme":      "nord",
+		"general.shell_args": []any{"-l"},
+		"background.mode":    "translucent",
+		"keys.new_tab":       "ctrl+n",
+		"claude.notify":      false,
+		"custom.thing":       "x",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.ReadFile(p)
+	if strings.Count(string(after), "#") < strings.Count(string(before), "#") {
+		t.Fatalf("comments lost:\n%s", after)
+	}
+	for _, want := range []string{
+		`font_size = 14\s+# px`,
+		`theme = "nord"\s+# name of a built-in`,
+		`shell_args = \["-l"\]`,
+		`mode = "translucent"\s+# "wallpaper"`,
+		`\[custom\]\nthing = "x"`,
+	} {
+		if !regexp.MustCompile(want).Match(after) {
+			t.Fatalf("missing %q in\n%s", want, after)
+		}
+	}
+	c, err := Load(p)
+	var uk *UnknownKeysError
+	if err != nil && !errors.As(err, &uk) {
+		t.Fatal(err)
+	}
+	if c.Terminal.FontSize != 14 || c.General.Theme != "nord" || c.Claude.Notify || len(c.General.ShellArgs) != 1 {
+		t.Fatalf("%+v", c)
+	}
+	if runtime.GOOS != "darwin" && c.Keys["new_tab"] != "ctrl+n" {
+		t.Fatalf("keys: %v", c.Keys)
+	}
+	// [keys.darwin] must still be intact and after [keys].
+	if !strings.Contains(string(after), "[keys.darwin]\ncopy") {
+		t.Fatalf("darwin table damaged:\n%s", after)
+	}
+}
+
+func TestSetLineHelpers(t *testing.T) {
+	if commentIndex(`"a # b"  # real`) != 9 || commentIndex(`'#'`) != -1 || commentIndex(`x`) != -1 {
+		t.Fatal("commentIndex")
+	}
+	lines := setLine([]string{"[a]", "x = 1", "", "[b]", "y = 2"}, "a", "z", "3")
+	if strings.Join(lines, "|") != "[a]|x = 1|z = 3||[b]|y = 2" {
+		t.Fatalf("insert: %v", lines)
+	}
+	lines = setLine([]string{"[a]", "x = [", "  1,", "]"}, "a", "x", "[2]")
+	if strings.Join(lines, "|") != "[a]|x = [2]" {
+		t.Fatalf("multiline: %v", lines)
 	}
 }

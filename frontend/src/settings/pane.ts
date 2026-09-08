@@ -1,6 +1,6 @@
 import { Dialogs } from "@wailsio/runtime";
 
-import { ConfigService, ThemeService, type Config, type Resolved } from "../api";
+import { ConfigService, OpenerService, ThemeService, type Config, type Resolved } from "../api";
 import { chordId, eventChord } from "../keymap/keymap";
 import type { Pane } from "../pane";
 
@@ -12,6 +12,9 @@ export interface SettingsPaneOptions {
   onOpenConfigFile(): void;
   onClose(): void;
 }
+
+/** Where compatible colour schemes live (Ghostty and Alacritty exports of every scheme). */
+const THEME_CATALOG = "https://github.com/mbadolato/iTerm2-Color-Schemes#readme";
 
 /** Human-readable names for keybinding actions, in display order. */
 const ACTIONS: [string, string][] = [
@@ -50,8 +53,11 @@ export class SettingsPane implements Pane {
   title = "Settings";
   private config: Config;
   private body = document.createElement("div");
+  private nav = document.createElement("nav");
+  private content = document.createElement("div");
   private status = document.createElement("span");
   private themeGrid = document.createElement("div");
+  private current = "appearance";
 
   constructor(opts: SettingsPaneOptions) {
     this.id = opts.paneId;
@@ -76,6 +82,9 @@ export class SettingsPane implements Pane {
     close.addEventListener("click", () => opts.onClose());
     toolbar.append(name, this.status, openFile, close);
     this.body.className = "settings-body";
+    this.nav.className = "settings-nav";
+    this.content.className = "settings-content";
+    this.body.append(this.nav, this.content);
     this.element.append(toolbar, this.body);
     this.build();
   }
@@ -83,9 +92,16 @@ export class SettingsPane implements Pane {
   /** Called when the config changed (possibly from the file); rebuilds the form. */
   applyConfig(config: Config) {
     this.config = config;
-    const scroll = this.body.scrollTop;
+    const scroll = this.content.scrollTop;
     this.build();
-    this.body.scrollTop = scroll;
+    this.content.scrollTop = scroll;
+  }
+
+  private show(id: string) {
+    this.current = id;
+    for (const b of this.nav.querySelectorAll<HTMLButtonElement>("button")) b.classList.toggle("active", b.dataset.section === id);
+    for (const sec of this.content.querySelectorAll<HTMLElement>("section")) sec.hidden = sec.dataset.section !== id;
+    this.content.scrollTop = 0;
   }
 
   private async set(values: Record<string, unknown>) {
@@ -109,14 +125,35 @@ export class SettingsPane implements Pane {
 
   private build() {
     const c = this.config;
-    this.body.replaceChildren();
+    this.nav.replaceChildren();
+    this.content.replaceChildren();
 
-    const appearance = this.section("Appearance");
+    const appearance = this.section("Themes", "appearance");
     this.themeGrid.className = "theme-grid";
     appearance.appendChild(this.themeGrid);
     void this.buildThemeGrid();
+    const actions = document.createElement("div");
+    actions.className = "settings-actions";
+    const importBtn = document.createElement("button");
+    importBtn.textContent = "Import theme…";
+    importBtn.title = "Ghostty, Alacritty or yate theme file";
+    importBtn.addEventListener("click", () => void this.importTheme());
+    const browse = document.createElement("button");
+    browse.textContent = "Browse 400+ compatible themes ↗";
+    browse.addEventListener("click", () => void OpenerService.OpenURL(THEME_CATALOG));
+    const folder = document.createElement("button");
+    folder.textContent = "Open themes folder";
+    folder.addEventListener("click", () => void ThemeService.ThemesDir().then((d) => OpenerService.Open(d)));
+    actions.append(importBtn, browse, folder);
+    appearance.appendChild(actions);
+    const note = document.createElement("p");
+    note.className = "settings-hint";
+    note.innerHTML =
+      "Any scheme from <b>iTerm2-Color-Schemes</b> works: download it from the <code>ghostty/</code> or <code>alacritty/</code> " +
+      "folder and import it here, or drop yate TOML files into the themes folder. Imported themes can be edited there.";
+    appearance.appendChild(note);
 
-    const bg = this.section("Background");
+    const bg = this.section("Background", "background");
     this.select(bg, "Mode", "background.mode", c.background.mode, [
       ["solid", "Solid"],
       ["translucent", "Translucent (OS / compositor blur, restart needed)"],
@@ -127,7 +164,7 @@ export class SettingsPane implements Pane {
     this.range(bg, "Dim", "background.dim", c.background.dim, 0, 1, 0.05);
     this.range(bg, "Opacity", "background.opacity", c.background.opacity, 0.2, 1, 0.05);
 
-    const term = this.section("Terminal");
+    const term = this.section("Terminal", "terminal");
     this.text(term, "Font", "terminal.font", c.terminal.font);
     this.number(term, "Font size", "terminal.font_size", c.terminal.font_size, 6, 40, "px");
     this.number(term, "Line height", "terminal.line_height", c.terminal.line_height, 0.8, 2.5, "", 0.05);
@@ -137,7 +174,7 @@ export class SettingsPane implements Pane {
     this.number(term, "Scrollback", "terminal.scrollback", c.terminal.scrollback, 100, 1000000, " lines", 100);
     this.number(term, "Padding", "terminal.padding", c.terminal.padding, 0, 40, "px");
 
-    const ed = this.section("Editor");
+    const ed = this.section("Editor", "editor");
     this.text(ed, "Font", "editor.font", c.editor.font);
     this.number(ed, "Font size", "editor.font_size", c.editor.font_size, 6, 40, "px");
     this.number(ed, "Line height", "editor.line_height", c.editor.line_height, 0.8, 2.5, "", 0.05);
@@ -147,16 +184,18 @@ export class SettingsPane implements Pane {
     this.check(ed, "Word wrap", "editor.word_wrap", c.editor.word_wrap);
     this.check(ed, "Line numbers", "editor.line_numbers", c.editor.line_numbers);
 
-    const gen = this.section("General");
+    const gen = this.section("Shell & Startup", "general");
     this.text(gen, "Shell", "general.shell", c.general.shell, "empty = $SHELL");
+    this.list(gen, "Shell arguments", "general.shell_args", c.general.shell_args ?? [], "e.g. -l, --login");
     this.check(gen, "Shell integration (zsh)", "general.shell_integration", c.general.shell_integration);
     this.check(gen, "Restore session on start", "general.restore_session", c.general.restore_session);
+    this.list(gen, "Pass-through chords", "general.passthrough", c.general.passthrough ?? [], "chords the terminal keeps even if bound, e.g. ctrl+space");
 
-    const cl = this.section("Claude Code");
+    const cl = this.section("Claude Code", "claude");
     this.text(cl, "Command", "claude.command", c.claude.command);
     this.check(cl, "Desktop notifications", "claude.notify", c.claude.notify);
 
-    const keys = this.section("Keybindings");
+    const keys = this.section("Keybindings", "keys");
     const hint = document.createElement("p");
     hint.className = "settings-hint";
     hint.textContent = "Click a binding and press the new keys. Esc cancels, Backspace clears.";
@@ -165,6 +204,20 @@ export class SettingsPane implements Pane {
     table.className = "keys-table";
     for (const [action, label] of ACTIONS) this.keyRow(table, action, label, c.keys?.[action] ?? "");
     keys.appendChild(table);
+
+    this.show(this.current);
+  }
+
+  private async importTheme() {
+    try {
+      const p = await Dialogs.OpenFile({ Title: "Import theme (Ghostty, Alacritty or yate TOML)" });
+      if (!p) return;
+      const id = await ThemeService.Import(p);
+      await this.set({ "general.theme": id });
+      this.flash(`imported ${id}`);
+    } catch (err) {
+      this.flash(String(err), true);
+    }
   }
 
   private async buildThemeGrid() {
@@ -207,14 +260,34 @@ export class SettingsPane implements Pane {
     return card;
   }
 
-  private section(title: string): HTMLElement {
+  private section(title: string, id: string): HTMLElement {
+    const b = document.createElement("button");
+    b.dataset.section = id;
+    b.textContent = title;
+    b.addEventListener("click", () => this.show(id));
+    this.nav.appendChild(b);
     const s = document.createElement("section");
     s.className = "settings-section";
+    s.dataset.section = id;
+    s.hidden = true;
     const h = document.createElement("h2");
     h.textContent = title;
     s.appendChild(h);
-    this.body.appendChild(s);
+    this.content.appendChild(s);
     return s;
+  }
+
+  /** Comma-separated list input for string arrays. */
+  private list(parent: HTMLElement, label: string, key: string, value: string[], placeholder = "") {
+    const i = document.createElement("input");
+    i.type = "text";
+    i.value = value.join(", ");
+    i.placeholder = placeholder;
+    i.addEventListener("change", () => {
+      const items = i.value.split(",").map((x) => x.trim()).filter(Boolean);
+      void this.set({ [key]: items });
+    });
+    this.row(parent, label, i);
   }
 
   private row(parent: HTMLElement, label: string, control: HTMLElement, suffix = ""): HTMLElement {

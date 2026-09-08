@@ -39,3 +39,11 @@ func (t *ThemeService) List() []string { return theme.List(userThemesDir()) }
 func (t *ThemeService) Preview(id string) (theme.Resolved, error) {
 	return theme.Load(id, userThemesDir())
 }
+
+// Import converts a Ghostty/Alacritty/yate theme file into the user themes dir and returns its id.
+func (t *ThemeService) Import(path string) (string, error) {
+	return theme.ImportFile(path, userThemesDir())
+}
+
+// ThemesDir is where user themes live (shown in the settings pane).
+func (t *ThemeService) ThemesDir() string { return userThemesDir() }

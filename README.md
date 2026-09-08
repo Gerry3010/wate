@@ -1,3 +1,5 @@
+<img src="build/appicon.svg" width="72" align="left" alt="yate icon">
+
 # yate — yet another terminal emulator
 
 A small, pretty terminal for Linux and macOS. Go backend, system WebView, no Electron.
@@ -101,10 +103,19 @@ yate ctl input 'ls\n'       # type into the current pane
 
 ## Configuration
 
-`Ctrl+,` opens the settings pane: theme cards with live preview, background mode / wallpaper /
-blur / dim / opacity, terminal and editor fonts, Claude command, and a keybinding recorder.
-Everything it writes goes to `config.toml`, which is also fine to edit by hand — changes apply
-live either way. See [`internal/config/defaults.toml`](internal/config/defaults.toml) for every
+`Ctrl+,` opens the settings pane — vertical tabs for Themes, Background, Terminal, Editor,
+Shell & Startup, Claude Code and Keybindings (click a binding, press the new keys). Every option
+from `config.toml` is there. Saving edits the file in place: comments, order and your own keys
+survive, and changes apply live. Editing the file by hand works just as well.
+
+### Themes
+
+Five themes are built in (Catppuccin Mocha, Dracula, Nord, Gruvbox Dark, Tokyo Night). yate
+also **imports Ghostty and Alacritty colour schemes**, which means every scheme in
+[iTerm2-Color-Schemes](https://github.com/mbadolato/iTerm2-Color-Schemes) (400+) works:
+grab a file from its `ghostty/` or `alacritty/` folder, then *Settings → Themes → Import theme…*
+or `yate theme import <file>`. Imported themes land in `~/.config/yate/themes/<id>.toml` where
+you can tweak them; the "Browse compatible themes" button in the settings links to the catalog. See [`internal/config/defaults.toml`](internal/config/defaults.toml) for every
 key with its default. `yate --config <file>` uses a different file.
 
 ### Translucent window on GNOME

@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -216,18 +219,28 @@ func effectiveKeys(raw map[string]any, goos string) map[string]string {
 	return keys
 }
 
-// Set writes dotted keys ("terminal.font_size", "keys.split_right") into the TOML file at path,
-// keeping every other key (including [keys.darwin] and unknown ones) intact. Comments are lost,
-// which is the price of not hand-parsing TOML. Key bindings are written into the platform table
-// on macOS so they don't clobber the Linux defaults.
+// Set writes dotted keys ("terminal.font_size", "keys.split_right") into the TOML file at path.
+// It edits the file line by line so comments, ordering and unknown keys survive: an existing
+// `key = value  # comment` keeps its comment, missing keys are appended to their section and
+// missing sections are appended to the file. Key bindings go into [keys.darwin] on macOS so they
+// don't clobber the Linux defaults.
 func Set(path string, values map[string]any) error {
-	doc := map[string]any{}
+	var lines []string
 	if data, err := os.ReadFile(path); err == nil {
-		if _, err := toml.Decode(string(data), &doc); err != nil {
+		if _, err := toml.Decode(string(data), &map[string]any{}); err != nil {
 			return fmt.Errorf("config: %w", err)
 		}
+		lines = strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+		if len(lines) == 1 && lines[0] == "" {
+			lines = nil
+		}
 	}
-	for k, v := range values {
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
 		parts := strings.Split(k, ".")
 		if len(parts) < 2 {
 			return fmt.Errorf("config: key %q must be section.key", k)
@@ -235,29 +248,153 @@ func Set(path string, values map[string]any) error {
 		if parts[0] == "keys" && runtime.GOOS == "darwin" && len(parts) == 2 {
 			parts = []string{"keys", "darwin", parts[1]}
 		}
-		cur := doc
-		for _, p := range parts[:len(parts)-1] {
-			next, ok := cur[p].(map[string]any)
-			if !ok {
-				next = map[string]any{}
-				cur[p] = next
-			}
-			cur = next
+		section := strings.Join(parts[:len(parts)-1], ".")
+		val, err := tomlValue(values[k])
+		if err != nil {
+			return fmt.Errorf("config: %s: %w", k, err)
 		}
-		cur[parts[len(parts)-1]] = v
+		lines = setLine(lines, section, parts[len(parts)-1], val)
 	}
-	var buf bytes.Buffer
-	buf.WriteString("# yate configuration — https://github.com/Gerry3010/yate\n")
-	buf.WriteString("# Written by the settings pane; see internal/config/defaults.toml for all keys and comments.\n\n")
-	if err := toml.NewEncoder(&buf).Encode(doc); err != nil {
-		return err
+	out := strings.Join(lines, "\n") + "\n"
+	if _, err := toml.Decode(out, &map[string]any{}); err != nil {
+		return fmt.Errorf("config: refusing to write invalid TOML: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(tmp, []byte(out), 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+var (
+	sectionRe = regexp.MustCompile(`^\s*\[\s*([A-Za-z0-9_.\-"]+)\s*\]`)
+	keyRe     = regexp.MustCompile(`^(\s*)([A-Za-z0-9_\-"]+)(\s*=\s*)(.*)$`)
+)
+
+// setLine replaces or inserts `key = val` inside [section] and returns the new lines.
+func setLine(lines []string, section, key, val string) []string {
+	secStart, secEnd := -1, len(lines)
+	for i, l := range lines {
+		if m := sectionRe.FindStringSubmatch(l); m != nil {
+			if secStart >= 0 {
+				secEnd = i
+				break
+			}
+			if strings.ReplaceAll(m[1], `"`, "") == section {
+				secStart = i
+			}
+		}
+	}
+	if secStart < 0 {
+		// New section at the end of the file.
+		if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) != "" {
+			lines = append(lines, "")
+		}
+		return append(lines, "["+section+"]", key+" = "+val)
+	}
+	// Sub-tables ([keys.darwin]) that start with this section's name end it too.
+	lastKey := secStart
+	for i := secStart + 1; i < secEnd; i++ {
+		m := keyRe.FindStringSubmatch(lines[i])
+		if m == nil {
+			continue
+		}
+		lastKey = i
+		if strings.Trim(m[2], `"`) != key {
+			continue
+		}
+		rest := m[4]
+		if !balanced(rest) {
+			// Multi-line value: don't try to be clever, replace the whole thing.
+			end := i
+			for end < secEnd-1 && !balanced(strings.Join(lines[i:end+1], "\n")) {
+				end++
+			}
+			replaced := append([]string{}, lines[:i]...)
+			replaced = append(replaced, m[1]+m[2]+m[3]+val)
+			return append(replaced, lines[end+1:]...)
+		}
+		// Keep whatever followed the old value (padding + comment) verbatim.
+		comment := ""
+		if idx := commentIndex(rest); idx >= 0 {
+			comment = rest[len(strings.TrimRight(rest[:idx], " \t")):]
+		}
+		lines[i] = m[1] + m[2] + m[3] + val + comment
+		return lines
+	}
+	// Key missing: insert after the last key of the section (before trailing blank lines).
+	insert := lastKey + 1
+	out := append([]string{}, lines[:insert]...)
+	out = append(out, key+" = "+val)
+	return append(out, lines[insert:]...)
+}
+
+// commentIndex finds the start of a trailing comment, ignoring '#' inside quotes.
+func commentIndex(s string) int {
+	inStr := byte(0)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inStr != 0:
+			if c == '\\' && inStr == '"' {
+				i++
+			} else if c == inStr {
+				inStr = 0
+			}
+		case c == '"' || c == '\'':
+			inStr = c
+		case c == '#':
+			return i
+		}
+	}
+	return -1
+}
+
+func balanced(s string) bool {
+	if idx := commentIndex(s); idx >= 0 {
+		s = s[:idx]
+	}
+	return strings.Count(s, "[") == strings.Count(s, "]") && strings.Count(s, "{") == strings.Count(s, "}")
+}
+
+// tomlValue renders a JSON-ish value as a TOML literal.
+func tomlValue(v any) (string, error) {
+	switch x := v.(type) {
+	case string:
+		return strconv.Quote(x), nil
+	case bool:
+		return strconv.FormatBool(x), nil
+	case int:
+		return strconv.Itoa(x), nil
+	case int64:
+		return strconv.FormatInt(x, 10), nil
+	case float64:
+		if x == float64(int64(x)) {
+			return strconv.FormatInt(int64(x), 10), nil
+		}
+		return strconv.FormatFloat(x, 'f', -1, 64), nil
+	case []string:
+		parts := make([]string, len(x))
+		for i, s := range x {
+			parts[i] = strconv.Quote(s)
+		}
+		return "[" + strings.Join(parts, ", ") + "]", nil
+	case []any:
+		parts := make([]string, len(x))
+		for i, e := range x {
+			p, err := tomlValue(e)
+			if err != nil {
+				return "", err
+			}
+			parts[i] = p
+		}
+		return "[" + strings.Join(parts, ", ") + "]", nil
+	case nil:
+		return "", errors.New("null is not a TOML value")
+	default:
+		return "", fmt.Errorf("unsupported value %T", v)
+	}
 }

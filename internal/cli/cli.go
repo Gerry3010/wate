@@ -22,6 +22,7 @@ usage:
   yate ctl input <text>           type text into the current pane ($YATE_PANE_ID)
   yate ctl action <name>          run a keybind action (split_right, new_tab, ...)
   yate ctl ping                   check the control socket
+  yate theme import <file>        import a Ghostty/Alacritty/yate theme and activate it
   yate hook <event>               Claude Code hook entry point (reads JSON on stdin)
   yate install-hooks              register yate's hooks in ~/.claude/settings.json
 
@@ -67,6 +68,17 @@ func Run(args []string) int {
 			}
 		}
 		return send(req)
+	case "theme":
+		if len(args) < 3 || args[1] != "import" {
+			fmt.Fprint(os.Stderr, Usage)
+			return 2
+		}
+		p := args[2]
+		if !filepath.IsAbs(p) {
+			cwd, _ := os.Getwd()
+			p = filepath.Join(cwd, p)
+		}
+		return send(ctl.Request{Cmd: "import-theme", Path: p})
 	case "hook":
 		if len(args) < 2 {
 			return 2
