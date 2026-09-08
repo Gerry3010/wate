@@ -116,10 +116,12 @@ func runHook(event string) int {
 	if !json.Valid(data) {
 		data = nil
 	}
-	_, err := ctl.Send(sock, ctl.Request{Cmd: "hook", Event: event, Pane: os.Getenv("YATE_PANE_ID"), Tab: os.Getenv("YATE_TAB_ID"), Data: data})
+	resp, err := ctl.Send(sock, ctl.Request{Cmd: "hook", Event: event, Pane: os.Getenv("YATE_PANE_ID"), Tab: os.Getenv("YATE_TAB_ID"), Data: data})
+	// The app may be gone; never fail the hook because of us, but say why on stderr.
 	if err != nil {
-		// The app may be gone; never fail the hook because of us.
-		return 0
+		fmt.Fprintln(os.Stderr, "yate hook:", err)
+	} else if !resp.OK {
+		fmt.Fprintln(os.Stderr, "yate hook:", resp.Error)
 	}
 	return 0
 }

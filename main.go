@@ -7,7 +7,9 @@ import (
 	"os"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
+	"github.com/Gerry3010/yate/internal/agent"
 	"github.com/Gerry3010/yate/internal/app"
 	"github.com/Gerry3010/yate/internal/cli"
 	"github.com/Gerry3010/yate/internal/config"
@@ -40,12 +42,15 @@ func main() {
 	ptySvc := app.NewPtyService(cfgSvc.Current)
 	ctlSvc := app.NewCtlService(ptySvc)
 	themeSvc := app.NewThemeService(cfgSvc.Current)
+	notifySvc := notifications.New()
+	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc)
 	wp := &wallpaper.Handler{Path: func() string { return cfgSvc.Current().Background.Wallpaper }}
 
 	application.RegisterEvent[app.ConfigResponse]("config:changed")
 	application.RegisterEvent[app.OpenRequest]("ctl:open")
 	application.RegisterEvent[app.ActionRequest]("ctl:action")
 	application.RegisterEvent[app.HookEvent]("agent:hook")
+	application.RegisterEvent[agent.Session]("agent:status")
 
 	wapp := application.New(application.Options{
 		Name:        "yate",
@@ -55,6 +60,8 @@ func main() {
 			application.NewService(ctlSvc),
 			application.NewService(ptySvc),
 			application.NewService(themeSvc),
+			application.NewService(notifySvc),
+			application.NewService(agentSvc),
 			application.NewService(&app.LogService{}),
 			application.NewService(&app.OpenerService{}),
 			application.NewService(&app.FileService{}),

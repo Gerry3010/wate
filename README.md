@@ -17,7 +17,7 @@ notifications, session sidebar) without any AI of its own.
 - [x] Ctrl-click: URLs → browser, text files → built-in editor, everything else → default app
 - [x] Editor pane (CodeMirror 6) with Code / Split / Preview modes for Markdown
 - [x] `yate open <file>[:line]` from any yate shell opens the editor next to it
-- [ ] Claude Code: launcher, tab badge, "waiting for input" notifications, session sidebar
+- [x] Claude Code: launcher, tab badge, "waiting for input" notifications, session sidebar
 
 ## Keybindings (defaults)
 
@@ -58,6 +58,21 @@ make build      # → bin/yate
 make dev        # hot-reloading dev build
 make test       # go test + vitest
 ```
+
+## Claude Code
+
+No AI inside yate — just a good seat for Claude Code:
+
+- `Ctrl+Shift+K` starts `claude` in a new pane in the current directory (`[claude] command`).
+- Any pane running Claude gets a status dot in its tab: blue = working, yellow = waiting for
+  you, green = finished. The pane frame lights up while Claude waits.
+- `Ctrl+Shift+A` opens the session sidebar (directory, state, last message); click a row to jump.
+- A desktop notification fires when Claude needs you and you are looking elsewhere.
+
+Process detection works out of the box. For precise states run **`yate install-hooks`** once:
+it registers `yate hook <event>` for `SessionStart`, `UserPromptSubmit`, `Notification`, `Stop`
+and `SessionEnd` in `~/.claude/settings.json` (existing hooks are kept, a backup is written).
+Outside yate the hooks are silent no-ops.
 
 ## Shell integration
 

@@ -1,6 +1,8 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { OpenerService, ThemeService, type Config, type Resolved, type Target } from "./api";
+import { AgentService, OpenerService, ThemeService, type Config, type Resolved, type Session, type Target } from "./api";
+import { AgentStore } from "./agent/store";
+import { Sidebar } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
 import { neighbor, type Dir, type Direction } from "./layout/tree";
@@ -16,6 +18,9 @@ export class YateApp {
   active: Tab | null = null;
   private tabBar: TabBar;
   private content = document.createElement("div");
+  private main = document.createElement("div");
+  readonly agents = new AgentStore();
+  private sidebar: Sidebar;
   private keymap: Keymap;
   private fontDelta = 0;
   private theme?: Resolved;
@@ -26,10 +31,60 @@ export class YateApp {
       activate: (t) => this.activate(t),
       close: (t) => this.closeTab(t),
       newTab: () => this.newTab(),
+      agentStatus: (t) => this.agents.forTab(t.id),
+    });
+    this.sidebar = new Sidebar(this.agents, {
+      jumpTo: (s) => this.jumpToSession(s),
+      launch: () => void this.launchClaude(),
+      launchLabel: this.keymap.label("launch_claude") || "Launch",
     });
     this.content.className = "content";
-    root.append(this.tabBar.element, this.content);
+    this.main.className = "main";
+    this.main.append(this.content, this.sidebar.element);
+    root.append(this.tabBar.element, this.main);
     window.addEventListener("keydown", (e) => this.onKey(e), { capture: true });
+    window.addEventListener("focus", () => this.reportFocus());
+    window.addEventListener("blur", () => this.reportFocus());
+    this.agents.subscribe(() => this.onAgentsChanged());
+    AgentService.List().then((l) => this.agents.replaceAll(l ?? [])).catch(() => {});
+  }
+
+  // ---- Claude Code --------------------------------------------------------
+
+  /** Backend event: a session changed. */
+  onAgentStatus(s: Session) {
+    this.agents.apply(s);
+  }
+
+  private onAgentsChanged() {
+    this.tabBar.render(this.tabs, this.active);
+    for (const t of this.tabs) {
+      for (const p of t.panes.values()) {
+        const s = this.agents.forPane(p.id);
+        p.element.classList.toggle("agent-waiting", s?.status === "waiting");
+        p.element.classList.toggle("agent-done", s?.status === "done");
+      }
+    }
+  }
+
+  private reportFocus() {
+    AgentService.SetFocus(this.active?.focusedId ?? "", document.hasFocus()).catch(() => {});
+  }
+
+  async launchClaude(): Promise<void> {
+    const tab = this.active ?? (await this.newTab());
+    const cmd = this.config.claude.command || "claude";
+    await this.addTerminal(tab, "row", { command: cmd.split(/\s+/) });
+  }
+
+  private jumpToSession(s: Session) {
+    const tab = this.tabs.find((t) => t.id === s.tab_id) ?? this.tabs.find((t) => t.panes.has(s.pane_id));
+    if (!tab) return;
+    this.activate(tab);
+    if (tab.panes.has(s.pane_id)) {
+      tab.setFocus(s.pane_id);
+      tab.focusPane();
+    }
   }
 
   async applyConfig(config: Config) {
@@ -59,7 +114,10 @@ export class YateApp {
 
   async newTab(opts: { cwd?: string; command?: string[] } = {}): Promise<Tab> {
     const tab = new Tab();
-    tab.onChange = () => this.refreshChrome(tab);
+    tab.onChange = () => {
+      this.refreshChrome(tab);
+      if (tab === this.active) this.reportFocus();
+    };
     this.tabs.push(tab);
     this.activate(tab);
     await this.addTerminal(tab, "row", opts);
@@ -179,6 +237,7 @@ export class YateApp {
   }
 
   private removePane(tab: Tab, pane: Pane) {
+    AgentService.Forget(pane.id).catch(() => {});
     tab.remove(pane.id);
     if (tab.isEmpty) this.closeTab(tab);
     else tab.focusPane();
@@ -246,6 +305,13 @@ export class YateApp {
         break;
       case "search":
         if (tab?.focused instanceof EditorPane) tab.focused.openSearch();
+        break;
+      case "launch_claude":
+        await this.launchClaude();
+        break;
+      case "toggle_sidebar":
+        this.sidebar.toggle();
+        this.active?.render();
         break;
       case "new_tab":
         await this.newTab();

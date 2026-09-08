@@ -4,6 +4,8 @@ export interface TabBarHost {
   activate(tab: Tab): void;
   close(tab: Tab): void;
   newTab(): void;
+  /** Claude status for the tab's badge ("idle" for none). */
+  agentStatus(tab: Tab): string;
 }
 
 /** The strip at the top: one button per tab, a "+" and empty space that drags the window. */
@@ -28,11 +30,17 @@ export class TabBar {
     this.list.replaceChildren(
       ...tabs.map((tab, i) => {
         const b = document.createElement("div");
-        b.className = "tabbar-tab" + (tab === active ? " active" : "");
+        const status = this.host.agentStatus(tab);
+        b.className = "tabbar-tab" + (tab === active ? " active" : "") + (status !== "idle" ? ` status-${status}` : "");
         b.dataset.tabId = tab.id;
         const idx = document.createElement("span");
         idx.className = "tabbar-index";
         idx.textContent = String(i + 1);
+        if (status !== "idle") {
+          idx.className = "status-dot tabbar-badge";
+          idx.textContent = "";
+          idx.title = `Claude Code: ${status}`;
+        }
         const title = document.createElement("span");
         title.className = "tabbar-title";
         title.textContent = tab.title;

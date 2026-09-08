@@ -28,10 +28,11 @@ type PtyService struct {
 	socket string
 	// byPane maps YATE_PANE_ID → session id so the control socket can address panes.
 	byPane map[string]string
+	tabOf  map[string]string
 }
 
 func NewPtyService(cfg func() config.Config) *PtyService {
-	return &PtyService{sessions: pty.NewManager(), cfg: cfg, byPane: map[string]string{}}
+	return &PtyService{sessions: pty.NewManager(), cfg: cfg, byPane: map[string]string{}, tabOf: map[string]string{}}
 }
 
 func (p *PtyService) ServiceName() string { return "PtyService" }
@@ -119,12 +120,14 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 	}
 	p.mu.Lock()
 	p.byPane[req.PaneID] = s.ID
+	p.tabOf[req.PaneID] = req.TabID
 	p.mu.Unlock()
 	go func() {
 		<-s.Done()
 		p.mu.Lock()
 		if p.byPane[req.PaneID] == s.ID {
 			delete(p.byPane, req.PaneID)
+			delete(p.tabOf, req.PaneID)
 		}
 		p.mu.Unlock()
 	}()
@@ -193,4 +196,27 @@ func (p *PtyService) PidForPane(paneID string) (int, bool) {
 		return 0, false
 	}
 	return s.Pid(), true
+}
+
+// PaneInfo describes a live pane for the agent poller.
+type PaneInfo struct {
+	PaneID    string
+	TabID     string
+	SessionID string
+	Pid       int
+}
+
+// Panes lists every pane with a live shell.
+func (p *PtyService) Panes() []PaneInfo {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	out := make([]PaneInfo, 0, len(p.byPane))
+	for paneID, sid := range p.byPane {
+		s, ok := p.sessions.Get(sid)
+		if !ok {
+			continue
+		}
+		out = append(out, PaneInfo{PaneID: paneID, TabID: p.tabOf[paneID], SessionID: sid, Pid: s.Pid()})
+	}
+	return out
 }

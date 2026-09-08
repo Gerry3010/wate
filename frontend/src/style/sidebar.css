@@ -1,0 +1,89 @@
+/* ---- agent sidebar ----------------------------------------------------- */
+.main {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.sidebar[hidden] { display: none; }
+.sidebar {
+  flex: 0 0 280px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: rgba(var(--bg-rgb), calc(var(--surface-alpha) * 0.7));
+  font-size: 12.5px;
+}
+:root[data-bg-mode="solid"] .sidebar { background: var(--sidebar-bg); }
+.sidebar-head {
+  padding: 12px 14px 8px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--tab-inactive-fg);
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.sidebar-list { flex: 1 1 auto; overflow-y: auto; padding: 0 8px; }
+.sidebar-empty { padding: 12px 8px; color: var(--tab-inactive-fg); line-height: 1.6; }
+.sidebar-empty kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.sidebar-row {
+  display: flex;
+  gap: 10px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  cursor: default;
+  align-items: flex-start;
+}
+.sidebar-row:hover { background: rgba(255,255,255,0.06); }
+.sidebar-main { min-width: 0; flex: 1 1 auto; }
+.sidebar-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-sub { color: var(--tab-inactive-fg); font-size: 11px; margin-top: 2px; }
+.sidebar-msg {
+  margin-top: 4px;
+  color: color-mix(in srgb, var(--fg) 80%, transparent);
+  font-size: 11.5px;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.sidebar-launch {
+  margin: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  color: var(--fg);
+  font: inherit;
+  cursor: default;
+}
+.sidebar-launch:hover { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+
+/* status dots (sidebar rows + tab badges) */
+.status-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--tab-inactive-fg);
+}
+.status-running .status-dot { background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+.status-waiting .status-dot { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+.status-done .status-dot { background: var(--green); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+.tabbar-badge { width: 7px; height: 7px; margin-top: 0; }
+.tabbar-tab.status-waiting .tabbar-title { color: var(--yellow); }
+.tabbar-tab.status-done .tabbar-title { color: var(--green); }
+
+/* pane frame while Claude waits */
+.pane.agent-waiting { outline-color: color-mix(in srgb, var(--yellow) 70%, transparent) !important; }
+.pane.agent-done { outline-color: color-mix(in srgb, var(--green) 60%, transparent) !important; }
