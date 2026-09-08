@@ -84,7 +84,10 @@ export class Sidebar {
 function shortPath(p: string): string {
   if (!p) return "";
   const home = /^\/(?:home|Users)\/[^/]+/.exec(p)?.[0];
-  return home ? "~" + p.slice(home.length) : p;
+  const short = home ? "~" + p.slice(home.length) : p;
+  // Keep the tail (project name) visible when the path is long.
+  const parts = short.split("/");
+  return parts.length > 4 ? `${parts[0]}/…/${parts.slice(-2).join("/")}` : short;
 }
 
 function elapsed(since: string): string {

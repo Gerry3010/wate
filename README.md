@@ -7,7 +7,9 @@ blurred wallpaper, themes, sane split/tab keybinds, clickable links, a built-in
 Markdown/code editor — and adds a *thin* Claude Code integration (launcher, status badge,
 notifications, session sidebar) without any AI of its own.
 
-> Status: early. Milestone 1 (bootstrap: PTY ↔ xterm.js over a loopback WebSocket) works.
+![yate: terminal, Markdown preview, Claude Code pane and session sidebar](docs/screenshot.png)
+
+> Status: usable daily driver on Linux (all planned features below work); macOS build untested so far.
 
 ## Features (planned → done)
 
