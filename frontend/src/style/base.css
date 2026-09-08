@@ -1,9 +1,18 @@
-/* Theme tokens: overwritten at runtime from the active theme. */
+/* Theme tokens: overwritten at runtime from the active theme (see theme/apply.ts). */
 :root {
   --bg: #1e1e2e;
+  --bg-rgb: 30, 30, 46;
   --fg: #cdd6f4;
   --accent: #89b4fa;
+  --tabbar-bg: #181825;
+  --tab-active-bg: #1e1e2e;
+  --tab-inactive-fg: #6c7086;
+  --border: #313244;
+  --sidebar-bg: #181825;
   --surface: rgba(30, 30, 46, 0.85);
+  --surface-alpha: 0.85;
+  --wallpaper-blur: 24px;
+  --wallpaper-dim: 0.35;
   --font-mono: "JetBrainsMono Nerd Font", "JetBrains Mono", "MesloLGS NF", monospace;
   --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -14,7 +23,7 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  background: transparent;
   color: var(--fg);
   font-family: var(--font-ui);
   font-size: 13px;
@@ -22,8 +31,29 @@ html, body {
   user-select: none;
 }
 
+/* Solid mode paints the theme background; translucent/wallpaper leave it to the layers below. */
+:root[data-bg-mode="solid"] body { background: var(--bg); }
+
+/* Blurred wallpaper layer, scaled a bit so the blur never shows transparent edges. */
+#bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(var(--wallpaper-blur));
+  transform: scale(1.08);
+}
+#bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(var(--bg-rgb), var(--wallpaper-dim));
+}
+
 #app {
   position: relative;
+  z-index: 1;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -37,8 +67,9 @@ html, body {
   flex: 0 0 auto;
   padding: 6px 8px 0;
   gap: 4px;
-  background: rgba(0, 0, 0, 0.18);
+  background: rgba(var(--bg-rgb), calc(var(--surface-alpha) * 0.55));
 }
+:root[data-bg-mode="solid"] .tabbar { background: var(--tabbar-bg); }
 .tabbar-tabs {
   display: flex;
   gap: 4px;
@@ -53,7 +84,7 @@ html, body {
   min-width: 0;
   padding: 0 8px 0 10px;
   border-radius: 8px 8px 0 0;
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  color: var(--tab-inactive-fg);
   cursor: default;
   transition: background 120ms, color 120ms;
 }
@@ -62,6 +93,7 @@ html, body {
   background: var(--surface);
   color: var(--fg);
 }
+:root[data-bg-mode="solid"] .tabbar-tab.active { background: var(--tab-active-bg); }
 .tabbar-index {
   font-size: 10px;
   opacity: 0.6;
@@ -133,6 +165,25 @@ html, body {
 .divider-col { cursor: row-resize; }
 .divider-col::after { height: 1px; }
 .divider:hover, .divider.dragging { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.divider.snapped { background: color-mix(in srgb, var(--accent) 70%, transparent); }
+
+/* Snap markers shown while dragging a divider. */
+.snap-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.split { position: relative; }
+.snap-guide {
+  position: absolute;
+  background: color-mix(in srgb, var(--fg) 25%, transparent);
+  border-radius: 2px;
+  transition: background 100ms, transform 100ms;
+}
+.snap-guides-row .snap-guide { top: 12px; bottom: 12px; width: 2px; margin-left: -1px; }
+.snap-guides-col .snap-guide { left: 12px; right: 12px; height: 2px; margin-top: -1px; }
+.snap-guide.active { background: var(--accent); transform: scale(1.5); }
 
 .pane {
   position: relative;

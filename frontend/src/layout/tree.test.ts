@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { focusAfterClose, leaf, leaves, neighbor, removeLeaf, setRatio, splitLeaf, type Rect } from "./tree";
+import { focusAfterClose, leaf, leaves, nearestSplit, neighbor, ratioOf, removeLeaf, resizeTowards, setRatio, snapRatio, splitLeaf, type Rect } from "./tree";
 
 describe("split tree", () => {
   it("splits and lists leaves in order", () => {
@@ -61,5 +61,26 @@ describe("neighbor", () => {
       { id: "x", x: 100, y: 0, w: 100, h: 100 },
     ];
     expect(neighbor(r, "x", "left")).toBe("bottom");
+  });
+});
+
+describe("resize", () => {
+  // a | (b / c)
+  const t = splitLeaf(splitLeaf(leaf("a"), "a", "row", "b", "s1"), "b", "col", "c", "s2");
+  it("finds the nearest divider of the right orientation", () => {
+    expect(nearestSplit(t, "c", "col")).toBe("s2");
+    expect(nearestSplit(t, "c", "row")).toBe("s1");
+    expect(nearestSplit(t, "a", "col")).toBeNull();
+  });
+  it("moves the divider in the arrow direction", () => {
+    expect(ratioOf(resizeTowards(t, "c", "right"), "s1")).toBeCloseTo(0.55);
+    expect(ratioOf(resizeTowards(t, "a", "left"), "s1")).toBeCloseTo(0.45);
+    expect(ratioOf(resizeTowards(t, "b", "down"), "s2")).toBeCloseTo(0.55);
+    expect(resizeTowards(t, "a", "up")).toBe(t);
+  });
+  it("snaps near preferred points only", () => {
+    expect(snapRatio(0.51)).toEqual({ ratio: 0.5, snapped: 0.5 });
+    expect(snapRatio(0.34).ratio).toBeCloseTo(1 / 3);
+    expect(snapRatio(0.42)).toEqual({ ratio: 0.42, snapped: null });
   });
 });

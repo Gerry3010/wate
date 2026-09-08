@@ -1,6 +1,19 @@
 import type { Pane } from "../pane";
 import { LayoutView } from "../layout/view";
-import { focusAfterClose, leaves, removeLeaf, setRatio, splitLeaf, type Dir, type LayoutNode, type Rect } from "../layout/tree";
+import {
+  focusAfterClose,
+  leaves,
+  nearestSplit,
+  ratioOf,
+  removeLeaf,
+  resizeTowards,
+  setRatio,
+  splitLeaf,
+  type Dir,
+  type Direction,
+  type LayoutNode,
+  type Rect,
+} from "../layout/tree";
 
 let seq = 0;
 export const nextId = (prefix: string) => `${prefix}-${++seq}-${Math.random().toString(36).slice(2, 7)}`;
@@ -20,11 +33,25 @@ export class Tab {
     this.view = new LayoutView(this.element, {
       elementFor: (id) => this.panes.get(id)?.element,
       onRatio: (splitId, ratio) => {
-        if (!this.tree) return;
-        this.tree = setRatio(this.tree, splitId, ratio);
-        this.render();
+        if (this.tree) this.tree = setRatio(this.tree, splitId, ratio);
       },
+      onResized: () => this.relayoutPanes(),
     });
+  }
+
+  /** Keyboard resize: move the divider nearest to the focused pane. */
+  resize(direction: Direction): void {
+    if (!this.tree || !this.focusedId) return;
+    const dir: Dir = direction === "left" || direction === "right" ? "row" : "col";
+    const id = nearestSplit(this.tree, this.focusedId, dir);
+    if (!id) return;
+    this.tree = resizeTowards(this.tree, this.focusedId, direction);
+    this.view.setRatio(id, ratioOf(this.tree, id)!);
+    this.relayoutPanes();
+  }
+
+  private relayoutPanes(): void {
+    for (const p of this.panes.values()) p.relayout();
   }
 
   get title(): string {
@@ -88,9 +115,7 @@ export class Tab {
 
   render(): void {
     this.view.render(this.tree);
-    requestAnimationFrame(() => {
-      for (const p of this.panes.values()) p.relayout();
-    });
+    requestAnimationFrame(() => this.relayoutPanes());
   }
 
   dispose(): void {

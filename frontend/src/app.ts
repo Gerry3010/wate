@@ -1,6 +1,7 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import type { Config } from "./api";
+import { ThemeService, type Config, type Resolved } from "./api";
+import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
 import { neighbor, type Dir, type Direction } from "./layout/tree";
 import type { Pane } from "./pane";
@@ -16,6 +17,7 @@ export class YateApp {
   private content = document.createElement("div");
   private keymap: Keymap;
   private fontDelta = 0;
+  private theme?: Resolved;
 
   constructor(root: HTMLElement, public config: Config) {
     this.keymap = new Keymap(config.keys, config.general.passthrough ?? []);
@@ -29,10 +31,26 @@ export class YateApp {
     window.addEventListener("keydown", (e) => this.onKey(e), { capture: true });
   }
 
-  applyConfig(config: Config) {
+  async applyConfig(config: Config) {
     this.config = config;
     this.keymap = new Keymap(config.keys, config.general.passthrough ?? []);
-    for (const p of this.allPanes()) if (p instanceof TerminalPane) p.applyConfig(config.terminal, this.fontDelta);
+    await this.loadTheme();
+    for (const p of this.allPanes()) if (p instanceof TerminalPane) p.applyConfig(config.terminal, this.fontDelta, this.termTheme());
+  }
+
+  /** Fetch the resolved theme and push it into CSS + panes. */
+  async loadTheme() {
+    try {
+      this.theme = await ThemeService.Get();
+    } catch (err) {
+      console.warn("theme:", err);
+      if (!this.theme) return;
+    }
+    applyTheme(this.theme!, this.config.background);
+  }
+
+  private termTheme(): Record<string, string> | undefined {
+    return this.theme ? xtermTheme(this.theme, this.config.background) : undefined;
   }
 
   // ---- tabs -------------------------------------------------------------
@@ -86,6 +104,7 @@ export class YateApp {
       cwd,
       command: opts.command,
       terminal: this.config.terminal,
+      theme: this.termTheme(),
       fontDelta: this.fontDelta,
       keyFilter: (e) => this.keymap.match(e) === null,
       onExit: () => this.removePane(tab, pane),
@@ -137,6 +156,12 @@ export class YateApp {
       case "focus_up":
       case "focus_down":
         this.focusDir(action.slice("focus_".length) as Direction);
+        break;
+      case "resize_left":
+      case "resize_right":
+      case "resize_up":
+      case "resize_down":
+        tab?.resize(action.slice("resize_".length) as Direction);
         break;
       case "close_pane":
         if (tab?.focused) this.removePane(tab, tab.focused);
@@ -204,6 +229,6 @@ export class YateApp {
 
   private zoom(step: number) {
     this.fontDelta = step === 0 ? 0 : this.fontDelta + step;
-    for (const p of this.allPanes()) if (p instanceof TerminalPane) p.applyConfig(this.config.terminal, this.fontDelta);
+    for (const p of this.allPanes()) if (p instanceof TerminalPane) p.applyConfig(this.config.terminal, this.fontDelta, this.termTheme());
   }
 }

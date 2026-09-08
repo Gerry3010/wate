@@ -18,7 +18,11 @@ async function boot() {
   if (warning) console.warn(warning);
 
   const app = new YateApp(root, config);
-  Events.On("config:changed", (ev: { data: { config: typeof config } }) => app.applyConfig(ev.data.config));
+  await app.loadTheme();
+  Events.On("config:changed", (ev: { data: { config: typeof config; warning?: string } }) => {
+    if (ev.data.warning) console.warn(ev.data.warning);
+    void app.applyConfig(ev.data.config);
+  });
   await app.newTab();
 }
 

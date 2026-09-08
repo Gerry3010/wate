@@ -112,3 +112,52 @@ export function neighbor(rects: Rect[], fromId: string, dir: Direction): string 
   });
   return pool[0].id;
 }
+
+/** Id of the nearest ancestor split of `leafId` with the given orientation (the divider to move). */
+export function nearestSplit(root: LayoutNode, leafId: string, dir: Dir): string | null {
+  const path = pathTo(root, leafId);
+  if (!path) return null;
+  for (let i = path.length - 1; i >= 0; i--) {
+    const n = path[i];
+    if (n.kind === "split" && n.dir === dir) return n.id;
+  }
+  return null;
+}
+
+function pathTo(n: LayoutNode, leafId: string): LayoutNode[] | null {
+  if (n.kind === "leaf") return n.id === leafId ? [n] : null;
+  const a = pathTo(n.a, leafId);
+  if (a) return [n, ...a];
+  const b = pathTo(n.b, leafId);
+  return b ? [n, ...b] : null;
+}
+
+export function ratioOf(root: LayoutNode, splitId: string): number | null {
+  if (root.kind === "leaf") return null;
+  if (root.id === splitId) return root.ratio;
+  return ratioOf(root.a, splitId) ?? ratioOf(root.b, splitId);
+}
+
+/**
+ * Move the divider nearest to `leafId` one step in `direction`
+ * (right/down grow the first child). Returns the unchanged tree at the edge.
+ */
+export function resizeTowards(root: LayoutNode, leafId: string, direction: Direction, step = 0.05): LayoutNode {
+  const dir: Dir = direction === "left" || direction === "right" ? "row" : "col";
+  const id = nearestSplit(root, leafId, dir);
+  if (!id) return root;
+  const r = ratioOf(root, id)!;
+  const delta = direction === "right" || direction === "down" ? step : -step;
+  return setRatio(root, id, r + delta);
+}
+
+/** Preferred divider positions for snapping. */
+export const SNAP_POINTS = [0.25, 1 / 3, 0.5, 2 / 3, 0.75];
+
+/** Snap `ratio` to the closest snap point within `threshold`, else return it unchanged. */
+export function snapRatio(ratio: number, threshold = 0.02): { ratio: number; snapped: number | null } {
+  for (const p of SNAP_POINTS) {
+    if (Math.abs(ratio - p) <= threshold) return { ratio: p, snapped: p };
+  }
+  return { ratio, snapped: null };
+}

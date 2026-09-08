@@ -14,6 +14,7 @@ export interface TerminalPaneOptions {
   cwd?: string;
   command?: string[];
   terminal: TerminalConfig;
+  theme?: Record<string, string>;
   fontDelta?: number;
   /** Return false for keys the app handles itself (so xterm ignores them). */
   keyFilter?: (e: KeyboardEvent) => boolean;
@@ -52,12 +53,7 @@ export class TerminalPane implements Pane {
       allowProposedApi: true,
       allowTransparency: true,
       macOptionIsMeta: true,
-      theme: {
-        background: "#00000000",
-        scrollbarSliderBackground: "rgba(255,255,255,0.12)",
-        scrollbarSliderHoverBackground: "rgba(255,255,255,0.22)",
-        scrollbarSliderActiveBackground: "rgba(255,255,255,0.3)",
-      },
+      theme: opts.theme,
     };
     this.term = new Terminal(termOpts);
     this.term.loadAddon(this.fit);
@@ -143,7 +139,8 @@ export class TerminalPane implements Pane {
   }
 
   /** Re-apply appearance settings (config reload, zoom). */
-  applyConfig(t: TerminalConfig, fontDelta = 0) {
+  applyConfig(t: TerminalConfig, fontDelta = 0, theme?: Record<string, string>) {
+    if (theme) this.term.options.theme = theme;
     this.term.options.fontFamily = t.font;
     this.term.options.fontSize = Math.max(6, t.font_size + fontDelta);
     this.term.options.lineHeight = t.line_height || 1;

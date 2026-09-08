@@ -12,8 +12,8 @@ notifications, session sidebar) without any AI of its own.
 ## Features (planned → done)
 
 - [x] Terminal panes via [xterm.js](https://xtermjs.org) (WebGL renderer) + `creack/pty`
-- [ ] Tabs and split panes with keyboard navigation
-- [ ] Themes (TOML), blurred wallpaper / translucent window
+- [x] Tabs and split panes with keyboard navigation, snapping dividers
+- [x] Themes (TOML), blurred wallpaper / translucent window
 - [ ] Ctrl-click: URLs → browser, text files → built-in editor, everything else → default app
 - [ ] Editor pane (CodeMirror 6) with Code / Split / Preview modes for Markdown
 - [ ] Claude Code: launcher, tab badge, "waiting for input" notifications, session sidebar
@@ -25,6 +25,7 @@ notifications, session sidebar) without any AI of its own.
 | Split → new pane to the right | `Ctrl+Space` |
 | Split → new pane below | `Ctrl+Shift+Space` |
 | Focus pane left / right / up / down | `Shift+←` / `Shift+→` / `Shift+↑` / `Shift+↓` |
+| Resize: move the nearest divider left / right / up / down | `Alt+Shift+←` / `→` / `↑` / `↓` |
 | Close pane (last pane closes the tab) | `Ctrl+W` |
 | New tab / next / previous / tab *n* | `Ctrl+Shift+T` / `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Alt+n` |
 | Copy / paste | `Ctrl+Shift+C` / `Ctrl+Shift+V` (macOS also `Cmd+C` / `Cmd+V`) |

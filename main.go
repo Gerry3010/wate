@@ -10,6 +10,7 @@ import (
 
 	"github.com/Gerry3010/yate/internal/app"
 	"github.com/Gerry3010/yate/internal/config"
+	"github.com/Gerry3010/yate/internal/wallpaper"
 )
 
 // Frontend build output, embedded into the binary.
@@ -34,6 +35,8 @@ func main() {
 
 	cfgSvc := app.NewConfigService(cfgPath)
 	ptySvc := app.NewPtyService(cfgSvc.Current)
+	themeSvc := app.NewThemeService(cfgSvc.Current)
+	wp := &wallpaper.Handler{Path: func() string { return cfgSvc.Current().Background.Wallpaper }}
 
 	application.RegisterEvent[app.ConfigResponse]("config:changed")
 
@@ -43,7 +46,9 @@ func main() {
 		Services: []application.Service{
 			application.NewService(cfgSvc),
 			application.NewService(ptySvc),
+			application.NewService(themeSvc),
 			application.NewService(&app.LogService{}),
+			application.NewServiceWithOptions(wp, application.ServiceOptions{Name: "Wallpaper", Route: "/wallpaper"}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -54,6 +59,13 @@ func main() {
 	})
 
 	wapp.Window.NewWithOptions(app.WindowOptions(cfgSvc.Current()))
+
+	stopWatch, err := app.WatchConfig(cfgPath, func() { cfgSvc.Reload() })
+	if err != nil {
+		log.Println("config watch disabled:", err)
+	} else {
+		defer stopWatch()
+	}
 
 	if err := wapp.Run(); err != nil {
 		log.Fatal(err)
