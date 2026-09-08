@@ -59,6 +59,17 @@ Default font is JetBrains Mono at 13px with ligatures. Powerline/Nerd-Font promp
 starship) need a patched font: the default stack tries `JetBrainsMono Nerd Font` first —
 Arch: `ttf-jetbrains-mono-nerd`, macOS: `brew install font-jetbrains-mono-nerd-font`.
 
+## Installing
+
+Grab a build from the [Releases](https://github.com/Gerry3010/yate/releases) page:
+
+- **Linux x86_64:** `.AppImage` (portable), `.deb`, `.rpm`, or a plain `.tar.gz` with the binary.
+- **macOS (Apple Silicon + Intel):** `.dmg` / `.app.zip`. The bundle is ad-hoc signed, so on the
+  first start right-click → *Open* (or `xattr -d com.apple.quarantine yate.app`).
+
+Every tag `vX.Y.Z` is built by the [release workflow](.github/workflows/release.yml); the notes come
+from [CHANGELOG.md](CHANGELOG.md) and each asset has a SHA-256 in `SHA256SUMS.txt`.
+
 ## Building
 
 Requirements: Go 1.24+, Node 20+, and the platform toolchain:

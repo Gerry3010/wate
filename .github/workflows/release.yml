@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  WAILS_VERSION: v3.0.0-beta.18
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: Linux (amd64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: System deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev libfuse2 rpm
+      - name: Install wails3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+      - name: Version
+        id: v
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          build/set-version.sh "$v"
+      - name: Frontend deps
+        run: npm ci
+        working-directory: frontend
+      - name: Build + package (AppImage, deb, rpm)
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          wails3 task linux:build
+          wails3 task linux:create:appimage
+          wails3 task linux:create:deb
+          wails3 task linux:create:rpm
+      - name: Assemble assets
+        run: |
+          v=${{ steps.v.outputs.version }}
+          mkdir -p dist
+          tar -C bin -czf dist/yate-$v-linux-amd64.tar.gz yate
+          for f in bin/*.AppImage; do cp "$f" dist/yate-$v-linux-amd64.AppImage; done
+          for f in bin/*.deb; do cp "$f" dist/yate-$v-linux-amd64.deb; done
+          for f in bin/*.rpm; do cp "$f" dist/yate-$v-linux-x86_64.rpm; done
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/
+
+  macos:
+    name: macOS (universal)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install wails3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+      - name: Version
+        id: v
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          build/set-version.sh "$v"
+      - name: Frontend deps
+        run: npm ci
+        working-directory: frontend
+      - name: Build universal .app (ad-hoc signed) and .dmg
+        run: |
+          wails3 task darwin:package:universal
+          wails3 task darwin:create:dmg
+      - name: Assemble assets
+        run: |
+          v=${{ steps.v.outputs.version }}
+          mkdir -p dist
+          ditto -c -k --keepParent bin/yate.app dist/yate-$v-macos-universal.app.zip
+          for f in bin/*.dmg; do cp "$f" dist/yate-$v-macos-universal.dmg; done
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/
+
+  release:
+    name: GitHub release
+    needs: [linux, macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums + notes
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          {
+            build/release-notes.sh "$v" || echo "Release $GITHUB_REF_NAME"
+            echo
+            echo "### Downloads"
+            echo
+            echo "| Platform | File |"
+            echo "|---|---|"
+            echo "| Linux x86_64 | AppImage, .deb, .rpm, .tar.gz |"
+            echo "| macOS (Apple Silicon + Intel) | .dmg, .app.zip — ad-hoc signed: on first start right-click → *Open*, or \`xattr -d com.apple.quarantine yate.app\` |"
+            echo
+            echo "SHA-256 checksums in \`SHA256SUMS.txt\`."
+          } > notes.md
+          cat notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "yate $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            $([[ "$GITHUB_REF_NAME" == *-* ]] && echo --prerelease)
+      - name: Notify pipepush
+        if: always()
+        run: |
+          curl -sf -X POST "$PIPEPUSH_SERVER/api/webhook" \
+            -H "Content-Type: application/json" \
+            -d "{\"token\":\"$PIPEPUSH_TOKEN\",\"status\":\"${{ job.status }}\",\"pipeline\":\"Release\",\"branch\":\"${{ github.ref_name }}\",\"commit\":\"${{ github.sha }}\",\"runId\":\"${{ github.run_number }}\"}"
+        env:
+          PIPEPUSH_TOKEN: ${{ secrets.PIPEPUSH_TOKEN }}
+          PIPEPUSH_SERVER: ${{ vars.PIPEPUSH_SERVER }}
