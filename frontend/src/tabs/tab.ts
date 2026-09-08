@@ -35,7 +35,13 @@ export class Tab {
       onRatio: (splitId, ratio) => {
         if (this.tree) this.tree = setRatio(this.tree, splitId, ratio);
       },
-      onResized: () => this.relayoutPanes(),
+      onDragStart: () => {
+        for (const p of this.panes.values()) p.setFitSuspended?.(true);
+      },
+      onResized: () => {
+        for (const p of this.panes.values()) p.setFitSuspended?.(false);
+        this.relayoutPanes();
+      },
     });
   }
 

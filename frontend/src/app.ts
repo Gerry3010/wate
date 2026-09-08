@@ -8,6 +8,7 @@ import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
 import { TabBar } from "./tabs/tabbar";
 import { TerminalPane } from "./terminal/pane";
+import { EditorPane } from "./editor/pane";
 
 /** Top-level UI state: tabs, panes, keybindings and the actions they trigger. */
 export class YateApp {
@@ -47,6 +48,7 @@ export class YateApp {
       if (!this.theme) return;
     }
     applyTheme(this.theme!, this.config.background);
+    this.applyEditorVars();
   }
 
   private termTheme(): Record<string, string> | undefined {
@@ -117,19 +119,79 @@ export class YateApp {
     return pane;
   }
 
-  /** Ctrl-click target: text files go to the editor (milestone 5), everything else to the OS. */
-  openTarget(_tab: Tab, t: Target) {
+  /** Ctrl-click target: text files go to an editor pane, everything else to the OS. */
+  openTarget(tab: Tab, t: Target) {
     if (t.kind === "file" && t.text) {
-      // TODO(editor): open in an editor pane next to the terminal.
-      console.warn("editor pane not implemented yet, opening externally:", t.path);
+      void this.openEditor(tab, t.path, t.line, t.col);
+      return;
     }
     OpenerService.Open(t.path).catch((err) => console.warn("open failed", err));
+  }
+
+  /** Open (or focus) an editor for path, split to the right of the focused pane. */
+  async openEditor(tab: Tab, path: string, line?: number, col?: number): Promise<void> {
+    for (const p of tab.panes.values()) {
+      if (p instanceof EditorPane && p.path === path) {
+        tab.setFocus(p.id);
+        if (line) p.gotoLine(line, col);
+        p.focus();
+        return;
+      }
+    }
+    const pane = new EditorPane({
+      paneId: nextId("pane"),
+      path,
+      line,
+      col,
+      editor: this.config.editor,
+      onTitle: () => tab.onChange?.(),
+      onClose: () => void this.closePane(tab, pane),
+      onLink: (href, fromDir) => this.openPreviewLink(tab, href, fromDir),
+    });
+    try {
+      tab.add(pane, "row");
+      await pane.load();
+      pane.focus();
+    } catch (err) {
+      console.warn("editor:", err);
+      tab.remove(pane.id);
+      tab.focusPane();
+    }
+  }
+
+  private openPreviewLink(tab: Tab, href: string, fromDir: string) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+      OpenerService.OpenURL(href).catch((err) => console.warn(err));
+      return;
+    }
+    const clean = href.split("#")[0];
+    if (!clean) return;
+    void OpenerService.Resolve(fromDir, [clean]).then((ts) => {
+      const t = ts?.[0];
+      if (t && t.kind !== "missing") this.openTarget(tab, t);
+    });
+  }
+
+  /** Close a pane, asking about unsaved editor changes first. */
+  private async closePane(tab: Tab, pane: Pane) {
+    if (pane instanceof EditorPane && !(await pane.confirmClose())) return;
+    this.removePane(tab, pane);
   }
 
   private removePane(tab: Tab, pane: Pane) {
     tab.remove(pane.id);
     if (tab.isEmpty) this.closeTab(tab);
     else tab.focusPane();
+  }
+
+  /** Editor font settings live in CSS variables so CodeMirror and the preview pick them up. */
+  private applyEditorVars() {
+    const e = this.config.editor;
+    const root = document.documentElement;
+    root.style.setProperty("--editor-font", e.font);
+    root.style.setProperty("--editor-font-size", `${e.font_size + this.fontDelta}px`);
+    root.style.setProperty("--editor-line-height", String(e.line_height || 1.5));
+    root.style.setProperty("--editor-ligatures", e.ligatures ? "normal" : "none");
   }
 
   private allPanes(): Pane[] {
@@ -174,7 +236,16 @@ export class YateApp {
         tab?.resize(action.slice("resize_".length) as Direction);
         break;
       case "close_pane":
-        if (tab?.focused) this.removePane(tab, tab.focused);
+        if (tab?.focused) await this.closePane(tab, tab.focused);
+        break;
+      case "editor_save":
+        if (tab?.focused instanceof EditorPane) await tab.focused.save();
+        break;
+      case "editor_mode":
+        if (tab?.focused instanceof EditorPane) tab.focused.cycleMode();
+        break;
+      case "search":
+        if (tab?.focused instanceof EditorPane) tab.focused.openSearch();
         break;
       case "new_tab":
         await this.newTab();
@@ -223,22 +294,21 @@ export class YateApp {
 
   private async copy() {
     const p = this.active?.focused;
-    if (p instanceof TerminalPane) {
-      const sel = p.term.getSelection();
-      if (sel) await Clipboard.SetText(sel);
-    }
+    const sel = p instanceof TerminalPane ? p.term.getSelection() : p instanceof EditorPane ? p.selectedText() : "";
+    if (sel) await Clipboard.SetText(sel);
   }
 
   private async paste() {
     const p = this.active?.focused;
-    if (p instanceof TerminalPane) {
-      const text = await Clipboard.Text();
-      if (text) p.term.paste(text);
-    }
+    const text = await Clipboard.Text();
+    if (!text) return;
+    if (p instanceof TerminalPane) p.term.paste(text);
+    else if (p instanceof EditorPane) p.insertText(text);
   }
 
   private zoom(step: number) {
     this.fontDelta = step === 0 ? 0 : this.fontDelta + step;
+    this.applyEditorVars();
     for (const p of this.allPanes()) if (p instanceof TerminalPane) p.applyConfig(this.config.terminal, this.fontDelta, this.termTheme());
   }
 }

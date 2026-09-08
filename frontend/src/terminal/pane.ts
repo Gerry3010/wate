@@ -39,6 +39,7 @@ export class TerminalPane implements Pane {
   private resizeObserver: ResizeObserver;
   private disposed = false;
   private fitTimer?: ReturnType<typeof setTimeout>;
+  private fitSuspended = false;
   private active = false;
 
   constructor(private opts: TerminalPaneOptions) {
@@ -179,10 +180,17 @@ export class TerminalPane implements Pane {
   }
 
   relayout() {
+    this.fitSuspended = false;
     this.scheduleFit();
   }
 
+  setFitSuspended(suspended: boolean) {
+    this.fitSuspended = suspended;
+    if (suspended) clearTimeout(this.fitTimer);
+  }
+
   private scheduleFit() {
+    if (this.fitSuspended) return;
     clearTimeout(this.fitTimer);
     this.fitTimer = setTimeout(() => this.fitNow(), 60);
   }

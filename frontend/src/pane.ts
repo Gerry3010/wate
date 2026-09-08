@@ -12,5 +12,7 @@ export interface Pane {
   cwd(): Promise<string>;
   /** Called when the pane's box changed size. */
   relayout(): void;
+  /** While true, size changes are ignored until relayout() (divider drags). */
+  setFitSuspended?(suspended: boolean): void;
   dispose(): void;
 }

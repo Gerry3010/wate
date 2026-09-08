@@ -13,6 +13,10 @@
   --surface-alpha: 0.85;
   --wallpaper-blur: 24px;
   --wallpaper-dim: 0.35;
+  --editor-font: var(--font-mono);
+  --editor-font-size: 13px;
+  --editor-line-height: 1.5;
+  --editor-ligatures: normal;
   --font-mono: "JetBrainsMono Nerd Font", "JetBrains Mono", "MesloLGS NF", monospace;
   --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
 }

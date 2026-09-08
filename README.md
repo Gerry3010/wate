@@ -14,8 +14,9 @@ notifications, session sidebar) without any AI of its own.
 - [x] Terminal panes via [xterm.js](https://xtermjs.org) (WebGL renderer) + `creack/pty`
 - [x] Tabs and split panes with keyboard navigation, snapping dividers
 - [x] Themes (TOML), blurred wallpaper / translucent window
-- [ ] Ctrl-click: URLs → browser, text files → built-in editor, everything else → default app
-- [ ] Editor pane (CodeMirror 6) with Code / Split / Preview modes for Markdown
+- [x] Ctrl-click: URLs → browser, text files → built-in editor, everything else → default app
+- [x] Editor pane (CodeMirror 6) with Code / Split / Preview modes for Markdown
+- [x] `yate open <file>[:line]` from any yate shell opens the editor next to it
 - [ ] Claude Code: launcher, tab badge, "waiting for input" notifications, session sidebar
 
 ## Keybindings (defaults)
@@ -56,6 +57,17 @@ go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.18
 make build      # → bin/yate
 make dev        # hot-reloading dev build
 make test       # go test + vitest
+```
+
+## CLI
+
+Every shell started by yate has `$YATE_SOCKET`, `$YATE_PANE_ID` and `$YATE_TAB_ID` set, so the
+`yate` binary can talk to the running instance:
+
+```sh
+yate open README.md:12      # open in an editor pane next to this terminal
+yate ctl action split_down  # run any keybinding action by name
+yate ctl input 'ls\n'       # type into the current pane
 ```
 
 ## Configuration

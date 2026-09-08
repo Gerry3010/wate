@@ -5,6 +5,8 @@ export interface LayoutViewHost {
   elementFor(id: string): HTMLElement | undefined;
   /** Model update after a drag finished. */
   onRatio(splitId: string, ratio: number): void;
+  /** A divider drag started: panes may suspend expensive relayout until onResized. */
+  onDragStart(): void;
   /** Panes need to re-fit after their box changed. */
   onResized(): void;
 }
@@ -69,6 +71,7 @@ export class LayoutView {
       e.preventDefault();
       d.setPointerCapture(e.pointerId);
       d.classList.add("dragging");
+      this.host.onDragStart();
       const guides = this.showGuides(box, dir);
       let current: number | null = null;
       const move = (ev: PointerEvent) => {

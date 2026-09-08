@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -19,10 +20,15 @@ type PtyService struct {
 	sessions *pty.Manager
 	bridge   *wsbridge.Server
 	cfg      func() config.Config
+
+	mu     sync.RWMutex
+	socket string
+	// byPane maps YATE_PANE_ID → session id so the control socket can address panes.
+	byPane map[string]string
 }
 
 func NewPtyService(cfg func() config.Config) *PtyService {
-	return &PtyService{sessions: pty.NewManager(), cfg: cfg}
+	return &PtyService{sessions: pty.NewManager(), cfg: cfg, byPane: map[string]string{}}
 }
 
 func (p *PtyService) ServiceName() string { return "PtyService" }
@@ -82,6 +88,9 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
 		cwd, _ = os.UserHomeDir()
 	}
+	p.mu.RLock()
+	socket := p.socket
+	p.mu.RUnlock()
 	s, err := p.sessions.Spawn(pty.SpawnOptions{
 		Command: cmd,
 		Cwd:     cwd,
@@ -90,11 +99,23 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 		Env: []string{
 			"YATE_PANE_ID=" + req.PaneID,
 			"YATE_TAB_ID=" + req.TabID,
+			"YATE_SOCKET=" + socket,
 		},
 	})
 	if err != nil {
 		return SpawnResult{}, err
 	}
+	p.mu.Lock()
+	p.byPane[req.PaneID] = s.ID
+	p.mu.Unlock()
+	go func() {
+		<-s.Done()
+		p.mu.Lock()
+		if p.byPane[req.PaneID] == s.ID {
+			delete(p.byPane, req.PaneID)
+		}
+		p.mu.Unlock()
+	}()
 	return SpawnResult{
 		ID:    s.ID,
 		Pid:   s.Pid(),
@@ -118,4 +139,46 @@ func (p *PtyService) Kill(id string) {
 	if s, ok := p.sessions.Get(id); ok {
 		s.Kill()
 	}
+}
+
+// SetSocketPath records the control socket for new shells' environment.
+func (p *PtyService) SetSocketPath(path string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.socket = path
+}
+
+// SessionForPane maps a YATE_PANE_ID to its session id.
+func (p *PtyService) SessionForPane(paneID string) (string, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	id, ok := p.byPane[paneID]
+	return id, ok
+}
+
+// WriteToPane feeds text to the pane's PTY as if typed.
+func (p *PtyService) WriteToPane(paneID, text string) error {
+	id, ok := p.SessionForPane(paneID)
+	if !ok {
+		return fmt.Errorf("no such pane %q", paneID)
+	}
+	s, ok := p.sessions.Get(id)
+	if !ok {
+		return fmt.Errorf("pane %q has no live session", paneID)
+	}
+	_, err := s.File().WriteString(text)
+	return err
+}
+
+// Pid of the shell in a pane (for process-tree inspection).
+func (p *PtyService) PidForPane(paneID string) (int, bool) {
+	id, ok := p.SessionForPane(paneID)
+	if !ok {
+		return 0, false
+	}
+	s, ok := p.sessions.Get(id)
+	if !ok {
+		return 0, false
+	}
+	return s.Pid(), true
 }

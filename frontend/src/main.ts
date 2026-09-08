@@ -23,6 +23,14 @@ async function boot() {
     if (ev.data.warning) console.warn(ev.data.warning);
     void app.applyConfig(ev.data.config);
   });
+  Events.On("ctl:open", (ev: { data: { path: string; line: number; col: number; tab: string } }) => {
+    const tab = app.tabs.find((t) => t.id === ev.data.tab) ?? app.active;
+    if (tab) {
+      app.activate(tab);
+      void app.openEditor(tab, ev.data.path, ev.data.line || undefined, ev.data.col || undefined);
+    }
+  });
+  Events.On("ctl:action", (ev: { data: { name: string } }) => void app.run(ev.data.name));
   await app.newTab();
 }
 
