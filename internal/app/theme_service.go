@@ -34,3 +34,8 @@ func (t *ThemeService) Get() (theme.Resolved, error) {
 
 // List returns the ids of all available themes.
 func (t *ThemeService) List() []string { return theme.List(userThemesDir()) }
+
+// Preview resolves any theme by id (for swatches in the settings pane).
+func (t *ThemeService) Preview(id string) (theme.Resolved, error) {
+	return theme.Load(id, userThemesDir())
+}

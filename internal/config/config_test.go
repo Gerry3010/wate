@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -99,5 +100,33 @@ func TestLoadMissingAndWriteDefault(t *testing.T) {
 	}
 	if _, err := Load(p); err != nil {
 		t.Fatalf("written defaults must parse cleanly: %v", err)
+	}
+}
+
+func TestSetPreservesOtherKeys(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(p, []byte("[terminal]\nfont_size = 11\n[keys]\nsplit_right = \"ctrl+space\"\n[keys.darwin]\ncopy = \"cmd+c\"\n[custom]\nx = 1\n"), 0o644)
+	if err := Set(p, map[string]any{"terminal.font_size": 15, "background.mode": "wallpaper", "keys.new_tab": "ctrl+n"}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		// [custom] is unknown → UnknownKeysError, but the config is still usable
+		var uk *UnknownKeysError
+		if !errors.As(err, &uk) {
+			t.Fatal(err)
+		}
+	}
+	if c.Terminal.FontSize != 15 || c.Background.Mode != "solid" /* no wallpaper set → falls back */ {
+		t.Fatalf("%+v", c)
+	}
+	raw, _ := os.ReadFile(p)
+	for _, want := range []string{"split_right", "cmd+c", "x = 1", "new_tab"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("lost %q in\n%s", want, raw)
+		}
+	}
+	if runtime.GOOS == "darwin" && c.Keys["new_tab"] != "ctrl+n" {
+		t.Fatalf("darwin override not applied: %v", c.Keys)
 	}
 }

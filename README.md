@@ -20,6 +20,7 @@ notifications, session sidebar) without any AI of its own.
 - [x] Editor pane (CodeMirror 6) with Code / Split / Preview modes for Markdown
 - [x] `yate open <file>[:line]` from any yate shell opens the editor next to it
 - [x] Session restore: tabs, splits, directories and open files come back on the next start
+- [x] Settings pane (`Ctrl+,`) with theme preview cards and a keybinding recorder
 - [x] Claude Code: launcher, tab badge, "waiting for input" notifications, session sidebar
 
 ## Keybindings (defaults)
@@ -35,6 +36,7 @@ notifications, session sidebar) without any AI of its own.
 | Copy / paste | `Ctrl+Shift+C` / `Ctrl+Shift+V` (macOS also `Cmd+C` / `Cmd+V`) |
 | Launch Claude Code in the current directory | `Ctrl+Shift+K` |
 | Toggle agent sidebar | `Ctrl+Shift+A` |
+| Settings pane | `Ctrl+,` |
 | Editor: cycle Code / Split / Preview | `Ctrl+Shift+P` |
 | Editor: save | `Ctrl+S` |
 | Search in terminal | `Ctrl+Shift+F` |
@@ -99,8 +101,11 @@ yate ctl input 'ls\n'       # type into the current pane
 
 ## Configuration
 
-See [`internal/config/defaults.toml`](internal/config/defaults.toml) for every key with its
-default. `yate --config <file>` uses a different file.
+`Ctrl+,` opens the settings pane: theme cards with live preview, background mode / wallpaper /
+blur / dim / opacity, terminal and editor fonts, Claude command, and a keybinding recorder.
+Everything it writes goes to `config.toml`, which is also fine to edit by hand — changes apply
+live either way. See [`internal/config/defaults.toml`](internal/config/defaults.toml) for every
+key with its default. `yate --config <file>` uses a different file.
 
 ### Translucent window on GNOME
 

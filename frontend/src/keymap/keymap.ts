@@ -24,6 +24,8 @@ const KEY_ALIASES: Record<string, string> = {
   pgup: "pageup",
   pgdn: "pagedown",
   del: "delete",
+  ",": "comma",
+  ".": "period",
 };
 
 export function normalizeKey(key: string): string {

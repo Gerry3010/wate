@@ -215,3 +215,49 @@ func effectiveKeys(raw map[string]any, goos string) map[string]string {
 	}
 	return keys
 }
+
+// Set writes dotted keys ("terminal.font_size", "keys.split_right") into the TOML file at path,
+// keeping every other key (including [keys.darwin] and unknown ones) intact. Comments are lost,
+// which is the price of not hand-parsing TOML. Key bindings are written into the platform table
+// on macOS so they don't clobber the Linux defaults.
+func Set(path string, values map[string]any) error {
+	doc := map[string]any{}
+	if data, err := os.ReadFile(path); err == nil {
+		if _, err := toml.Decode(string(data), &doc); err != nil {
+			return fmt.Errorf("config: %w", err)
+		}
+	}
+	for k, v := range values {
+		parts := strings.Split(k, ".")
+		if len(parts) < 2 {
+			return fmt.Errorf("config: key %q must be section.key", k)
+		}
+		if parts[0] == "keys" && runtime.GOOS == "darwin" && len(parts) == 2 {
+			parts = []string{"keys", "darwin", parts[1]}
+		}
+		cur := doc
+		for _, p := range parts[:len(parts)-1] {
+			next, ok := cur[p].(map[string]any)
+			if !ok {
+				next = map[string]any{}
+				cur[p] = next
+			}
+			cur = next
+		}
+		cur[parts[len(parts)-1]] = v
+	}
+	var buf bytes.Buffer
+	buf.WriteString("# yate configuration — https://github.com/Gerry3010/yate\n")
+	buf.WriteString("# Written by the settings pane; see internal/config/defaults.toml for all keys and comments.\n\n")
+	if err := toml.NewEncoder(&buf).Encode(doc); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, buf.Bytes(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}

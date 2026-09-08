@@ -75,3 +75,11 @@ func (c *ConfigService) Reload() ConfigResponse {
 	application.Get().Event.Emit("config:changed", resp)
 	return resp
 }
+
+// Set writes values into the config file and applies them immediately.
+func (c *ConfigService) Set(values map[string]any) (ConfigResponse, error) {
+	if err := config.Set(c.path, values); err != nil {
+		return c.Get(), err
+	}
+	return c.Reload(), nil
+}

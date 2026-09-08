@@ -12,6 +12,7 @@ import { Tab, nextId } from "./tabs/tab";
 import { TabBar } from "./tabs/tabbar";
 import { TerminalPane } from "./terminal/pane";
 import { EditorPane } from "./editor/pane";
+import { SettingsPane } from "./settings/pane";
 
 /** Top-level UI state: tabs, panes, keybindings and the actions they trigger. */
 export class YateApp {
@@ -27,6 +28,8 @@ export class YateApp {
   private theme?: Resolved;
   private saveTimer?: ReturnType<typeof setTimeout>;
   private restoring = false;
+
+  configPath = "";
 
   constructor(root: HTMLElement, public config: Config) {
     this.keymap = new Keymap(config.keys, config.general.passthrough ?? []);
@@ -169,7 +172,33 @@ export class YateApp {
     this.config = config;
     this.keymap = new Keymap(config.keys, config.general.passthrough ?? []);
     await this.loadTheme();
-    for (const p of this.allPanes()) if (p instanceof TerminalPane) p.applyConfig(config.terminal, this.fontDelta, this.termTheme());
+    for (const p of this.allPanes()) {
+      if (p instanceof TerminalPane) p.applyConfig(config.terminal, this.fontDelta, this.termTheme());
+      else if (p instanceof SettingsPane) p.applyConfig(config);
+    }
+  }
+
+  /** Open (or focus) the settings pane in the active tab. */
+  openSettings() {
+    const tab = this.active;
+    if (!tab) return;
+    for (const p of tab.panes.values()) {
+      if (p instanceof SettingsPane) {
+        tab.setFocus(p.id);
+        p.focus();
+        return;
+      }
+    }
+    const pane: SettingsPane = new SettingsPane({
+      paneId: nextId("pane"),
+      config: this.config,
+      configPath: this.configPath,
+      keyLabels: {},
+      onOpenConfigFile: () => void this.openEditor(tab, this.configPath),
+      onClose: () => this.removePane(tab, pane),
+    });
+    tab.add(pane, "row");
+    pane.focus();
   }
 
   /** Fetch the resolved theme and push it into CSS + panes. */
@@ -406,6 +435,9 @@ export class YateApp {
       case "toggle_sidebar":
         this.sidebar.toggle();
         this.active?.render();
+        break;
+      case "open_settings":
+        this.openSettings();
         break;
       case "new_tab":
         await this.newTab();

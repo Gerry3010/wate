@@ -15,10 +15,11 @@ window.addEventListener("unhandledrejection", (e) => console.error("unhandled re
 
 async function boot() {
   const root = document.getElementById("app")!;
-  const { config, warning } = await ConfigService.Get();
+  const { config, warning, path } = await ConfigService.Get();
   if (warning) console.warn(warning);
 
   const app = new YateApp(root, config);
+  app.configPath = path;
   await app.loadTheme();
   Events.On("config:changed", (ev: { data: { config: typeof config; warning?: string } }) => {
     if (ev.data.warning) console.warn(ev.data.warning);
