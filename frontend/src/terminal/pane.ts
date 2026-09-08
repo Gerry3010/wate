@@ -4,9 +4,11 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 
 import { LigaturesAddon } from "@xterm/addon-ligatures";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 
-import { PtyService, type TerminalConfig } from "../api";
+import { OpenerService, PtyService, type Target, type TerminalConfig } from "../api";
 import type { Pane } from "../pane";
+import { FileLinkProvider, isModifierClick } from "./links";
 
 export interface TerminalPaneOptions {
   paneId: string;
@@ -20,6 +22,8 @@ export interface TerminalPaneOptions {
   keyFilter?: (e: KeyboardEvent) => boolean;
   onExit?: (code: number) => void;
   onTitle?: (title: string) => void;
+  /** Ctrl/Cmd-click on an existing file or directory. */
+  onOpenFile?: (t: Target) => void;
 }
 
 /** One xterm.js instance wired to a PTY session over the loopback WebSocket. */
@@ -34,6 +38,8 @@ export class TerminalPane implements Pane {
   private sessionId?: string;
   private resizeObserver: ResizeObserver;
   private disposed = false;
+  private fitTimer?: ReturnType<typeof setTimeout>;
+  private active = false;
 
   constructor(private opts: TerminalPaneOptions) {
     this.id = opts.paneId;
@@ -49,7 +55,8 @@ export class TerminalPane implements Pane {
       lineHeight: t.line_height || 1,
       scrollback: t.scrollback,
       cursorStyle: t.cursor_style as ITerminalOptions["cursorStyle"],
-      cursorBlink: t.cursor_blink,
+      cursorBlink: false,
+      cursorInactiveStyle: "outline",
       allowProposedApi: true,
       allowTransparency: true,
       macOptionIsMeta: true,
@@ -78,8 +85,23 @@ export class TerminalPane implements Pane {
     });
     if (opts.keyFilter) this.term.attachCustomKeyEventHandler((e) => opts.keyFilter!(e));
 
-    this.resizeObserver = new ResizeObserver(() => this.fitNow());
+    // Debounced: a divider drag fires dozens of size changes per second and every
+    // column change makes the shell redraw its prompt.
+    this.resizeObserver = new ResizeObserver(() => this.scheduleFit());
     this.resizeObserver.observe(this.element);
+
+    const openUrl = (e: MouseEvent, uri: string) => {
+      if (isModifierClick(e)) OpenerService.OpenURL(uri).catch((err) => console.warn(err));
+    };
+    this.term.loadAddon(new WebLinksAddon(openUrl));
+    this.term.options.linkHandler = { activate: openUrl };
+    this.term.registerLinkProvider(new FileLinkProvider(this.term, () => this.cwd(), (t) => opts.onOpenFile?.(t)));
+  }
+
+  /** The focused pane blinks its cursor; the others show a still outline. */
+  setActive(active: boolean) {
+    this.active = active;
+    this.term.options.cursorBlink = active && this.opts.terminal.cursor_blink;
   }
 
   private enableWebgl() {
@@ -146,7 +168,7 @@ export class TerminalPane implements Pane {
     this.term.options.lineHeight = t.line_height || 1;
     this.term.options.scrollback = t.scrollback;
     this.term.options.cursorStyle = t.cursor_style as ITerminalOptions["cursorStyle"];
-    this.term.options.cursorBlink = t.cursor_blink;
+    this.term.options.cursorBlink = this.active && t.cursor_blink;
     this.element.style.padding = `${t.padding}px`;
     this.fitNow();
   }
@@ -157,7 +179,12 @@ export class TerminalPane implements Pane {
   }
 
   relayout() {
-    this.fitNow();
+    this.scheduleFit();
+  }
+
+  private scheduleFit() {
+    clearTimeout(this.fitTimer);
+    this.fitTimer = setTimeout(() => this.fitNow(), 60);
   }
 
   fitNow() {

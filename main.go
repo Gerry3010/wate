@@ -48,6 +48,7 @@ func main() {
 			application.NewService(ptySvc),
 			application.NewService(themeSvc),
 			application.NewService(&app.LogService{}),
+			application.NewService(&app.OpenerService{}),
 			application.NewServiceWithOptions(wp, application.ServiceOptions{Name: "Wallpaper", Route: "/wallpaper"}),
 		},
 		Assets: application.AssetOptions{

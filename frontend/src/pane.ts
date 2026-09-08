@@ -6,6 +6,8 @@ export interface Pane {
   /** Display title (shell title, file name). */
   title: string;
   focus(): void;
+  /** Whether this is the tab's focused pane (cursor blink, highlight). */
+  setActive?(active: boolean): void;
   /** Working directory to inherit for new panes (best effort). */
   cwd(): Promise<string>;
   /** Called when the pane's box changed size. */

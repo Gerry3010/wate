@@ -94,7 +94,10 @@ export class Tab {
     if (!this.panes.has(id)) return;
     const changed = this.focusedId !== id;
     this.focusedId = id;
-    for (const [pid, p] of this.panes) p.element.classList.toggle("focused", pid === id);
+    for (const [pid, p] of this.panes) {
+      p.element.classList.toggle("focused", pid === id);
+      p.setActive?.(pid === id);
+    }
     if (changed) this.onChange?.();
   }
 

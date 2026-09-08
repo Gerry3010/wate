@@ -1,6 +1,6 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { ThemeService, type Config, type Resolved } from "./api";
+import { OpenerService, ThemeService, type Config, type Resolved, type Target } from "./api";
 import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
 import { neighbor, type Dir, type Direction } from "./layout/tree";
@@ -109,11 +109,21 @@ export class YateApp {
       keyFilter: (e) => this.keymap.match(e) === null,
       onExit: () => this.removePane(tab, pane),
       onTitle: () => tab.onChange?.(),
+      onOpenFile: (t) => this.openTarget(tab, t),
     });
     tab.add(pane, dir);
     await pane.start();
     pane.focus();
     return pane;
+  }
+
+  /** Ctrl-click target: text files go to the editor (milestone 5), everything else to the OS. */
+  openTarget(_tab: Tab, t: Target) {
+    if (t.kind === "file" && t.text) {
+      // TODO(editor): open in an editor pane next to the terminal.
+      console.warn("editor pane not implemented yet, opening externally:", t.path);
+    }
+    OpenerService.Open(t.path).catch((err) => console.warn("open failed", err));
   }
 
   private removePane(tab: Tab, pane: Pane) {
