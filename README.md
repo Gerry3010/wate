@@ -8,6 +8,7 @@
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-8b5cf6)](#building)
 [![License: MIT](https://img.shields.io/badge/license-MIT-89b4fa.svg)](LICENSE)
 [![Latest commit](https://img.shields.io/github/last-commit/Gerry3010/yate?color=a6e3a1)](https://github.com/Gerry3010/yate/commits/main)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-support%20yate-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/gerre01)
 
 A small, pretty terminal for Linux and macOS. Go backend, system WebView, no Electron.
 
@@ -139,6 +140,10 @@ key with its default. `yate --config <file>` uses a different file.
 [Blur my Shell](https://extensions.gnome.org/extension/3193/blur-my-shell/) and add
 `io.github.gerry3010.yate` (or the `yate` window class) to its *Applications* whitelist.
 `mode = "wallpaper"` blurs an image of your choice inside the window and works everywhere.
+
+## Support
+
+If yate makes your terminal life nicer, you can [buy Gerry a coffee on Ko-fi](https://ko-fi.com/gerre01) ☕
 
 ## License
 
