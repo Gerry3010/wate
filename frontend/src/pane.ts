@@ -1,0 +1,14 @@
+/** Anything that can live in a layout leaf: a terminal or an editor. */
+export interface Pane {
+  readonly id: string;
+  readonly kind: "terminal" | "editor";
+  readonly element: HTMLElement;
+  /** Display title (shell title, file name). */
+  title: string;
+  focus(): void;
+  /** Working directory to inherit for new panes (best effort). */
+  cwd(): Promise<string>;
+  /** Called when the pane's box changed size. */
+  relayout(): void;
+  dispose(): void;
+}

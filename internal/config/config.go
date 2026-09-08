@@ -26,7 +26,7 @@ type Config struct {
 	// [keys.darwin] sub-table with macOS overrides. Use Keys after Load/Parse.
 	KeysRaw map[string]any `toml:"keys" json:"-"`
 	// Keys is the effective action → chord map for this platform.
-	Keys   map[string]string `toml:"-"`
+	Keys   map[string]string `toml:"-" json:"keys"`
 	Claude Claude            `toml:"claude" json:"claude"`
 	Editor Editor            `toml:"editor" json:"editor"`
 }

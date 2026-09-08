@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import { LigaturesAddon } from "@xterm/addon-ligatures";
 
 import { PtyService, type TerminalConfig } from "../api";
+import type { Pane } from "../pane";
 
 export interface TerminalPaneOptions {
   paneId: string;
@@ -13,14 +14,20 @@ export interface TerminalPaneOptions {
   cwd?: string;
   command?: string[];
   terminal: TerminalConfig;
+  fontDelta?: number;
+  /** Return false for keys the app handles itself (so xterm ignores them). */
+  keyFilter?: (e: KeyboardEvent) => boolean;
   onExit?: (code: number) => void;
   onTitle?: (title: string) => void;
 }
 
 /** One xterm.js instance wired to a PTY session over the loopback WebSocket. */
-export class TerminalPane {
+export class TerminalPane implements Pane {
+  readonly id: string;
+  readonly kind = "terminal" as const;
   readonly element: HTMLElement;
   readonly term: Terminal;
+  title = "";
   private fit = new FitAddon();
   private ws?: WebSocket;
   private sessionId?: string;
@@ -28,6 +35,7 @@ export class TerminalPane {
   private disposed = false;
 
   constructor(private opts: TerminalPaneOptions) {
+    this.id = opts.paneId;
     this.element = document.createElement("div");
     this.element.className = "pane pane-terminal";
     this.element.dataset.paneId = opts.paneId;
@@ -36,7 +44,7 @@ export class TerminalPane {
     this.element.style.padding = `${t.padding}px`;
     const termOpts: ITerminalOptions = {
       fontFamily: t.font,
-      fontSize: t.font_size,
+      fontSize: t.font_size + (opts.fontDelta ?? 0),
       lineHeight: t.line_height || 1,
       scrollback: t.scrollback,
       cursorStyle: t.cursor_style as ITerminalOptions["cursorStyle"],
@@ -68,7 +76,11 @@ export class TerminalPane {
     this.term.onData((data) => this.send(data));
     this.term.onBinary((data) => this.send(data, true));
     this.term.onResize(({ cols, rows }) => this.sendResize(cols, rows));
-    this.term.onTitleChange((t) => opts.onTitle?.(t));
+    this.term.onTitleChange((title) => {
+      this.title = title;
+      opts.onTitle?.(title);
+    });
+    if (opts.keyFilter) this.term.attachCustomKeyEventHandler((e) => opts.keyFilter!(e));
 
     this.resizeObserver = new ResizeObserver(() => this.fitNow());
     this.resizeObserver.observe(this.element);
@@ -128,6 +140,27 @@ export class TerminalPane {
   private sendResize(cols: number, rows: number) {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     this.ws.send(JSON.stringify({ type: "resize", cols, rows }));
+  }
+
+  /** Re-apply appearance settings (config reload, zoom). */
+  applyConfig(t: TerminalConfig, fontDelta = 0) {
+    this.term.options.fontFamily = t.font;
+    this.term.options.fontSize = Math.max(6, t.font_size + fontDelta);
+    this.term.options.lineHeight = t.line_height || 1;
+    this.term.options.scrollback = t.scrollback;
+    this.term.options.cursorStyle = t.cursor_style as ITerminalOptions["cursorStyle"];
+    this.term.options.cursorBlink = t.cursor_blink;
+    this.element.style.padding = `${t.padding}px`;
+    this.fitNow();
+  }
+
+  async cwd(): Promise<string> {
+    if (!this.sessionId) return this.opts.cwd ?? "";
+    return PtyService.Cwd(this.sessionId);
+  }
+
+  relayout() {
+    this.fitNow();
   }
 
   fitNow() {

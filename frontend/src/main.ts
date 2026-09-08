@@ -1,4 +1,5 @@
-import { ConfigService, LogService } from "./api";
+import { ConfigService, Events, LogService } from "./api";
+import { YateApp } from "./app";
 
 // Mirror console errors/warnings into the Go log so packaged builds are debuggable.
 for (const level of ["error", "warn"] as const) {
@@ -10,22 +11,15 @@ for (const level of ["error", "warn"] as const) {
 }
 window.addEventListener("error", (e) => console.error(e.message, e.filename, e.lineno));
 window.addEventListener("unhandledrejection", (e) => console.error("unhandled rejection:", e.reason));
-import { TerminalPane } from "./terminal/pane";
 
 async function boot() {
   const root = document.getElementById("app")!;
   const { config, warning } = await ConfigService.Get();
   if (warning) console.warn(warning);
 
-  const pane = new TerminalPane({
-    paneId: crypto.randomUUID(),
-    tabId: crypto.randomUUID(),
-    terminal: config.terminal,
-    onExit: () => pane.dispose(),
-  });
-  root.appendChild(pane.element);
-  await pane.start();
-  pane.focus();
+  const app = new YateApp(root, config);
+  Events.On("config:changed", (ev: { data: { config: typeof config } }) => app.applyConfig(ev.data.config));
+  await app.newTab();
 }
 
 boot().catch((err) => {
