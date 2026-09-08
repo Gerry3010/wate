@@ -59,6 +59,15 @@ make dev        # hot-reloading dev build
 make test       # go test + vitest
 ```
 
+## Shell integration
+
+yate loads a small zsh snippet automatically (via `ZDOTDIR`, no rc-file edits) that emits the
+working directory (OSC 7) and prompt marks (OSC 133). That is what makes new panes open in the
+current directory and — like kitty — lets yate resize without the duplicated-prompt artifact
+xterm.js-based terminals otherwise show with powerlevel10k. Disable with
+`shell_integration = false`. bash and fish: `source ~/.config/yate/shell/yate.bash` /
+`source ~/.config/yate/shell/yate.fish` in your rc file.
+
 ## CLI
 
 Every shell started by yate has `$YATE_SOCKET`, `$YATE_PANE_ID` and `$YATE_TAB_ID` set, so the

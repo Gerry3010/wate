@@ -6,7 +6,8 @@ for (const level of ["error", "warn"] as const) {
   const orig = console[level].bind(console);
   console[level] = (...args: unknown[]) => {
     orig(...args);
-    LogService.Log(level, args.map((a) => (a instanceof Error ? a.stack ?? a.message : String(a))).join(" ")).catch(() => {});
+    const fmt = (a: unknown) => (a instanceof Error ? a.stack ?? a.message : typeof a === "object" && a !== null ? JSON.stringify(a) : String(a));
+    LogService.Log(level, args.map(fmt).join(" ")).catch(() => {});
   };
 }
 window.addEventListener("error", (e) => console.error(e.message, e.filename, e.lineno));

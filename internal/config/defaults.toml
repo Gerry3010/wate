@@ -5,6 +5,7 @@
 shell = ""                              # empty = $SHELL
 shell_args = []
 theme = "catppuccin-mocha"              # name of a built-in or ~/.config/yate/themes/<name>.toml
+shell_integration = true                # zsh: auto-load ~/.config/yate/shell/yate.zsh (cwd + prompt marks)
 passthrough = []                        # chords to hand to the terminal even if bound, e.g. ["ctrl+space"]
 
 [terminal]

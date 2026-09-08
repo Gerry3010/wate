@@ -1,4 +1,4 @@
-import { Terminal, type ITerminalOptions } from "@xterm/xterm";
+import { Terminal, type IMarker, type ITerminalOptions } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
@@ -41,6 +41,10 @@ export class TerminalPane implements Pane {
   private fitTimer?: ReturnType<typeof setTimeout>;
   private fitSuspended = false;
   private active = false;
+  /** Working directory reported by the shell via OSC 7 (shell integration). */
+  private osc7Cwd?: string;
+  /** Start of the current prompt (OSC 133;A), used to resize without artifacts. */
+  private promptMarker?: IMarker;
 
   constructor(private opts: TerminalPaneOptions) {
     this.id = opts.paneId;
@@ -83,6 +87,20 @@ export class TerminalPane implements Pane {
     this.term.onTitleChange((title) => {
       this.title = title;
       opts.onTitle?.(title);
+    });
+    // OSC 7: file://host/path — the shell tells us its cwd (cheaper and more reliable than /proc).
+    this.term.parser.registerOscHandler(7, (data) => {
+      const m = /^file:\/\/[^/]*(\/.*)$/.exec(data);
+      if (m) this.osc7Cwd = decodeURIComponent(m[1]);
+      return true;
+    });
+    // OSC 133;A marks where the prompt starts (FinalTerm / kitty / VS Code convention).
+    this.term.parser.registerOscHandler(133, (data) => {
+      if (data.startsWith("A")) {
+        this.promptMarker?.dispose();
+        this.promptMarker = this.term.registerMarker(0) ?? undefined;
+      }
+      return true;
     });
     if (opts.keyFilter) this.term.attachCustomKeyEventHandler((e) => opts.keyFilter!(e));
 
@@ -175,8 +193,27 @@ export class TerminalPane implements Pane {
   }
 
   async cwd(): Promise<string> {
+    if (this.osc7Cwd) return this.osc7Cwd;
     if (!this.sessionId) return this.opts.cwd ?? "";
     return PtyService.Cwd(this.sessionId);
+  }
+
+  /**
+   * Shells redraw their prompt on SIGWINCH assuming it still occupies the same rows, but
+   * xterm.js reflows lines that no longer fit (p10k's full-width ruler always does), leaving
+   * a stale copy behind. Like kitty, we blank the prompt region before the width changes so
+   * nothing reflows and the shell's redraw lands exactly where it expects.
+   */
+  private promptClearSequence(newCols: number): string | null {
+    const m = this.promptMarker;
+    const buf = this.term.buffer.active;
+    const cursorLine = buf.baseY + buf.cursorY;
+    if (!m || m.isDisposed || newCols === this.term.cols) return null;
+    if (buf.type !== "normal") return null;
+    const up = cursorLine - m.line;
+    if (up < 0 || up > 8) return null;
+    // DECSC, cursor up to the prompt line, erase to end of screen, DECRC: rows stay blank.
+    return `\x1b7${up > 0 ? `\x1b[${up}A` : ""}\r\x1b[J\x1b8`;
   }
 
   relayout() {
@@ -198,7 +235,11 @@ export class TerminalPane implements Pane {
   fitNow() {
     if (this.element.clientWidth === 0 || this.element.clientHeight === 0) return;
     try {
-      this.fit.fit();
+      const dims = this.fit.proposeDimensions();
+      const clear = dims ? this.promptClearSequence(dims.cols) : null;
+      // term.write is asynchronous: resize only once the clear has been parsed.
+      if (clear) this.term.write(clear, () => this.fit.fit());
+      else this.fit.fit();
     } catch {
       /* not attached yet */
     }

@@ -4,7 +4,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 
 	"github.com/Gerry3010/yate/internal/config"
 	"github.com/Gerry3010/yate/internal/pty"
+	"github.com/Gerry3010/yate/internal/shell"
 	"github.com/Gerry3010/yate/internal/wsbridge"
 )
 
@@ -39,8 +42,13 @@ func (p *PtyService) ServiceStartup(ctx context.Context, _ application.ServiceOp
 		return fmt.Errorf("wsbridge: %w", err)
 	}
 	p.bridge = b
+	if err := shell.Install(shellDir()); err != nil {
+		slog.Warn("shell integration not installed", "err", err)
+	}
 	return nil
 }
+
+func shellDir() string { return filepath.Join(config.Dir(), "shell") }
 
 func (p *PtyService) ServiceShutdown() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -91,16 +99,20 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 	p.mu.RLock()
 	socket := p.socket
 	p.mu.RUnlock()
+	env := []string{
+		"YATE_PANE_ID=" + req.PaneID,
+		"YATE_TAB_ID=" + req.TabID,
+		"YATE_SOCKET=" + socket,
+	}
+	if cfg.General.ShellIntegration {
+		env = append(env, shell.Env(cmd[0], shellDir())...)
+	}
 	s, err := p.sessions.Spawn(pty.SpawnOptions{
 		Command: cmd,
 		Cwd:     cwd,
 		Cols:    uint16(req.Cols),
 		Rows:    uint16(req.Rows),
-		Env: []string{
-			"YATE_PANE_ID=" + req.PaneID,
-			"YATE_TAB_ID=" + req.TabID,
-			"YATE_SOCKET=" + socket,
-		},
+		Env:     env,
 	})
 	if err != nil {
 		return SpawnResult{}, err
