@@ -81,6 +81,14 @@ it registers `yate hook <event>` for `SessionStart`, `UserPromptSubmit`, `Notifi
 and `SessionEnd` in `~/.claude/settings.json` (existing hooks are kept, a backup is written).
 Outside yate the hooks are silent no-ops.
 
+### Desktop integration (Linux)
+
+`make install` puts `yate` in `~/.local/bin` with a desktop entry that declares
+`MimeType=inode/directory`, so folders offer *Open With → yate*. `make install-nautilus` adds a
+first-level **Open in yate** entry to Nautilus' context menu (folder and background; needs the
+`nautilus-python` package). `yate <dir>` opens the directory as a new tab in the running yate
+(or starts one) — handy for launcher keybindings like Super+T.
+
 ## Shell integration
 
 yate loads a small zsh snippet automatically (via `ZDOTDIR`, no rc-file edits) that emits the

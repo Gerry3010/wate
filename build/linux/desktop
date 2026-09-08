@@ -2,12 +2,14 @@
 Version=1.0
 Name=yate
 Comment=yet another terminal emulator
-# The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/yate %u
+# %f: an optional directory to start in ("Open With" on folders, Nautilus extension)
+Exec=/usr/local/bin/yate %f
 Terminal=false
 Type=Application
 Icon=yate
-Categories=Utility;
+Categories=System;TerminalEmulator;Utility;
+Keywords=terminal;shell;console;
+MimeType=inode/directory;
 StartupWMClass=yate
 
  

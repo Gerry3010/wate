@@ -95,6 +95,18 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		}
 		app.Event.Emit("ctl:open", OpenRequest{Path: p, Line: r.Line, Col: r.Col, Pane: r.Pane, Tab: r.Tab})
 		return ctl.Response{OK: true}
+	case "new-tab":
+		p := r.Path
+		if st, err := os.Stat(p); err != nil || !st.IsDir() {
+			return ctl.Response{Error: "not a directory: " + p}
+		}
+		app.Event.Emit("ctl:new-tab", OpenRequest{Path: p})
+		if w, ok := app.Window.GetByName("main"); ok {
+			w.UnMinimise()
+			w.Show()
+			w.Focus()
+		}
+		return ctl.Response{OK: true}
 	case "input":
 		// Writes straight into the PTY of the pane (by YATE_PANE_ID) — no frontend round trip.
 		if err := c.pty.WriteToPane(r.Pane, r.Text); err != nil {

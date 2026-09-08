@@ -17,7 +17,7 @@ import (
 const Usage = `yate — yet another terminal emulator
 
 usage:
-  yate [--config <file>]          start the app
+  yate [--config <file>] [<dir>]  start the app (in <dir>); a running yate opens <dir> as a new tab
   yate open <file>[:line[:col]]   open a file in the editor of the running yate
   yate ctl input <text>           type text into the current pane ($YATE_PANE_ID)
   yate ctl action <name>          run a keybind action (split_right, new_tab, ...)

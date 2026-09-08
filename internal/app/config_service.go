@@ -17,6 +17,8 @@ type ConfigService struct {
 	cfg  config.Config
 	// Warning is a non-fatal problem with the config file (unknown keys), shown in the UI.
 	warning string
+	// InitialCwd is the directory given on the command line for the first tab.
+	InitialCwd string
 }
 
 func NewConfigService(path string) *ConfigService {
@@ -55,17 +57,18 @@ func (c *ConfigService) Current() config.Config {
 
 // ConfigResponse is what the frontend receives.
 type ConfigResponse struct {
-	Config  config.Config `json:"config"`
-	Path    string        `json:"path"`
-	Warning string        `json:"warning"`
-	OS      string        `json:"os"`
+	Config     config.Config `json:"config"`
+	Path       string        `json:"path"`
+	Warning    string        `json:"warning"`
+	OS         string        `json:"os"`
+	InitialCwd string        `json:"initial_cwd"`
 }
 
 // Get returns the effective config plus metadata.
 func (c *ConfigService) Get() ConfigResponse {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return ConfigResponse{Config: c.cfg, Path: c.path, Warning: c.warning, OS: goos}
+	return ConfigResponse{Config: c.cfg, Path: c.path, Warning: c.warning, OS: goos, InitialCwd: c.InitialCwd}
 }
 
 // Reload re-reads the file and broadcasts config:changed.

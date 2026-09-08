@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
@@ -13,6 +15,7 @@ import (
 	"github.com/Gerry3010/yate/internal/app"
 	"github.com/Gerry3010/yate/internal/cli"
 	"github.com/Gerry3010/yate/internal/config"
+	"github.com/Gerry3010/yate/internal/ctl"
 	"github.com/Gerry3010/yate/internal/wallpaper"
 )
 
@@ -32,13 +35,38 @@ func main() {
 		}
 	}
 	cfgPath := config.Path()
-	for i, a := range os.Args {
-		if a == "--config" && i+1 < len(os.Args) {
-			cfgPath = os.Args[i+1]
+	initialCwd := ""
+	args := os.Args[1:]
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--config" && i+1 < len(args):
+			cfgPath = args[i+1]
+			i++
+		case args[i] == "--cwd" && i+1 < len(args):
+			initialCwd = args[i+1]
+			i++
+		case !strings.HasPrefix(args[i], "-"):
+			// `yate <dir>`: open a directory (Nautilus "Open in yate", launchers).
+			initialCwd = args[i]
+		}
+	}
+	if initialCwd != "" {
+		if abs, err := filepath.Abs(initialCwd); err == nil {
+			initialCwd = abs
+		}
+		if st, err := os.Stat(initialCwd); err != nil || !st.IsDir() {
+			initialCwd = filepath.Dir(initialCwd)
+		}
+		// A running yate gets a new tab instead of a second window.
+		if sock, err := ctl.FindSocket(); err == nil {
+			if resp, err := ctl.Send(sock, ctl.Request{Cmd: "new-tab", Path: initialCwd}); err == nil && resp.OK {
+				return
+			}
 		}
 	}
 
 	cfgSvc := app.NewConfigService(cfgPath)
+	cfgSvc.InitialCwd = initialCwd
 	ptySvc := app.NewPtyService(cfgSvc.Current)
 	ctlSvc := app.NewCtlService(ptySvc, cfgSvc)
 	themeSvc := app.NewThemeService(cfgSvc.Current)
@@ -49,6 +77,7 @@ func main() {
 	application.RegisterEvent[app.ConfigResponse]("config:changed")
 	application.RegisterEvent[app.OpenRequest]("ctl:open")
 	application.RegisterEvent[app.ActionRequest]("ctl:action")
+	application.RegisterEvent[app.OpenRequest]("ctl:new-tab")
 	application.RegisterEvent[app.HookEvent]("agent:hook")
 	application.RegisterEvent[agent.Session]("agent:status")
 
