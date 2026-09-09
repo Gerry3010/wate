@@ -7,7 +7,8 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
-- Claude badge in the pane corner: appears when Claude Code runs in that pane, click it for the
+- Claude badge: a quarter disc tucked into the pane's bottom-right corner (drawn like part of the
+  pane border, so it covers no text) appears when Claude Code runs there; click it for the
   session popup — title, state, directory, model, last prompt, the context bar with its split
   (cached / cache write / fresh input / output) and an "All sessions →" link to the sidebar.
   The sidebar got a close button.

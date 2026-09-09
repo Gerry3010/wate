@@ -238,31 +238,35 @@ html, body {
 /* DOM-renderer fallback: never let a row spill into the neighbouring pane. */
 .pane-terminal .xterm-rows > div { overflow: hidden; }
 
-/* Claude badge in the pane corner: appears when Claude Code runs here, opens the session popup. */
+/* Claude badge: a quarter disc tucked into the pane's bottom-right corner, its curved edge drawn
+   like the pane border, so it reads as part of the frame rather than a button over the text. */
 .pane-claude {
   position: absolute;
-  right: 14px;
-  bottom: 10px;
+  right: 0;
+  bottom: 0;
   z-index: 5;
-  width: 26px;
-  height: 26px;
+  width: 34px;
+  height: 34px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, #d97757 45%, transparent);
-  border-radius: 50%;
-  background: color-mix(in srgb, #d97757 14%, rgba(var(--bg-rgb), 0.9));
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0 6px 5px 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  border-radius: 100% 0 6px 0;
+  background: color-mix(in srgb, #d97757 12%, rgba(var(--bg-rgb), 0.85));
   color: #d97757;
   cursor: pointer;
-  opacity: 0.85;
-  transition: opacity 120ms, transform 120ms;
+  transition: background 120ms, border-color 120ms;
 }
-.pane-claude:hover { opacity: 1; transform: scale(1.08); }
-.pane-claude.status-waiting { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent); animation: badge-pulse 1.6s ease-in-out infinite; }
-.pane-claude.status-done { border-color: color-mix(in srgb, #a6e3a1 60%, transparent); }
+.pane-claude svg { width: 13px; height: 13px; }
+.pane.focused > .pane-claude { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.pane-claude:hover { background: color-mix(in srgb, #d97757 26%, rgba(var(--bg-rgb), 0.9)); }
+.pane-claude.status-waiting { color: var(--accent); animation: badge-pulse 1.6s ease-in-out infinite; }
+.pane-claude.status-done { color: #a6e3a1; }
 @keyframes badge-pulse {
-  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 10%, transparent); }
+  50% { background: color-mix(in srgb, var(--accent) 28%, rgba(var(--bg-rgb), 0.9)); }
 }
 
 /* Session popup behind the badge */
