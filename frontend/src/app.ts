@@ -183,7 +183,7 @@ export class WateApp {
             tab.remove(pane.id);
           }));
         } else {
-          const pane = this.makeTerminal(tab, { cwd: sp.cwd, replay: sp.replay });
+          const pane = this.makeTerminal(tab, { cwd: sp.cwd, replay: sp.replay, visible: false });
           map.set(sp.id, pane.id);
           panes.push(pane);
           starts.push(pane.start());
@@ -192,11 +192,17 @@ export class WateApp {
       const tree = remapTree(st.tree, map);
       if (!tree || panes.length === 0) continue;
       this.tabs.push(tab);
-      this.activate(tab);
+      // Attach without activating: tabs come up hidden (no GPU renderer yet) and the caller
+      // picks the one to show; the tab bar is refreshed once at the end.
+      if (!tab.element.parentElement) this.content.appendChild(tab.element);
       tab.restore(tree, panes, st.focused ? map.get(st.focused) ?? null : null);
-      await Promise.all(starts);
+      // One broken pane must not stop the remaining tabs from opening (and must never make
+      // the next auto-save forget them).
+      const results = await Promise.allSettled(starts);
+      for (const r of results) if (r.status === "rejected") console.warn("restore pane:", r.reason);
       opened.push(tab);
     }
+    if (this.active) this.refreshChrome(this.active);
     this.scheduleSave();
     return opened;
   }
@@ -352,13 +358,14 @@ export class WateApp {
 
   // ---- panes ------------------------------------------------------------
 
-  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string }): TerminalPane {
+  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean }): TerminalPane {
     const pane: TerminalPane = new TerminalPane({
       paneId: nextId("pane"),
       tabId: tab.id,
       cwd: opts.cwd ?? "",
       command: opts.command,
       replay: opts.replay,
+      visible: opts.visible,
       terminal: this.config.terminal,
       theme: this.termTheme(),
       fontDelta: this.fontDelta,

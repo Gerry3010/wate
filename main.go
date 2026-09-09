@@ -58,8 +58,8 @@ func main() {
 		if st, err := os.Stat(initialCwd); err != nil || !st.IsDir() {
 			initialCwd = filepath.Dir(initialCwd)
 		}
-		// A running wate gets a new tab instead of a second window.
-		if sock, err := ctl.FindSocket(); err == nil {
+		// A running wate (same config) gets a new tab instead of a second window.
+		if sock, err := ctl.FindPrimary(config.StateDir()); err == nil {
 			if resp, err := ctl.Send(sock, ctl.Request{Cmd: "new-tab", Path: initialCwd}); err == nil && resp.OK {
 				return
 			}
@@ -70,7 +70,7 @@ func main() {
 	cfgSvc.InitialCwd = initialCwd
 	// A second wate (first one still running) opens a plain default window and must not
 	// touch the first one's saved session or window geometry.
-	if _, err := ctl.FindSocket(); err == nil {
+	if _, err := ctl.FindPrimary(config.StateDir()); err == nil {
 		cfgSvc.Secondary = true
 	}
 	ptySvc := app.NewPtyService(cfgSvc.Current)

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Gerry3010/wate/internal/config"
 	"context"
 	"encoding/json"
 	"errors"
@@ -61,6 +62,10 @@ func (c *CtlService) ServiceStartup(context.Context, application.ServiceOptions)
 	}
 	c.server = s
 	c.pty.SetSocketPath(s.Path())
+	// Record the socket for later starts with the same config (see ctl.FindPrimary).
+	if err := os.MkdirAll(config.StateDir(), 0o755); err == nil {
+		_ = os.WriteFile(ctl.PrimaryFile(config.StateDir()), []byte(s.Path()+"\n"), 0o600)
+	}
 	return nil
 }
 

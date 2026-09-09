@@ -29,6 +29,14 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   `[claude] context_window` overrides the guessed window size.
 
 ### Fixed
+- Opening many tabs at once (Warp import, session restore) stopped after a few: a burst of
+  concurrent PTY spawn calls could lose an answer in the WebView IPC. Spawns now run one after
+  another, time out and retry, and a retry replaces the orphaned shell. A failing pane no
+  longer aborts the remaining tabs.
+- Pane swap left the moved terminal blank until clicked; Alt+drag now previews the swapped
+  layout live while dragging (Esc cancels).
+- "Already running" detection is per config: the socket path is recorded in the state dir, so a
+  wate with another config dir is not mistaken for the primary window.
 - Linux: the GTK title bar follows the theme (dark for dark themes) instead of always being light.
 - Linux: `background.mode = "translucent"` now actually makes the window see-through on GTK4.
 - Background settings: choosing wallpaper mode without an image opens the file dialog; sliders

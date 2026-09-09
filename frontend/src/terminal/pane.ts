@@ -18,6 +18,8 @@ export interface TerminalPaneOptions {
   command?: string[];
   /** Terminal text (ANSI) written before the shell starts: restored scrollback / imported history. */
   replay?: string;
+  /** false for panes created in a hidden tab: no GPU renderer until the tab is shown. */
+  visible?: boolean;
   terminal: TerminalConfig;
   theme?: Record<string, string>;
   fontDelta?: number;
@@ -27,6 +29,32 @@ export interface TerminalPaneOptions {
   onTitle?: (title: string) => void;
   /** Ctrl/Cmd-click on an existing file or directory. */
   onOpenFile?: (t: Target) => void;
+}
+
+/** Spawns run one after another: a burst of concurrent binding calls can lose an answer in
+ *  the WebView IPC (seen on WebKitGTK), and a single queue keeps restores deterministic. */
+let spawnChain: Promise<unknown> = Promise.resolve();
+function spawnQueued<T>(fn: () => Promise<T>): Promise<T> {
+  const run = spawnChain.then(fn, fn);
+  spawnChain = run.catch(() => undefined);
+  return run;
+}
+
+/** Retry a binding call whose answer never arrives (the Go side makes the call idempotent). */
+async function withRetry<T>(fn: () => Promise<T>, what: string, timeoutMs = 6000, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await Promise.race([
+        fn(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${what}: no answer after ${timeoutMs} ms`)), timeoutMs)),
+      ]);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`${what} attempt ${i}/${attempts} failed:`, err);
+    }
+  }
+  throw lastErr;
 }
 
 /** One xterm.js instance wired to a PTY session over the loopback WebSocket. */
@@ -75,7 +103,8 @@ export class TerminalPane implements Pane {
     this.term.loadAddon(this.fit);
     this.term.loadAddon(this.serializer);
     this.term.open(this.element);
-    this.enableWebgl();
+    this.wantVisible = opts.visible !== false;
+    if (this.wantVisible) this.enableWebgl();
     if (t.ligatures) {
       // Without Node the addon can't read the font file; it falls back to a built-in
       // list of common programming ligatures, which is what we want here.
@@ -129,14 +158,28 @@ export class TerminalPane implements Pane {
   }
 
   private webgl?: WebglAddon;
+  private wantVisible = true;
+  /** True while the replay text is being parsed: renderer swaps wait until it is done. */
+  private replaying = false;
 
   /** Browsers allow ~16 WebGL contexts per page: only panes in the visible tab keep one,
    *  hidden tabs fall back to the DOM renderer until they are shown again. */
   setVisible(visible: boolean) {
-    if (visible && !this.webgl) this.enableWebgl();
-    else if (!visible && this.webgl) {
-      this.webgl.dispose();
+    this.wantVisible = visible;
+    if (!this.replaying) this.applyVisibility();
+  }
+
+  private applyVisibility() {
+    if (this.disposed) return;
+    if (this.wantVisible && !this.webgl) this.enableWebgl();
+    else if (!this.wantVisible && this.webgl) {
+      const w = this.webgl;
       this.webgl = undefined;
+      try {
+        w.dispose();
+      } catch (err) {
+        console.warn("webgl dispose:", err);
+      }
     }
   }
 
@@ -161,17 +204,30 @@ export class TerminalPane implements Pane {
   async start(): Promise<void> {
     this.fitNow();
     if (this.opts.replay) {
-      // Written before the PTY connects so the shell's first prompt lands below it.
-      await new Promise<void>((done) => this.term.write(this.opts.replay!, done));
+      // Written before the PTY connects so the shell's first prompt lands below it. Swapping the
+      // renderer mid-parse can stall xterm's write queue, so visibility changes wait for this.
+      this.replaying = true;
+      try {
+        await new Promise<void>((done) => this.term.write(this.opts.replay!, done));
+      } finally {
+        this.replaying = false;
+        this.applyVisibility();
+      }
     }
-    const res = await PtyService.Spawn({
-      paneId: this.opts.paneId,
-      tabId: this.opts.tabId,
-      cwd: this.opts.cwd ?? "",
-      command: this.opts.command ?? [],
-      cols: this.term.cols,
-      rows: this.term.rows,
-    });
+    const res = await spawnQueued(() =>
+      withRetry(
+        () =>
+          PtyService.Spawn({
+            paneId: this.opts.paneId,
+            tabId: this.opts.tabId,
+            cwd: this.opts.cwd ?? "",
+            command: this.opts.command ?? [],
+            cols: this.term.cols,
+            rows: this.term.rows,
+          }),
+        `spawn ${this.id}`,
+      ),
+    );
     if (this.disposed) {
       PtyService.Kill(res.id);
       return;
@@ -268,6 +324,8 @@ export class TerminalPane implements Pane {
   relayout() {
     this.fitSuspended = false;
     this.scheduleFit();
+    // Moving the element in the DOM (pane swap) leaves the renderer with a blank canvas.
+    this.term.refresh(0, this.term.rows - 1);
   }
 
   setFitSuspended(suspended: boolean) {

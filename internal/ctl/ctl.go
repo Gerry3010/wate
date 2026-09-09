@@ -115,6 +115,28 @@ func (s *Server) serve(c net.Conn, h Handler) {
 }
 
 // FindSocket picks the socket to talk to: $WATE_SOCKET, else the newest live wate-*.sock.
+// PrimaryFile is where a running wate records its socket path (inside its state dir), so a
+// second start with the same config knows whom to talk to — and other configs stay independent.
+func PrimaryFile(stateDir string) string { return filepath.Join(stateDir, "socket") }
+
+// FindPrimary returns the live socket of the wate that owns stateDir, or an error.
+func FindPrimary(stateDir string) (string, error) {
+	data, err := os.ReadFile(PrimaryFile(stateDir))
+	if err != nil {
+		return "", err
+	}
+	p := strings.TrimSpace(string(data))
+	pidStr := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), "wate-"), ".sock")
+	if pid, err := strconv.Atoi(pidStr); err != nil || !processAlive(pid) {
+		_ = os.Remove(PrimaryFile(stateDir))
+		return "", errors.New("no running wate for this config")
+	}
+	if _, err := os.Stat(p); err != nil {
+		return "", err
+	}
+	return p, nil
+}
+
 func FindSocket() (string, error) {
 	if p := os.Getenv("WATE_SOCKET"); p != "" {
 		return p, nil

@@ -136,40 +136,60 @@ export class Tab {
     start.preventDefault();
     start.stopPropagation();
     const source = this.panes.get(id)?.element;
-    if (!source) return;
+    if (!source || !this.tree) return;
+    const original = this.tree;
     source.classList.add("swap-source");
-    let target: HTMLElement | null = null;
-    const paneAt = (x: number, y: number) => {
+    for (const p of this.panes.values()) p.setFitSuspended?.(true);
+    let target: string | null = null;
+    const paneAt = (x: number, y: number): string | null => {
       const el = document.elementFromPoint(x, y)?.closest<HTMLElement>(".pane[data-pane-id]") ?? null;
-      return el && el !== source && this.panes.has(el.dataset.paneId ?? "") ? el : null;
+      const pid = el?.dataset.paneId ?? "";
+      return pid && pid !== id && this.panes.has(pid) ? pid : null;
     };
-    const move = (e: PointerEvent) => {
-      const t = paneAt(e.clientX, e.clientY);
-      if (t !== target) {
-        target?.classList.remove("swap-target");
-        target = t;
-        target?.classList.add("swap-target");
+    // Live preview: the layout shows the swapped arrangement while hovering a target.
+    const preview = (t: string | null) => {
+      if (t === target) return;
+      this.panes.get(target ?? "")?.element.classList.remove("swap-target");
+      target = t;
+      this.tree = t ? swapLeaves(original, id, t) : original;
+      this.view.render(this.tree);
+      this.panes.get(t ?? "")?.element.classList.add("swap-target");
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", finish, true);
+      window.removeEventListener("pointercancel", cancel, true);
+      window.removeEventListener("keydown", onKey, true);
+      source.classList.remove("swap-source");
+      this.panes.get(target ?? "")?.element.classList.remove("swap-target");
+      for (const p of this.panes.values()) p.setFitSuspended?.(false);
+    };
+    const move = (e: PointerEvent) => preview(paneAt(e.clientX, e.clientY));
+    const finish = (e: PointerEvent) => {
+      preview(paneAt(e.clientX, e.clientY));
+      const dropped = target;
+      cleanup();
+      if (dropped) {
+        this.render();
+        this.setFocus(id);
+        this.onChange?.();
+      } else {
+        this.tree = original;
+        this.render();
       }
     };
-    const finish = (e: PointerEvent) => {
-      window.removeEventListener("pointermove", move, true);
-      window.removeEventListener("pointerup", finish, true);
-      window.removeEventListener("pointercancel", cancel, true);
-      source.classList.remove("swap-source");
-      target?.classList.remove("swap-target");
-      const t = paneAt(e.clientX, e.clientY);
-      if (t?.dataset.paneId) this.swap(id, t.dataset.paneId);
-    };
     const cancel = () => {
-      window.removeEventListener("pointermove", move, true);
-      window.removeEventListener("pointerup", finish, true);
-      window.removeEventListener("pointercancel", cancel, true);
-      source.classList.remove("swap-source");
-      target?.classList.remove("swap-target");
+      cleanup();
+      this.tree = original;
+      this.render();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancel();
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", finish, true);
     window.addEventListener("pointercancel", cancel, true);
+    window.addEventListener("keydown", onKey, true);
   }
 
   remove(id: string): void {

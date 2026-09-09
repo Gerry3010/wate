@@ -119,6 +119,13 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 		return SpawnResult{}, err
 	}
 	p.mu.Lock()
+	// A pane spawns once; a retry (the frontend never saw the first answer) replaces the old
+	// shell instead of leaving it orphaned.
+	if old, ok := p.byPane[req.PaneID]; ok && old != s.ID {
+		if prev, ok := p.sessions.Get(old); ok {
+			prev.Kill()
+		}
+	}
 	p.byPane[req.PaneID] = s.ID
 	p.tabOf[req.PaneID] = req.TabID
 	p.mu.Unlock()
