@@ -207,6 +207,8 @@ func (kitty) keys(cfg kittyConfig) map[string]string {
 			wate = "prev_tab"
 		case "close_window":
 			wate = "close_pane"
+		case "close_tab":
+			wate = "close_tab"
 		case "goto_tab":
 			if len(fields) > 1 {
 				if n, err := strconv.Atoi(fields[1]); err == nil && n >= 1 && n <= 9 {

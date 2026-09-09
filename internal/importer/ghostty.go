@@ -228,6 +228,7 @@ var ghosttyActions = map[string]string{
 	"resize_split:up":      "resize_up",
 	"resize_split:down":    "resize_down",
 	"close_surface":        "close_pane",
+	"close_tab":            "close_tab",
 	"new_tab":              "new_tab",
 	"next_tab":             "next_tab",
 	"previous_tab":         "prev_tab",

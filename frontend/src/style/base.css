@@ -87,7 +87,7 @@ html, body {
   max-width: 220px;
   min-width: 0;
   flex: 0 1 auto;
-  padding: 0 8px 0 10px;
+  padding: 0 20px 0 10px;
   border-radius: 8px 8px 0 0;
   color: var(--tab-inactive-fg);
   cursor: default;
@@ -124,8 +124,30 @@ html, body {
   cursor: default;
 }
 .tabbar-close:hover, .tabbar-add:hover { background: rgba(255, 255, 255, 0.12); opacity: 1; }
-/* Crowded bar: inactive tabs show their close button only on hover so titles keep their room. */
-.tabbar-tab:not(.active):not(:hover) .tabbar-close { display: none; }
+/* Index/dot and close button share one fixed slot; hovering swaps them without reflow. */
+.tabbar-lead {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+.tabbar-lead .tabbar-index { line-height: 1; }
+.tabbar-lead .status-dot { margin-top: 0; }
+.tabbar-close {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.tabbar-tab:hover .tabbar-close { display: flex; }
+.tabbar-tab:hover .tabbar-lead > :not(.tabbar-close) { visibility: hidden; }
 .tabbar-add { align-self: center; margin-top: -6px; }
 .tabbar-settings {
   align-self: center;

@@ -6,6 +6,14 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 
 ## [Unreleased]
 
+### Added
+- `close_tab` (`Ctrl+Shift+W`, `Cmd+Shift+W` on macOS) closes the whole tab with all its panes;
+  kitty's and Ghostty's `close_tab` binding is picked up on import.
+
+### Changed
+- The tab bar no longer shifts when the mouse passes over it: the close button now appears in the
+  slot of the tab's number instead of next to the title. Tabs also breathe a little more on the right.
+
 ## [0.2.0] — 2026-09-10
 
 ### Added

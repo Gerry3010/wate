@@ -126,7 +126,12 @@ export class TabBar {
           e.stopPropagation();
           this.host.close(tab);
         });
-        b.append(idx, title, close);
+        // Index/status dot and the close button share one fixed slot: hovering swaps
+        // them in place, so revealing the × never reflows the bar.
+        const lead = document.createElement("span");
+        lead.className = "tabbar-lead";
+        lead.append(idx, close);
+        b.append(lead, title);
         b.addEventListener("mousedown", (e) => {
           if (this.renaming === tab) return;
           if (e.button === 1) {

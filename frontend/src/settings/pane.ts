@@ -36,6 +36,7 @@ const ACTIONS: [string, string][] = [
   ["swap_up", "Swap pane with the one above"],
   ["swap_down", "Swap pane with the one below"],
   ["close_pane", "Close pane"],
+  ["close_tab", "Close tab"],
   ["new_tab", "New tab"],
   ["next_tab", "Next tab"],
   ["prev_tab", "Previous tab"],

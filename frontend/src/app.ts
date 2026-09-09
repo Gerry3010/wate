@@ -588,6 +588,9 @@ export class WateApp {
       case "close_pane":
         if (tab?.focused) await this.closePane(tab, tab.focused);
         break;
+      case "close_tab":
+        if (tab) this.closeTab(tab);
+        break;
       case "editor_save":
         if (tab?.focused instanceof EditorPane) await tab.focused.save();
         break;

@@ -44,6 +44,7 @@ notifications, session sidebar) without any AI of its own.
 | Focus pane left / right / up / down | `Shift+←` / `Shift+→` / `Shift+↑` / `Shift+↓` |
 | Resize: move the nearest divider left / right / up / down | `Alt+Shift+←` / `→` / `↑` / `↓` |
 | Close pane (last pane closes the tab) | `Ctrl+W` |
+| Close tab (all its panes) | `Ctrl+Shift+W` |
 | Swap pane with its neighbour | `Ctrl+Shift+Arrow` (or **Alt+drag** a pane onto another) |
 | New tab / next / previous / tab *n* | `Ctrl+Shift+T` / `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Alt+n` |
 | Copy / paste | `Ctrl+Shift+C` / `Ctrl+Shift+V` (macOS also `Cmd+C` / `Cmd+V`) |
