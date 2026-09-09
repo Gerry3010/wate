@@ -4,6 +4,7 @@ package agent
 
 import (
 	"encoding/json"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -31,6 +32,14 @@ type Session struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	// Source is "hook" when hooks deliver precise events, "proc" when only process detection sees it.
 	Source string `json:"source"`
+	// TranscriptPath is Claude Code's session transcript (from hooks, or guessed from cwd).
+	TranscriptPath string `json:"transcript_path"`
+	// Context is the context-window usage read from the transcript (zero when unknown).
+	Context Context `json:"context"`
+	// ContextPercent is Context.Tokens / Context.Window in percent (0 when unknown).
+	ContextPercent int `json:"context_percent"`
+	// transcriptSize is the file size at the last context read (skip unchanged files).
+	transcriptSize int64
 }
 
 // Tracker is the in-memory session table.
@@ -54,6 +63,7 @@ type hookPayload struct {
 	Title     string `json:"title"`
 	HookEvent string `json:"hook_event_name"`
 	Prompt    string `json:"prompt"`
+	Transcript string `json:"transcript_path"`
 }
 
 // Hook applies a Claude Code hook event to the pane's session.
@@ -68,6 +78,10 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 	}
 	if p.Cwd != "" {
 		s.Cwd = p.Cwd
+	}
+	if p.Transcript != "" && p.Transcript != s.TranscriptPath {
+		s.TranscriptPath = p.Transcript
+		s.transcriptSize = -1
 	}
 	switch event {
 	case "SessionStart":
@@ -95,6 +109,45 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 	t.mu.Unlock()
 	if t.OnChange != nil {
 		t.OnChange(snapshot)
+	}
+}
+
+// RefreshContexts re-reads the transcript of every session whose file grew and reports changed
+// context usage. home locates transcripts for sessions without hook data; window (0 = auto)
+// is the configured context size.
+func (t *Tracker) RefreshContexts(home string, window int) {
+	t.mu.Lock()
+	var changed []Session
+	for _, s := range t.sessions {
+		if s.TranscriptPath == "" {
+			s.TranscriptPath = FindTranscript(home, s.Cwd)
+			s.transcriptSize = -1
+			if s.TranscriptPath == "" {
+				continue
+			}
+		}
+		st, err := os.Stat(s.TranscriptPath)
+		if err != nil || st.Size() == s.transcriptSize {
+			continue
+		}
+		s.transcriptSize = st.Size()
+		c, ok := ReadContext(s.TranscriptPath)
+		if !ok {
+			continue
+		}
+		c.Window = WindowFor(c.Model, window, c.Tokens)
+		pct := c.Percent()
+		if c == s.Context && pct == s.ContextPercent {
+			continue
+		}
+		s.Context, s.ContextPercent = c, pct
+		changed = append(changed, *s)
+	}
+	t.mu.Unlock()
+	if t.OnChange != nil {
+		for _, s := range changed {
+			t.OnChange(s)
+		}
 	}
 }
 

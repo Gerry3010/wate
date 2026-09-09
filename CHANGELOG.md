@@ -14,6 +14,9 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   name and reopens them later (`~/.config/wate/sessions/*.json`).
 - Tab titles (double-click to rename) and tab colours (right-click), kept in sessions.
 - Settings button (gear) in the tab bar; settings open in their own tab when the current one is split.
+- Claude sidebar shows each session's context usage (tokens used / window, percent, colour-coded)
+  read from the Claude Code transcript, so you can tell when a `/compact` is due.
+  `[claude] context_window` overrides the guessed window size.
 
 ### Fixed
 - Linux: the GTK title bar follows the theme (dark for dark themes) instead of always being light.
@@ -21,6 +24,7 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 - Background settings: choosing wallpaper mode without an image opens the file dialog; sliders
   that have no effect in the current mode are hidden.
 - GNOME shows wate's icon and name in the dock (desktop entry named after the GTK application id).
+- Pane outlines no longer get clipped by the window's rounded corners.
 
 ## [0.1.0] — 2026-09-09
 

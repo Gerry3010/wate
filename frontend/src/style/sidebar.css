@@ -47,6 +47,13 @@
 .sidebar-main { min-width: 0; flex: 1 1 auto; }
 .sidebar-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-sub { color: var(--tab-inactive-fg); font-size: 11px; margin-top: 2px; }
+.sidebar-ctx { display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: 11px; color: var(--tab-inactive-fg); }
+.sidebar-ctx-bar { flex: 1 1 auto; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); overflow: hidden; }
+.sidebar-ctx-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 300ms; }
+.sidebar-ctx.warn .sidebar-ctx-fill { background: #f9e2af; }
+.sidebar-ctx.hot .sidebar-ctx-fill { background: #f38ba8; }
+.sidebar-ctx.hot { color: #f38ba8; }
+.sidebar-ctx-text { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 .sidebar-msg {
   margin-top: 4px;
   color: color-mix(in srgb, var(--fg) 80%, transparent);

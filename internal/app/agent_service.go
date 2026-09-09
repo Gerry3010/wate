@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"context"
 	"fmt"
 	"log/slog"
@@ -64,6 +65,7 @@ func (a *AgentService) poll() {
 				}
 				a.tracker.Observe(p.PaneID, p.TabID, running, cwd)
 			}
+			a.tracker.RefreshContexts(homeDir(), a.cfg().Claude.ContextWindow)
 		}
 	}
 }
@@ -114,3 +116,8 @@ func (a *AgentService) SetFocus(paneID string, windowFocused bool) {
 
 // Forget drops a closed pane.
 func (a *AgentService) Forget(paneID string) { a.tracker.Forget(paneID) }
+
+func homeDir() string {
+	h, _ := os.UserHomeDir()
+	return h
+}

@@ -67,6 +67,8 @@ export class Sidebar {
         sub.className = "sidebar-sub";
         sub.textContent = [STATUS_LABEL[s.status] ?? s.status, elapsed(s.started_at)].filter(Boolean).join(" · ");
         main.append(title, sub);
+        const ctx = contextRow(s);
+        if (ctx) main.appendChild(ctx);
         if (s.message) {
           const msg = document.createElement("div");
           msg.className = "sidebar-msg";
@@ -79,6 +81,34 @@ export class Sidebar {
       }),
     );
   }
+}
+
+/** Context-window usage bar: "292k / 1M · 29 %" — how close the session is to a compact. */
+function contextRow(s: Session): HTMLElement | null {
+  const tokens = s.context?.tokens ?? 0;
+  const window = s.context?.window ?? 0;
+  if (!tokens || !window) return null;
+  const pct = s.context_percent || Math.round((tokens / window) * 100);
+  const row = document.createElement("div");
+  row.className = "sidebar-ctx" + (pct >= 80 ? " hot" : pct >= 60 ? " warn" : "");
+  row.title = `${tokens.toLocaleString()} of ${window.toLocaleString()} context tokens in use` + (s.context?.model ? ` (${s.context.model})` : "") + ". Auto-compact kicks in near the limit; /compact frees it earlier.";
+  const bar = document.createElement("div");
+  bar.className = "sidebar-ctx-bar";
+  const fill = document.createElement("div");
+  fill.className = "sidebar-ctx-fill";
+  fill.style.width = `${Math.min(100, pct)}%`;
+  bar.appendChild(fill);
+  const text = document.createElement("span");
+  text.className = "sidebar-ctx-text";
+  text.textContent = `${fmtTokens(tokens)} / ${fmtTokens(window)} · ${pct} %`;
+  row.append(bar, text);
+  return row;
+}
+
+export function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (n >= 1000) return `${Math.round(n / 1000)}k`;
+  return String(n);
 }
 
 function shortPath(p: string): string {

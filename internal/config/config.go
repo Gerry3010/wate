@@ -70,6 +70,8 @@ type Background struct {
 type Claude struct {
 	Command string `toml:"command" json:"command"`
 	Notify  bool   `toml:"notify" json:"notify"`
+	// ContextWindow overrides the assumed context size in tokens (0 = guess from the model).
+	ContextWindow int `toml:"context_window" json:"context_window"`
 }
 
 // Editor is the appearance and behaviour of editor panes.

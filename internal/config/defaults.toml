@@ -83,6 +83,7 @@ tab_9 = "cmd+9"
 [claude]
 command = "claude"
 notify = true
+context_window = 0                      # tokens; 0 = guess from the model (200k, 1M for 1M models)
 
 [editor]
 font = "JetBrainsMono Nerd Font, JetBrains Mono, Hack Nerd Font, Menlo, monospace"

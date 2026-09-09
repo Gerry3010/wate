@@ -160,9 +160,10 @@ html, body {
   min-height: 0;
   background: var(--surface);
 }
+/* A small gutter keeps pane outlines away from the window's rounded corners. */
 .tab-content {
   position: absolute;
-  inset: 0;
+  inset: 0 4px 4px;
   display: none;
 }
 .tab-content.active { display: flex; }
@@ -219,6 +220,7 @@ html, body {
   min-width: 0;
   min-height: 0;
   padding: 6px;
+  border-radius: 6px;
   outline: 1px solid transparent;
   outline-offset: -1px;
   transition: outline-color 120ms;

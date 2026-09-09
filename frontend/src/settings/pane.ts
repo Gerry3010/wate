@@ -226,6 +226,11 @@ export class SettingsPane implements Pane {
     const cl = this.section("Claude Code", "claude");
     this.text(cl, "Command", "claude.command", c.claude.command);
     this.check(cl, "Desktop notifications", "claude.notify", c.claude.notify);
+    this.number(cl, "Context window", "claude.context_window", c.claude.context_window, 0, 10000000, " tokens (0 = auto)", 1000);
+    const clHint = document.createElement("p");
+    clHint.className = "settings-hint";
+    clHint.textContent = "The sidebar shows how full each session's context is (read from Claude Code's transcript). Set the window size only if the guess for your model is wrong.";
+    cl.appendChild(clHint);
 
     const imp = this.section("Import", "import");
     const impHint = document.createElement("p");
