@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -181,6 +182,9 @@ func (w warp) detect(env Env) (string, []Item) {
 				panes += countLeaves(t.Root)
 			}
 			items = append(items, Item{Key: "tabs", Label: "Tabs & panes", Detail: fmt.Sprintf("%d tabs, %d panes: %s", len(tabs), panes, tabTitles(tabs))})
+			if n, bytes := w.countHistory(env, p.db); n > 0 {
+				items = append(items, Item{Key: "history", Label: "Command history", Detail: fmt.Sprintf("%d blocks (%s of output) replayed into the imported panes", n, humanBytes(bytes))})
+			}
 		}
 	}
 	if src == "" {
@@ -252,10 +256,144 @@ func (w warp) apply(env Env, want map[string]bool, res *Result) error {
 			if err != nil {
 				return fmt.Errorf("warp tabs: %w", err)
 			}
+			if want["history"] {
+				if err := w.attachHistory(env, p.db, tabs); err != nil {
+					res.Notes = append(res.Notes, "Command history could not be read: "+err.Error())
+				}
+			}
 			res.Tabs = tabs
 		}
+	} else if want["history"] {
+		res.Notes = append(res.Notes, "Command history is replayed into imported tabs — tick \"Tabs & panes\" as well.")
 	}
 	return nil
+}
+
+func humanBytes(n int) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%d kB", n/(1<<10))
+	}
+	return fmt.Sprintf("%d B", n)
+}
+
+// Limits for replayed history per pane.
+const (
+	historyBlocksPerPane = 60
+	historyBytesPerPane  = 256 * 1024
+)
+
+// blocksQuery selects executed blocks of panes that are still open, oldest first.
+const blocksQuery = `SELECT hex(b.pane_leaf_uuid) AS uuid, hex(b.stylized_command) AS cmd, hex(b.stylized_output) AS out,
+	b.pwd, b.exit_code, b.start_ts
+	FROM blocks b JOIN terminal_panes t ON t.uuid = b.pane_leaf_uuid
+	WHERE b.did_execute ORDER BY b.id`
+
+func (warp) countHistory(env Env, db string) (blocks, bytes int) {
+	rows, err := env.SQLite(db, `SELECT count(*) AS n, coalesce(sum(length(b.stylized_output)), 0) AS bytes
+		FROM blocks b JOIN terminal_panes t ON t.uuid = b.pane_leaf_uuid WHERE b.did_execute`)
+	if err != nil || len(rows) == 0 {
+		return 0, 0
+	}
+	return rowInt(rows[0], "n"), rowInt(rows[0], "bytes")
+}
+
+// attachHistory renders each open pane's recent Warp blocks (command + output) into its leaf.
+func (warp) attachHistory(env Env, db string, tabs []Tab) error {
+	rows, err := env.SQLite(db, blocksQuery)
+	if err != nil {
+		return err
+	}
+	byPane := map[string][]map[string]any{}
+	for _, r := range rows {
+		u := rowStr(r, "uuid")
+		byPane[u] = append(byPane[u], r)
+	}
+	var walk func(n *Node)
+	walk = func(n *Node) {
+		if n == nil {
+			return
+		}
+		if n.Kind == "leaf" {
+			if blocks := byPane[n.uuid]; len(blocks) > 0 {
+				n.History = renderWarpBlocks(env, blocks)
+			}
+			return
+		}
+		walk(n.A)
+		walk(n.B)
+	}
+	for i := range tabs {
+		walk(tabs[i].Root)
+	}
+	return nil
+}
+
+// renderWarpBlocks turns Warp blocks into terminal text: a dim header per block with time,
+// directory and exit code, the styled command after a prompt glyph, then the styled output.
+func renderWarpBlocks(env Env, blocks []map[string]any) string {
+	if len(blocks) > historyBlocksPerPane {
+		blocks = blocks[len(blocks)-historyBlocksPerPane:]
+	}
+	var parts []string
+	size := 0
+	for i := len(blocks) - 1; i >= 0; i-- { // newest first, so the byte cap drops the oldest
+		b := blocks[i]
+		cmd := crlf(unhex(rowStr(b, "cmd")))
+		out := crlf(unhex(rowStr(b, "out")))
+		if strings.TrimSpace(cmd) == "" && strings.TrimSpace(out) == "" {
+			continue
+		}
+		ts := rowStr(b, "start_ts")
+		if len(ts) >= 16 {
+			ts = ts[:16]
+		}
+		pwd := rowStr(b, "pwd")
+		if env.Home != "" && strings.HasPrefix(pwd, env.Home) {
+			pwd = "~" + strings.TrimPrefix(pwd, env.Home)
+		}
+		status := ""
+		if code := rowInt(b, "exit_code"); code != 0 {
+			status = fmt.Sprintf("  \x1b[31mexit %d\x1b[0m\x1b[2m", code)
+		}
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "\x1b[2m╭─ %s  %s%s\x1b[0m\r\n", ts, pwd, status)
+		sb.WriteString("\x1b[1;35m❯\x1b[0m " + strings.TrimRight(cmd, "\r\n") + "\r\n")
+		if out != "" {
+			sb.WriteString(strings.TrimRight(out, "\r\n") + "\r\n")
+		}
+		block := sb.String()
+		if size+len(block) > historyBytesPerPane && len(parts) > 0 {
+			break
+		}
+		size += len(block)
+		parts = append(parts, block)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	// Reverse back into chronological order.
+	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
+		parts[i], parts[j] = parts[j], parts[i]
+	}
+	head := fmt.Sprintf("\x1b[2m── restored from Warp: %d blocks ──\x1b[0m\r\n", len(parts))
+	return head + strings.Join(parts, "") + "\x1b[2m── end of Warp history ──\x1b[0m\r\n\r\n"
+}
+
+func unhex(h string) string {
+	b, err := hex.DecodeString(h)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// crlf normalises line endings for a terminal (bare \n would only move down, not to column 0).
+func crlf(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.ReplaceAll(s, "\n", "\r\n")
 }
 
 // ---- themes -------------------------------------------------------------
@@ -395,7 +533,7 @@ func (warp) readTabs(env Env, db string) ([]Tab, error) {
 		return nil, err
 	}
 	nodes, err := env.SQLite(db, `SELECT n.id, n.tab_id, n.parent_pane_node_id AS parent, n.flex, n.is_leaf,
-		b.horizontal, l.kind, l.is_focused, p.cwd
+		b.horizontal, l.kind, l.is_focused, p.cwd, hex(p.uuid) AS uuid
 		FROM pane_nodes n
 		LEFT JOIN pane_branches b ON b.pane_node_id = n.id
 		LEFT JOIN pane_leaves l ON l.pane_node_id = n.id
@@ -453,7 +591,7 @@ func warpTree(env Env, rows []map[string]any) *Node {
 			if cwd == "" {
 				cwd = env.Home
 			}
-			return &Node{Kind: "leaf", Cwd: cwd, Focused: rowInt(r, "is_focused") == 1}
+			return &Node{Kind: "leaf", Cwd: cwd, Focused: rowInt(r, "is_focused") == 1, uuid: rowStr(r, "uuid")}
 		}
 		kids := children[rowInt(r, "id")]
 		sort.Slice(kids, func(i, j int) bool { return rowInt(kids[i], "id") < rowInt(kids[j], "id") })

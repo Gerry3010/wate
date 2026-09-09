@@ -132,7 +132,8 @@ CREATE TABLE tabs (id INTEGER PRIMARY KEY, window_id INTEGER, custom_title TEXT,
 CREATE TABLE pane_nodes (id INTEGER PRIMARY KEY, tab_id INTEGER, parent_pane_node_id INTEGER, flex FLOAT, is_leaf BOOLEAN);
 CREATE TABLE pane_branches (id INTEGER PRIMARY KEY, pane_node_id INTEGER, horizontal BOOLEAN);
 CREATE TABLE pane_leaves (pane_node_id INTEGER, kind TEXT, is_focused BOOLEAN);
-CREATE TABLE terminal_panes (id INTEGER PRIMARY KEY, kind TEXT, cwd TEXT);
+CREATE TABLE terminal_panes (id INTEGER PRIMARY KEY, kind TEXT, cwd TEXT, uuid BLOB);
+CREATE TABLE blocks (id INTEGER PRIMARY KEY, pane_leaf_uuid BLOB, stylized_command BLOB, stylized_output BLOB, pwd TEXT, exit_code INTEGER, did_execute BOOLEAN, start_ts DATETIME);
 INSERT INTO windows VALUES (1, 0);
 INSERT INTO tab_groups VALUES (1, 1, 'Work', 'Blue', 0, 0);
 INSERT INTO tabs VALUES (1, 1, 'Jacky & GH.net', NULL, 1, 0), (2, 1, NULL, 'Red', NULL, 0);
@@ -140,11 +141,15 @@ INSERT INTO tabs VALUES (1, 1, 'Jacky & GH.net', NULL, 1, 0), (2, 1, NULL, 'Red'
 INSERT INTO pane_nodes VALUES (1, 1, NULL, NULL, 0), (2, 1, 1, 1.0, 1), (3, 1, 1, 2.0, 1), (4, 1, 1, 1.0, 1);
 INSERT INTO pane_branches VALUES (1, 1, 1);
 INSERT INTO pane_leaves VALUES (2, 'terminal', 0), (3, 'terminal', 1), (4, 'terminal', 0);
-INSERT INTO terminal_panes VALUES (2, 'terminal', '/home/a'), (3, 'terminal', '/home/b'), (4, 'terminal', NULL);
+INSERT INTO terminal_panes VALUES (2, 'terminal', '/home/a', X'AA'), (3, 'terminal', '/home/b', X'BB'), (4, 'terminal', NULL, X'CC');
+INSERT INTO blocks VALUES (1, X'AA', CAST('ls' AS BLOB), CAST('a.txt' || char(13,10) || 'b.txt' || char(10) AS BLOB), '/home/a', 0, 1, '2026-09-08 21:01:15.002'),
+  (2, X'AA', CAST('false' AS BLOB), X'', '/home/a', 1, 1, '2026-09-08 21:02:00.000'),
+  (3, X'AA', CAST('echo skipped' AS BLOB), X'', '/home/a', 0, 0, '2026-09-08 21:03:00.000'),
+  (4, X'99', CAST('orphan' AS BLOB), X'', '/tmp', 0, 1, '2026-09-08 21:04:00.000');
 -- tab 2: single pane
 INSERT INTO pane_nodes VALUES (5, 2, NULL, NULL, 1);
 INSERT INTO pane_leaves VALUES (5, 'terminal', 1);
-INSERT INTO terminal_panes VALUES (5, 'terminal', '/home/c');
+INSERT INTO terminal_panes VALUES (5, 'terminal', '/home/c', X'DD');
 `
 	cmd := exec.Command("sqlite3", db, schema)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -154,7 +159,10 @@ INSERT INTO terminal_panes VALUES (5, 'terminal', '/home/c');
 	if d := itemKeys(src.Items)["tabs"]; d != "2 tabs, 4 panes: Jacky & GH.net" {
 		t.Errorf("tabs item: %q", d)
 	}
-	res, err := Apply(env, "warp", []string{"tabs"})
+	if d := itemKeys(src.Items)["history"]; d != "2 blocks (13 B of output) replayed into the imported panes" {
+		t.Errorf("history item: %q", d)
+	}
+	res, err := Apply(env, "warp", []string{"tabs", "history"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +182,15 @@ INSERT INTO terminal_panes VALUES (5, 'terminal', '/home/c');
 	}
 	if root.B.B.Cwd != env.Home {
 		t.Errorf("empty cwd should fall back to home, got %q", root.B.B.Cwd)
+	}
+	h := root.A.History
+	for _, want := range []string{"restored from Warp: 2 blocks", "21:01  /home/a", "❯\x1b[0m ls\r\n", "a.txt\r\nb.txt\r\n", "exit 1", "❯\x1b[0m false"} {
+		if !contains(h, want) {
+			t.Errorf("history missing %q:\n%q", want, h)
+		}
+	}
+	if contains(h, "skipped") || contains(h, "orphan") || root.B.A.History != "" {
+		t.Errorf("unexpected history: %q / %q", h, root.B.A.History)
 	}
 	t2 := res.Tabs[1]
 	if t2.Title != "" || t2.Color != "red" || t2.Root.Kind != "leaf" || t2.Root.Cwd != "/home/c" {

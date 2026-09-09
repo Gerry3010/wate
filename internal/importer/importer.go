@@ -43,6 +43,11 @@ type Node struct {
 	B     *Node   `json:"b,omitempty"`
 	// Focused marks the leaf that had focus in the source.
 	Focused bool `json:"focused,omitempty"`
+	// History is pre-rendered terminal text (ANSI) replayed into the pane before its shell starts:
+	// the source's recent commands and their output.
+	History string `json:"history,omitempty"`
+	// uuid identifies the leaf in the source (used to attach history).
+	uuid string
 }
 
 // Tab is an imported tab: an optional custom title and colour plus its layout.

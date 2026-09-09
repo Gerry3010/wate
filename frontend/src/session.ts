@@ -16,7 +16,9 @@ export interface SavedTab {
   color?: string;
 }
 
-export type SavedPane = { id: string; kind: "terminal"; cwd: string } | { id: string; kind: "editor"; path: string };
+export type SavedPane =
+  | { id: string; kind: "terminal"; cwd: string; /** ANSI scrollback replayed before the shell starts. */ replay?: string }
+  | { id: string; kind: "editor"; path: string };
 
 export function parseSession(raw: string): SavedSession | null {
   if (!raw) return null;
@@ -51,6 +53,7 @@ export interface ImportedNode {
   a?: ImportedNode;
   b?: ImportedNode;
   focused?: boolean;
+  history?: string;
 }
 
 export interface ImportedTab {
@@ -74,7 +77,7 @@ export function fromImported(tabs: ImportedTab[]): SavedTab[] {
         return { kind: "split", id, dir: n.dir === "col" ? "col" : "row", ratio: clampRatio(n.ratio), a: walk(n.a), b: walk(n.b) };
       }
       const id = `imp-pane-${++seq}`;
-      panes.push({ id, kind: "terminal", cwd: n.cwd ?? "" });
+      panes.push({ id, kind: "terminal", cwd: n.cwd ?? "", replay: n.history || undefined });
       if (n.focused && !focused) focused = id;
       return { kind: "leaf", id };
     };

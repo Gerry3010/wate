@@ -1,5 +1,6 @@
 import { Terminal, type IMarker, type ITerminalOptions } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 
@@ -15,6 +16,8 @@ export interface TerminalPaneOptions {
   tabId: string;
   cwd?: string;
   command?: string[];
+  /** Terminal text (ANSI) written before the shell starts: restored scrollback / imported history. */
+  replay?: string;
   terminal: TerminalConfig;
   theme?: Record<string, string>;
   fontDelta?: number;
@@ -34,6 +37,7 @@ export class TerminalPane implements Pane {
   readonly term: Terminal;
   title = "";
   private fit = new FitAddon();
+  private serializer = new SerializeAddon();
   private ws?: WebSocket;
   private sessionId?: string;
   private resizeObserver: ResizeObserver;
@@ -69,6 +73,7 @@ export class TerminalPane implements Pane {
     };
     this.term = new Terminal(termOpts);
     this.term.loadAddon(this.fit);
+    this.term.loadAddon(this.serializer);
     this.term.open(this.element);
     this.enableWebgl();
     if (t.ligatures) {
@@ -137,6 +142,10 @@ export class TerminalPane implements Pane {
   /** Spawn the PTY and connect. Call once the element is in the DOM. */
   async start(): Promise<void> {
     this.fitNow();
+    if (this.opts.replay) {
+      // Written before the PTY connects so the shell's first prompt lands below it.
+      await new Promise<void>((done) => this.term.write(this.opts.replay!, done));
+    }
     const res = await PtyService.Spawn({
       paneId: this.opts.paneId,
       tabId: this.opts.tabId,
@@ -190,6 +199,23 @@ export class TerminalPane implements Pane {
     this.term.options.cursorBlink = this.active && t.cursor_blink;
     this.element.style.padding = `${t.padding}px`;
     this.fitNow();
+  }
+
+  /** Scrollback + screen as ANSI text (for sessions); at most maxBytes, cut at a line boundary. */
+  serialize(maxBytes: number): string {
+    let text: string;
+    try {
+      text = this.serializer.serialize({ scrollback: this.term.options.scrollback ?? 1000 });
+    } catch {
+      return "";
+    }
+    text = text.replace(/\s+$/, "");
+    if (!text) return "";
+    if (text.length > maxBytes) {
+      const cut = text.indexOf("\n", text.length - maxBytes);
+      text = text.slice(cut >= 0 ? cut + 1 : text.length - maxBytes);
+    }
+    return text.replace(/\r?\n/g, "\r\n") + "\r\n\x1b[0m\x1b[2m── restored ──\x1b[0m\r\n";
   }
 
   /** Synchronous best guess (OSC 7 or the spawn cwd) for use where we can't await. */

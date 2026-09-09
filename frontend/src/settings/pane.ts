@@ -342,7 +342,7 @@ export class SettingsPane implements Pane {
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.value = item.key;
-        cb.checked = item.key !== "tabs" && !item.detail.includes("not on disk") && !item.detail.includes("not found");
+        cb.checked = item.key !== "tabs" && item.key !== "history" && !item.detail.includes("not on disk") && !item.detail.includes("not found");
         const label = document.createElement("span");
         label.className = "import-label";
         label.textContent = item.label;

@@ -15,6 +15,10 @@ import { EditorPane } from "./editor/pane";
 import { SettingsPane } from "./settings/pane";
 
 /** Top-level UI state: tabs, panes, keybindings and the actions they trigger. */
+/** Scrollback kept per pane (bytes of ANSI text): named sessions keep more than the auto-restore file. */
+const SESSION_SCROLLBACK = 256 * 1024;
+const RESTORE_SCROLLBACK = 48 * 1024;
+
 export class WateApp {
   readonly tabs: Tab[] = [];
   active: Tab | null = null;
@@ -81,19 +85,22 @@ export class WateApp {
 
   async saveSession(immediate = false): Promise<void> {
     if (this.restoring || !this.config.general.restore_session) return;
-    const state = await this.snapshot(immediate);
+    const state = await this.snapshot(immediate, RESTORE_SCROLLBACK);
     await StateService.Save(JSON.stringify(state)).catch((err) => console.warn("session save:", err));
   }
 
-  /** Serialise every tab (layout, cwds, open files, titles, colours). */
-  async snapshot(immediate = false): Promise<SavedSession> {
+  /** Serialise every tab (layout, cwds, open files, titles, colours, and — with scrollback — the terminal text). */
+  async snapshot(immediate = false, scrollback = 0): Promise<SavedSession> {
     const tabs: SavedSession["tabs"] = [];
     for (const t of this.tabs) {
       if (!t.tree) continue;
       const panes: SavedPane[] = [];
       for (const p of t.panes.values()) {
         if (p instanceof EditorPane) panes.push({ id: p.id, kind: "editor", path: p.path });
-        else if (p instanceof TerminalPane) panes.push({ id: p.id, kind: "terminal", cwd: immediate ? p.lastKnownCwd() : await p.cwd().catch(() => "") });
+        else if (p instanceof TerminalPane) {
+          const cwd = immediate ? p.lastKnownCwd() : await p.cwd().catch(() => "");
+          panes.push({ id: p.id, kind: "terminal", cwd, replay: scrollback > 0 ? p.serialize(scrollback) || undefined : undefined });
+        }
       }
       if (panes.length === 0) continue;
       tabs.push({ tree: t.tree, focused: t.focusedId, panes, title: t.customTitle || undefined, color: t.color || undefined });
@@ -104,7 +111,7 @@ export class WateApp {
   /** Store the current tabs under a name (tab bar dropdown). */
   async saveNamedSession(name: string): Promise<void> {
     try {
-      const state = await this.snapshot();
+      const state = await this.snapshot(false, SESSION_SCROLLBACK);
       await SessionService.Save(name, JSON.stringify(state));
     } catch (err) {
       console.warn("save session:", err);
@@ -173,7 +180,7 @@ export class WateApp {
             tab.remove(pane.id);
           }));
         } else {
-          const pane = this.makeTerminal(tab, { cwd: sp.cwd });
+          const pane = this.makeTerminal(tab, { cwd: sp.cwd, replay: sp.replay });
           map.set(sp.id, pane.id);
           panes.push(pane);
           starts.push(pane.start());
@@ -340,12 +347,13 @@ export class WateApp {
 
   // ---- panes ------------------------------------------------------------
 
-  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[] }): TerminalPane {
+  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string }): TerminalPane {
     const pane: TerminalPane = new TerminalPane({
       paneId: nextId("pane"),
       tabId: tab.id,
       cwd: opts.cwd ?? "",
       command: opts.command,
+      replay: opts.replay,
       terminal: this.config.terminal,
       theme: this.termTheme(),
       fontDelta: this.fontDelta,
