@@ -154,15 +154,41 @@ export class SettingsPane implements Pane {
     appearance.appendChild(note);
 
     const bg = this.section("Background", "background");
-    this.select(bg, "Mode", "background.mode", c.background.mode, [
-      ["solid", "Solid"],
-      ["translucent", "Translucent (OS / compositor blur, restart needed)"],
-      ["wallpaper", "Wallpaper (blurred image)"],
-    ]);
-    this.file(bg, "Wallpaper", "background.wallpaper", c.background.wallpaper, "*.png;*.jpg;*.jpeg;*.webp;*.avif");
-    this.range(bg, "Blur", "background.blur", c.background.blur, 0, 80, 1, "px");
-    this.range(bg, "Dim", "background.dim", c.background.dim, 0, 1, 0.05);
-    this.range(bg, "Opacity", "background.opacity", c.background.opacity, 0.2, 1, 0.05);
+    const mode = c.background.mode;
+    this.select(
+      bg,
+      "Mode",
+      "background.mode",
+      mode,
+      [
+        ["solid", "Solid"],
+        ["translucent", "Translucent (OS / compositor blur, restart needed)"],
+        ["wallpaper", "Wallpaper (blurred image)"],
+      ],
+      async (v, sel) => {
+        // Wallpaper mode needs an image: ask for one right away instead of silently staying solid.
+        if (v !== "wallpaper" || c.background.wallpaper) return true;
+        const p = await this.pickWallpaper();
+        if (p) await this.set({ "background.wallpaper": p, "background.mode": "wallpaper" });
+        else sel.value = mode;
+        return false;
+      },
+    );
+    if (mode === "wallpaper") {
+      this.file(bg, "Wallpaper", "background.wallpaper", c.background.wallpaper);
+      this.range(bg, "Blur", "background.blur", c.background.blur, 0, 80, 1, "px");
+      this.range(bg, "Dim", "background.dim", c.background.dim, 0, 1, 0.05);
+    }
+    if (mode !== "solid") this.range(bg, "Opacity", "background.opacity", c.background.opacity, 0.2, 1, 0.05);
+    const bgHint = document.createElement("p");
+    bgHint.className = "settings-hint";
+    bgHint.textContent =
+      mode === "solid"
+        ? "Blur, dim and opacity only apply to the wallpaper and translucent modes."
+        : mode === "translucent"
+          ? "Opacity is how much of the blurred desktop shows through the panes. On GNOME, add wate to Blur my Shell's application list."
+          : "Blur and dim soften the image; opacity controls how much of it shows through the panes.";
+    bg.appendChild(bgHint);
 
     const term = this.section("Terminal", "terminal");
     this.text(term, "Font", "terminal.font", c.terminal.font);
@@ -358,7 +384,14 @@ export class SettingsPane implements Pane {
     this.row(parent, label, i);
   }
 
-  private select(parent: HTMLElement, label: string, key: string, value: string, options: [string, string][]) {
+  private select(
+    parent: HTMLElement,
+    label: string,
+    key: string,
+    value: string,
+    options: [string, string][],
+    intercept?: (value: string, select: HTMLSelectElement) => Promise<boolean>,
+  ) {
     const s = document.createElement("select");
     for (const [v, text] of options) {
       const o = document.createElement("option");
@@ -367,11 +400,27 @@ export class SettingsPane implements Pane {
       o.selected = v === value;
       s.appendChild(o);
     }
-    s.addEventListener("change", () => void this.set({ [key]: s.value }));
+    s.addEventListener("change", async () => {
+      if (intercept && !(await intercept(s.value, s))) return;
+      void this.set({ [key]: s.value });
+    });
     this.row(parent, label, s);
   }
 
-  private file(parent: HTMLElement, label: string, key: string, value: string, pattern: string) {
+  private async pickWallpaper(): Promise<string> {
+    try {
+      const p = await Dialogs.OpenFile({
+        Title: "Choose wallpaper",
+        Filters: [{ DisplayName: "Images", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.avif" }],
+      });
+      return p ?? "";
+    } catch (err) {
+      this.flash(String(err), true);
+      return "";
+    }
+  }
+
+  private file(parent: HTMLElement, label: string, key: string, value: string) {
     const wrap = document.createElement("span");
     wrap.className = "settings-file";
     const i = document.createElement("input");
@@ -383,14 +432,10 @@ export class SettingsPane implements Pane {
     b.textContent = "Choose…";
     b.addEventListener("click", async (e) => {
       e.preventDefault();
-      try {
-        const p = await Dialogs.OpenFile({ Title: "Choose wallpaper", Filters: [{ DisplayName: "Images", Pattern: pattern }] });
-        if (p) {
-          i.value = p;
-          await this.set({ [key]: p, "background.mode": "wallpaper" });
-        }
-      } catch (err) {
-        this.flash(String(err), true);
+      const p = await this.pickWallpaper();
+      if (p) {
+        i.value = p;
+        await this.set({ [key]: p, "background.mode": "wallpaper" });
       }
     });
     wrap.append(i, b);

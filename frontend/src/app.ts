@@ -37,6 +37,7 @@ export class WateApp {
       activate: (t) => this.activate(t),
       close: (t) => this.closeTab(t),
       newTab: () => this.newTab(),
+      openSettings: () => this.openSettings(),
       agentStatus: (t) => this.agents.forTab(t.id),
     });
     this.sidebar = new Sidebar(this.agents, {
@@ -180,15 +181,19 @@ export class WateApp {
 
   /** Open (or focus) the settings pane in the active tab. */
   openSettings() {
-    const tab = this.active;
-    if (!tab) return;
-    for (const p of tab.panes.values()) {
-      if (p instanceof SettingsPane) {
-        tab.setFocus(p.id);
-        p.focus();
-        return;
+    // One settings pane per window: jump to it if it is already open somewhere.
+    for (const t of this.tabs) {
+      for (const p of t.panes.values()) {
+        if (p instanceof SettingsPane) {
+          this.activate(t);
+          t.setFocus(p.id);
+          p.focus();
+          return;
+        }
       }
     }
+    // Split the active tab when it holds a single pane; a busy tab gets a dedicated one instead.
+    const tab = this.active && this.active.panes.size <= 1 ? this.active : this.createTab();
     const pane: SettingsPane = new SettingsPane({
       paneId: nextId("pane"),
       config: this.config,
@@ -220,6 +225,13 @@ export class WateApp {
   // ---- tabs -------------------------------------------------------------
 
   async newTab(opts: { cwd?: string; command?: string[] } = {}): Promise<Tab> {
+    const tab = this.createTab();
+    await this.addTerminal(tab, "row", opts);
+    return tab;
+  }
+
+  /** Create, register and activate an empty tab. */
+  private createTab(): Tab {
     const tab = new Tab();
     tab.onChange = () => {
       this.refreshChrome(tab);
@@ -228,7 +240,6 @@ export class WateApp {
     };
     this.tabs.push(tab);
     this.activate(tab);
-    await this.addTerminal(tab, "row", opts);
     return tab;
   }
 

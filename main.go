@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
 	"github.com/Gerry3010/wate/internal/agent"
@@ -106,6 +107,10 @@ func main() {
 	})
 
 	wapp.Window.NewWithOptions(app.WindowOptions(cfgSvc.Current()))
+	wapp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		app.ApplyNativeTheme(themeSvc)
+	})
+	cfgSvc.OnChange = func() { app.ApplyNativeTheme(themeSvc) }
 
 	stopWatch, err := app.WatchConfig(cfgPath, func() { cfgSvc.Reload() })
 	if err != nil {

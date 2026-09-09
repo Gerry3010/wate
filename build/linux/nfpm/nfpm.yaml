@@ -12,7 +12,7 @@ priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
 description: "yet another terminal emulator"
 vendor: "Gerald Hofbauer"
-homepage: "https://wails.io"
+homepage: "https://github.com/Gerry3010/wate"
 license: "MIT"
 release: "1"
 
@@ -21,8 +21,9 @@ contents:
     dst: "/usr/local/bin/wate"
   - src: "./build/appicon.png"
     dst: "/usr/share/icons/hicolor/128x128/apps/wate.png"
-  - src: "./build/linux/wate.desktop"
-    dst: "/usr/share/applications/wate.desktop"
+  # Named after the GTK application id (org.wails.<name>) so GNOME/Wayland matches the window to it.
+  - src: "./build/linux/desktop"
+    dst: "/usr/share/applications/org.wails.wate.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:

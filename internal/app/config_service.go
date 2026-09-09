@@ -19,6 +19,8 @@ type ConfigService struct {
 	warning string
 	// InitialCwd is the directory given on the command line for the first tab.
 	InitialCwd string
+	// OnChange, if set, runs after every reload (used to sync native chrome with the theme).
+	OnChange func()
 }
 
 func NewConfigService(path string) *ConfigService {
@@ -76,6 +78,9 @@ func (c *ConfigService) Reload() ConfigResponse {
 	c.reload()
 	resp := c.Get()
 	application.Get().Event.Emit("config:changed", resp)
+	if c.OnChange != nil {
+		c.OnChange()
+	}
 	return resp
 }
 
