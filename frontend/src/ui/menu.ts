@@ -14,7 +14,7 @@ export interface MenuItem {
   action?: { label: string; title?: string; onSelect: () => void };
 }
 
-export type MenuEntry = MenuItem | "separator" | { header: string } | { input: InputEntry };
+export type MenuEntry = MenuItem | "separator" | { header: string } | { input: InputEntry } | { element: HTMLElement };
 
 export interface InputEntry {
   placeholder: string;
@@ -42,6 +42,15 @@ function onKey(e: KeyboardEvent) {
     e.stopPropagation();
     closeMenu();
   }
+}
+
+/** Show a menu above an anchor (its bottom-right corner at the anchor's top-right). */
+export function showMenuAbove(anchor: DOMRect, entries: MenuEntry[]): HTMLElement {
+  const el = showMenu(anchor.right, anchor.top, entries);
+  const r = el.getBoundingClientRect();
+  el.style.left = `${Math.max(4, anchor.right - r.width)}px`;
+  el.style.top = `${Math.max(4, anchor.top - r.height - 6)}px`;
+  return el;
 }
 
 /** Show a menu at viewport coordinates; it flips to stay on screen. */
@@ -79,6 +88,7 @@ function renderEntry(entry: MenuEntry): HTMLElement {
     h.textContent = entry.header;
     return h;
   }
+  if ("element" in entry) return entry.element;
   if ("input" in entry) {
     const row = document.createElement("form");
     row.className = "popup-input";

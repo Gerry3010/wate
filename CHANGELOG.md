@@ -7,6 +7,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- Claude badge in the pane corner: appears when Claude Code runs in that pane, click it for the
+  session popup — title, state, directory, model, last prompt, the context bar with its split
+  (cached / cache write / fresh input / output) and an "All sessions →" link to the sidebar.
+  The sidebar got a close button.
 - Claude Code sessions end gracefully when wate quits: the agents get a SIGTERM (and a moment to
   flush their transcript and run their `SessionEnd` hooks) before the shells are closed. A
   SIGINT/SIGTERM on wate itself now takes the same route instead of pulling the plug.
@@ -36,6 +40,12 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   `[claude] context_window` overrides the guessed window size.
 
 ### Fixed
+- Restoring a session in which a TUI (Claude Code) had been running left the shell echoing
+  mouse and focus reports as garbage: the replayed text no longer carries terminal modes and
+  every mode is reset before the new shell starts.
+- Resizing a pane while a command was running wiped the previous prompt (it is only cleared
+  for a redraw while the shell is actually at its prompt).
+- Settings: the Themes page stayed visible above whichever page was selected.
 - Opening many tabs at once (Warp import, session restore) stopped after a few: a burst of
   concurrent PTY spawn calls could lose an answer in the WebView IPC. Spawns now run one after
   another, time out and retry, and a retry replaces the orphaned shell. A failing pane no

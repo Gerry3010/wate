@@ -16,6 +16,11 @@ type Context struct {
 	// Window is the model's context size in tokens (best guess, see WindowFor).
 	Window int    `json:"window"`
 	Model  string `json:"model"`
+	// The latest turn's usage: what Tokens is made of, plus what the model wrote.
+	Input         int `json:"input"`
+	CacheCreation int `json:"cache_creation"`
+	CacheRead     int `json:"cache_read"`
+	Output        int `json:"output"`
 }
 
 // Percent of the window in use (0 when unknown).
@@ -66,6 +71,7 @@ func ReadContext(path string) (c Context, ok bool) {
 					Input         int `json:"input_tokens"`
 					CacheCreation int `json:"cache_creation_input_tokens"`
 					CacheRead     int `json:"cache_read_input_tokens"`
+					Output        int `json:"output_tokens"`
 				} `json:"usage"`
 			} `json:"message"`
 		}
@@ -77,7 +83,7 @@ func ReadContext(path string) (c Context, ok bool) {
 		if tokens == 0 {
 			continue
 		}
-		return Context{Tokens: tokens, Model: entry.Message.Model}, true
+		return Context{Tokens: tokens, Model: entry.Message.Model, Input: u.Input, CacheCreation: u.CacheCreation, CacheRead: u.CacheRead, Output: u.Output}, true
 	}
 	return c, false
 }

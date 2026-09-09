@@ -44,6 +44,15 @@ export interface TerminalPaneOptions {
   onOpenFile?: (t: Target) => void;
 }
 
+/**
+ * Written after a replay: the text may have switched terminal modes on (a TUI's mouse tracking,
+ * focus reports, bracketed paste, the alternate screen, application keys). The fresh shell knows
+ * nothing about them and would echo the reports as garbage, so everything goes back to defaults.
+ */
+const MODE_RESET =
+  "\x1b[?9l\x1b[?1000l\x1b[?1001l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l" +
+  "\x1b[?2004l\x1b[?1l\x1b>\x1b[?7h\x1b[?25h\x1b[0m\x1b(B\x1b[4l";
+
 /** Terminal rows the notice block occupies. */
 const NOTICE_ROWS = 3;
 
@@ -149,11 +158,15 @@ export class TerminalPane implements Pane {
       if (m) this.osc7Cwd = decodeURIComponent(m[1]);
       return true;
     });
-    // OSC 133;A marks where the prompt starts (FinalTerm / kitty / VS Code convention).
+    // OSC 133 (FinalTerm / kitty / VS Code convention): A marks where the prompt starts, C that a
+    // command is running — from then on the shell won't redraw, so the prompt must not be cleared.
     this.term.parser.registerOscHandler(133, (data) => {
       if (data.startsWith("A")) {
         this.promptMarker?.dispose();
         this.promptMarker = this.term.registerMarker(0) ?? undefined;
+      } else if (data.startsWith("C")) {
+        this.promptMarker?.dispose();
+        this.promptMarker = undefined;
       }
       return true;
     });
@@ -230,6 +243,10 @@ export class TerminalPane implements Pane {
       this.replaying = true;
       try {
         await new Promise<void>((done) => this.term.write(this.opts.replay!, done));
+        // Leaving the alternate screen restores a saved cursor; done blindly it would send the
+        // cursor to the top-left of a normal buffer, so only when the replay really switched.
+        const leaveAlt = this.term.buffer.active.type === "alternate" ? "\x1b[?1049l" : "";
+        await new Promise<void>((done) => this.term.write(leaveAlt + MODE_RESET, done));
       } finally {
         this.replaying = false;
         this.applyVisibility();
@@ -301,7 +318,8 @@ export class TerminalPane implements Pane {
   serialize(maxBytes: number): string {
     let text: string;
     try {
-      text = this.serializer.serialize({ scrollback: this.term.options.scrollback ?? 1000 });
+      // Modes (mouse tracking, alt screen, …) belong to the program that set them, not to the text.
+      text = this.serializer.serialize({ scrollback: this.term.options.scrollback ?? 1000, excludeModes: true, excludeAltBuffer: true });
     } catch {
       return "";
     }

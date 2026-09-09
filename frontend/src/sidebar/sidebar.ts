@@ -5,9 +5,13 @@ export interface SidebarHost {
   jumpTo(session: Session): void;
   launch(): void;
   launchLabel: string;
+  /** Key that toggles the panel, for tooltips. */
+  toggleLabel?: string;
+  /** Called after the panel was shown or hidden (panes need a re-fit). */
+  onVisibility?(): void;
 }
 
-const STATUS_LABEL: Record<string, string> = { running: "working", waiting: "waiting for you", done: "finished" };
+export const STATUS_LABEL: Record<string, string> = { running: "working", waiting: "waiting for you", done: "finished" };
 
 /** Right-hand panel listing Claude Code sessions across all tabs. */
 export class Sidebar {
@@ -21,6 +25,12 @@ export class Sidebar {
     const head = document.createElement("div");
     head.className = "sidebar-head";
     head.textContent = "Claude Code";
+    const close = document.createElement("button");
+    close.className = "sidebar-close";
+    close.textContent = "×";
+    close.title = host.toggleLabel ? `Hide (${host.toggleLabel})` : "Hide";
+    close.addEventListener("click", () => this.toggle(false));
+    head.appendChild(close);
     const launch = document.createElement("button");
     launch.className = "sidebar-launch";
     launch.textContent = "+ New session";
@@ -37,6 +47,7 @@ export class Sidebar {
     this.element.hidden = !show;
     clearInterval(this.timer);
     if (show) this.timer = setInterval(() => this.render(), 10_000);
+    this.host.onVisibility?.();
   }
 
   get visible() {
@@ -114,7 +125,7 @@ export function fmtTokens(n: number): string {
   return String(n);
 }
 
-function shortPath(p: string): string {
+export function shortPath(p: string): string {
   if (!p) return "";
   const home = /^\/(?:home|Users)\/[^/]+/.exec(p)?.[0];
   const short = home ? "~" + p.slice(home.length) : p;
@@ -123,7 +134,7 @@ function shortPath(p: string): string {
   return parts.length > 4 ? `${parts[0]}/…/${parts.slice(-2).join("/")}` : short;
 }
 
-function elapsed(since: string): string {
+export function elapsed(since: string): string {
   const ms = Date.now() - new Date(since).getTime();
   if (!(ms > 0)) return "";
   const m = Math.floor(ms / 60000);

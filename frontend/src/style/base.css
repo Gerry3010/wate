@@ -238,6 +238,66 @@ html, body {
 /* DOM-renderer fallback: never let a row spill into the neighbouring pane. */
 .pane-terminal .xterm-rows > div { overflow: hidden; }
 
+/* Claude badge in the pane corner: appears when Claude Code runs here, opens the session popup. */
+.pane-claude {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  z-index: 5;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, #d97757 45%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, #d97757 14%, rgba(var(--bg-rgb), 0.9));
+  color: #d97757;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 120ms, transform 120ms;
+}
+.pane-claude:hover { opacity: 1; transform: scale(1.08); }
+.pane-claude.status-waiting { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent); animation: badge-pulse 1.6s ease-in-out infinite; }
+.pane-claude.status-done { border-color: color-mix(in srgb, #a6e3a1 60%, transparent); }
+@keyframes badge-pulse {
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 10%, transparent); }
+}
+
+/* Session popup behind the badge */
+.agent-pop { width: 320px; padding: 4px 6px; font: 12px/1.45 var(--font-ui); color: var(--fg); }
+.agent-pop-head { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+.agent-pop-logo {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #d97757;
+  background: color-mix(in srgb, #d97757 16%, transparent);
+}
+.agent-pop-headtext { min-width: 0; flex: 1 1 auto; }
+.agent-pop-title { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-pop-state { color: var(--tab-inactive-fg); }
+.agent-pop-state.status-waiting { color: var(--accent); }
+.agent-pop-state.status-done { color: #a6e3a1; }
+.agent-pop-facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 0 0 8px; }
+.agent-pop-facts dt { color: var(--tab-inactive-fg); }
+.agent-pop-facts dd { margin: 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-pop-facts dd.mono { font-family: var(--font-mono); font-size: 11px; }
+.agent-pop-ctx { border-top: 1px solid var(--border); padding-top: 8px; margin-bottom: 6px; }
+.agent-pop-ctxlabel { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.agent-pop-ctx .sidebar-ctx-bar { height: 6px; }
+.agent-pop-ctx.warn .sidebar-ctx-fill { background: #f9e2af; }
+.agent-pop-ctx.hot .sidebar-ctx-fill { background: #f38ba8; }
+.agent-pop-split { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; color: var(--tab-inactive-fg); }
+.agent-pop-split b { color: var(--fg); font-weight: 600; }
+.agent-pop-hint { margin-top: 6px; color: var(--tab-inactive-fg); font-size: 11px; }
+.agent-pop-all { display: inline-block; margin-top: 4px; }
+
 /* Restored Claude session: a block on the buffer lines between history and prompt. */
 .pane-notice {
   pointer-events: auto;

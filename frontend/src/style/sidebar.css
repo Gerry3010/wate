@@ -17,6 +17,18 @@
   font-size: 12.5px;
 }
 :root[data-bg-mode="solid"] .sidebar { background: var(--sidebar-bg); }
+.sidebar-close {
+  float: right;
+  margin: -4px -6px 0 0;
+  padding: 0 6px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--tab-inactive-fg);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.sidebar-close:hover { color: var(--fg); }
 .sidebar-head {
   padding: 12px 14px 8px;
   font-weight: 600;

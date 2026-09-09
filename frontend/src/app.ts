@@ -3,6 +3,8 @@ import { Clipboard, Window } from "@wailsio/runtime";
 import { AgentService, OpenerService, SessionService, StateService, ThemeService, type Config, type Resolved, type Session, type Target } from "./api";
 import { fromImported, parseSession, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedSession, type SavedTab } from "./session";
 import { AgentStore } from "./agent/store";
+import { updateBadge } from "./agent/badge";
+import { closeMenu } from "./ui/menu";
 import { Sidebar } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
@@ -61,6 +63,8 @@ export class WateApp {
       jumpTo: (s) => this.jumpToSession(s),
       launch: () => void this.launchClaude(),
       launchLabel: this.keymap.label("launch_claude") || "Launch",
+      toggleLabel: this.keymap.label("toggle_sidebar"),
+      onVisibility: () => this.active?.render(),
     });
     this.content.className = "content";
     this.main.className = "main";
@@ -249,6 +253,15 @@ export class WateApp {
         const s = this.agents.forPane(p.id);
         p.element.classList.toggle("agent-waiting", s?.status === "waiting");
         p.element.classList.toggle("agent-done", s?.status === "done");
+        if (p instanceof TerminalPane) {
+          updateBadge(p.element, s, {
+            session: () => this.agents.forPane(p.id),
+            allSessions: () => {
+              closeMenu();
+              this.sidebar.toggle(true);
+            },
+          });
+        }
       }
     }
     // Which panes hold which session belongs in the saved state, so a restore can offer them
@@ -580,7 +593,6 @@ export class WateApp {
         break;
       case "toggle_sidebar":
         this.sidebar.toggle();
-        this.active?.render();
         break;
       case "open_settings":
         this.openSettings();
@@ -630,6 +642,7 @@ export class WateApp {
         rowOverflow: Math.max(0, ...Array.from(p.element.querySelectorAll(".xterm-rows > div")).map((d) => d.scrollWidth - d.clientWidth)),
         cols: term?.cols,
         rows: term?.rows,
+        buffer: term ? { type: term.buffer.active.type, baseY: term.buffer.active.baseY, cursorY: term.buffer.active.cursorY, length: term.buffer.active.length } : undefined,
         line0: term?.buffer.active.getLine(0)?.translateToString(true).slice(0, 60),
       };
     });

@@ -32,6 +32,8 @@
   padding: 8px 24px 40px;
 }
 .settings-section { margin: 12px 0 0; }
+/* The themes page is a flex column; `hidden` must still win when another page is shown. */
+.settings-section[hidden] { display: none !important; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 6px; }
 .settings-hint code { font-family: var(--font-mono); font-size: 11px; }
 .settings-section h2 {
