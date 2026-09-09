@@ -6,6 +6,8 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-09-10
+
 ### Added
 - `close_tab` (`Ctrl+Shift+W`, `Cmd+Shift+W` on macOS) closes the whole tab with all its panes;
   kitty's and Ghostty's `close_tab` binding is picked up on import.
@@ -121,6 +123,7 @@ to replace the old Claude Code hooks.
 - Desktop integration: `make install` (desktop entry, *Open With* for folders),
   `make install-nautilus` ("Open in wate" in the Nautilus context menu).
 
-[Unreleased]: https://github.com/Gerry3010/wate/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Gerry3010/wate/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Gerry3010/wate/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Gerry3010/wate/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Gerry3010/wate/releases/tag/v0.1.0
