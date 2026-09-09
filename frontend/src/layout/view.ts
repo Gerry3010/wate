@@ -21,9 +21,13 @@ interface SplitEls {
 /** Renders a split tree as nested flex containers with draggable, snapping dividers. */
 export class LayoutView {
   private splits = new Map<string, SplitEls>();
+  private dividers: { el: HTMLElement; line: HTMLElement; dir: Dir }[] = [];
+  private lineTimer?: ReturnType<typeof setTimeout>;
 
   constructor(readonly container: HTMLElement, private host: LayoutViewHost) {
     container.classList.add("layout");
+    // Window resizes move the panes under the dividers.
+    new ResizeObserver(() => this.scheduleLines()).observe(container);
   }
 
   render(tree: LayoutNode | null) {
@@ -31,7 +35,9 @@ export class LayoutView {
     for (const el of Array.from(this.container.querySelectorAll<HTMLElement>(".pane"))) el.remove();
     this.container.replaceChildren();
     this.splits.clear();
+    this.dividers = [];
     if (tree) this.container.appendChild(this.build(tree));
+    this.scheduleLines();
   }
 
   /** Update one divider without rebuilding (drag, keyboard resize). */
@@ -40,6 +46,43 @@ export class LayoutView {
     if (!s) return;
     s.a.style.flex = `${ratio} 1 0%`;
     s.b.style.flex = `${1 - ratio} 1 0%`;
+    this.scheduleLines();
+  }
+
+  /** Redraw the divider lines on the next frame (focus moved, sizes changed). */
+  scheduleLines() {
+    clearTimeout(this.lineTimer);
+    this.lineTimer = setTimeout(() => this.updateLines(), 0);
+  }
+
+  /**
+   * Divider lines are drawn only between two inactive panes: wherever the focused pane borders
+   * a divider, that stretch of the line is cut out (the divider itself stays there, and lights
+   * up on hover for resizing). A divider along a sub-split keeps its line beside the other panes.
+   */
+  private updateLines() {
+    const focused = this.container.querySelector<HTMLElement>(".pane.focused");
+    const f = focused?.getBoundingClientRect();
+    for (const { el, line, dir } of this.dividers) {
+      let mask = "";
+      if (f) {
+        const d = el.getBoundingClientRect();
+        const touch = 6;
+        if (dir === "row") {
+          const adjacent = Math.abs(f.right - d.left) <= touch || Math.abs(f.left - d.right) <= touch;
+          const lo = Math.max(d.top, f.top) - d.top;
+          const hi = Math.min(d.bottom, f.bottom) - d.top;
+          if (adjacent && hi - lo > 1) mask = `linear-gradient(to bottom, #000 ${lo}px, transparent ${lo}px, transparent ${hi}px, #000 ${hi}px)`;
+        } else {
+          const adjacent = Math.abs(f.bottom - d.top) <= touch || Math.abs(f.top - d.bottom) <= touch;
+          const lo = Math.max(d.left, f.left) - d.left;
+          const hi = Math.min(d.right, f.right) - d.left;
+          if (adjacent && hi - lo > 1) mask = `linear-gradient(to right, #000 ${lo}px, transparent ${lo}px, transparent ${hi}px, #000 ${hi}px)`;
+        }
+      }
+      line.style.maskImage = mask;
+      line.style.webkitMaskImage = mask;
+    }
   }
 
   private build(n: LayoutNode): HTMLElement {
@@ -66,6 +109,10 @@ export class LayoutView {
   private divider(splitId: string, dir: Dir, box: HTMLElement): HTMLElement {
     const d = document.createElement("div");
     d.className = `divider divider-${dir}`;
+    const line = document.createElement("div");
+    line.className = "divider-line";
+    d.appendChild(line);
+    this.dividers.push({ el: d, line, dir });
     d.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       e.preventDefault();

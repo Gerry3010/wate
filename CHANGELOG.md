@@ -41,6 +41,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   read from the Claude Code transcript, so you can tell when a `/compact` is due.
   `[claude] context_window` overrides the guessed window size.
 
+### Changed
+- Pane dividers draw their hairline only between two inactive panes: the stretch beside the
+  focused pane is left out (also along sub-splits, where the line stops at the focused pane).
+  The divider still lights up on hover so it can be dragged.
+
 ### Fixed
 - Restoring a session in which a TUI (Claude Code) had been running left the shell echoing
   mouse and focus reports as garbage: the replayed text no longer carries terminal modes and

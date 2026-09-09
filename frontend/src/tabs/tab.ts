@@ -213,6 +213,7 @@ export class Tab {
       p.element.classList.toggle("focused", pid === id);
       p.setActive?.(pid === id);
     }
+    this.view.scheduleLines();
     if (changed) this.onChange?.();
   }
 
