@@ -34,6 +34,10 @@ export interface SavedClaude {
   title: string;
   /** Claude Code session id, for `claude --resume <id>`. */
   sessionId?: string;
+  /** Where it ran, which model, how full its context was — for the block's second line. */
+  cwd?: string;
+  model?: string;
+  contextPercent?: number;
 }
 
 export function parseSession(raw: string): SavedSession | null {

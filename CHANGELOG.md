@@ -14,9 +14,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 - Claude Code sessions end gracefully when wate quits: the agents get a SIGTERM (and a moment to
   flush their transcript and run their `SessionEnd` hooks) before the shells are closed. A
   SIGINT/SIGTERM on wate itself now takes the same route instead of pulling the plug.
-- A restored pane that held a Claude Code session shows a block between its history and the new
-  prompt — `Claude Session "<title>"` with a play icon and a Resume button that runs
-  `claude --resume <id>` right there. The title comes from the session transcript (its summary,
+- A restored pane that held a Claude Code session shows an inset between its history and the new
+  prompt, set in the terminal's font: Claude's mark in an orange gutter, the session title, its
+  directory / model / context usage, and a `▶ Resume` chip that runs `claude --resume <id>`
+  right there. The title comes from the session transcript (its summary,
   otherwise the first prompt) and is shown in the Claude sidebar too.
 - Swap panes: `Ctrl+Shift+Arrow` exchanges the focused pane with its neighbour, Alt+drag a pane
   onto another does the same with the mouse.

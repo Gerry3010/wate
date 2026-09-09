@@ -5,7 +5,7 @@ import { fromImported, parseSession, remapTree, type ImportedTab, type SavedClau
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
 import { closeMenu } from "./ui/menu";
-import { Sidebar } from "./sidebar/sidebar";
+import { Sidebar, shortPath } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
 import { neighbor, type Dir, type Direction } from "./layout/tree";
@@ -224,7 +224,13 @@ export class WateApp {
   private claudeOf(p: TerminalPane): SavedClaude | undefined {
     const s = this.agents.forPane(p.id);
     if (!s) return undefined;
-    return { title: s.title || s.message || "Claude Code", sessionId: s.session_id || undefined };
+    return {
+      title: s.title || s.message || "Claude Code",
+      sessionId: s.session_id || undefined,
+      cwd: s.cwd || undefined,
+      model: s.context?.model || undefined,
+      contextPercent: s.context_percent || undefined,
+    };
   }
 
   /** The block a restored pane shows where its Claude session was: one click brings it back. */
@@ -232,6 +238,7 @@ export class WateApp {
     const cmd = () => this.config.claude.command || "claude";
     return {
       title: c.title,
+      detail: [c.cwd ? shortPath(c.cwd) : "", c.model ?? "", c.contextPercent ? `context ${c.contextPercent} %` : ""].filter(Boolean).join("  ·  "),
       action: c.sessionId ? "Resume" : "Continue",
       hint: c.sessionId ? `${cmd()} --resume ${c.sessionId}` : `${cmd()} --continue`,
       onActivate: () => {

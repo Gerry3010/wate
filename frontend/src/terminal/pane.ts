@@ -10,14 +10,17 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { OpenerService, PtyService, type Target, type TerminalConfig } from "../api";
 import type { Pane } from "../pane";
 import { FileLinkProvider, isModifierClick } from "./links";
+import { CLAUDE_LOGO, PLAY } from "../ui/icons";
 
 /** A call-to-action block drawn across the pane between the restored history and the prompt. */
 export interface PaneNotice {
-  /** Shown in quotes after "Claude Session". */
+  /** Session title, shown in quotes. */
   title: string;
-  /** Button label ("Resume"). */
+  /** Second line: directory, model, context usage. */
+  detail?: string;
+  /** Action label ("Resume"). */
   action: string;
-  /** Tooltip / hint for the button. */
+  /** Tooltip: the command the action runs. */
   hint?: string;
   onActivate(): void;
 }
@@ -56,8 +59,6 @@ const MODE_RESET =
 /** Terminal rows the notice block occupies. */
 const NOTICE_ROWS = 3;
 
-const PLAY =
-  '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
 
 /** Spawns run one after another: a burst of concurrent binding calls can lose an answer in
  *  the WebView IPC (seen on WebKitGTK), and a single queue keeps restores deterministic. */
@@ -356,7 +357,8 @@ export class TerminalPane implements Pane {
       el.style.width = "100%";
       if (el.firstChild) return;
       el.classList.add("pane-notice");
-      el.appendChild(noticeBlock(n, () => {
+      const font = { family: String(this.term.options.fontFamily ?? ""), size: Number(this.term.options.fontSize ?? 13) };
+      el.appendChild(noticeBlock(n, font, () => {
         this.clearNotice();
         n.onActivate();
       }));
@@ -454,25 +456,41 @@ export class TerminalPane implements Pane {
   }
 }
 
-/** The notice's contents: play icon, 'Claude Session "…"' and the action button. */
-function noticeBlock(n: PaneNotice, activate: () => void): HTMLElement {
+/**
+ * The notice's contents, styled as an inset in the terminal's own typeface: Claude's mark in an
+ * orange gutter, the session on two lines, and the action as a quiet chip on the right.
+ */
+function noticeBlock(n: PaneNotice, font: { family: string; size: number }, activate: () => void): HTMLElement {
   const box = document.createElement("div");
   box.className = "pane-notice-box";
+  box.style.fontFamily = font.family;
+  box.style.fontSize = `${font.size}px`;
   const icon = document.createElement("span");
   icon.className = "pane-notice-icon";
-  icon.innerHTML = PLAY;
-  const label = document.createElement("span");
-  label.className = "pane-notice-label";
-  label.append("Claude Session ");
-  const name = document.createElement("b");
+  icon.innerHTML = CLAUDE_LOGO;
+  const text = document.createElement("div");
+  text.className = "pane-notice-text";
+  const line1 = document.createElement("div");
+  line1.className = "pane-notice-line";
+  const kind = document.createElement("span");
+  kind.className = "pane-notice-kind";
+  kind.textContent = "claude session";
+  const name = document.createElement("span");
+  name.className = "pane-notice-title";
   name.textContent = `"${n.title}"`;
-  label.appendChild(name);
-  const btn = document.createElement("button");
-  btn.className = "pane-notice-btn";
-  btn.textContent = n.action;
-  if (n.hint) btn.title = n.hint;
-  box.append(icon, label, btn);
-  box.title = n.hint ?? "";
+  line1.append(kind, " ", name);
+  text.appendChild(line1);
+  if (n.detail) {
+    const line2 = document.createElement("div");
+    line2.className = "pane-notice-line pane-notice-sub";
+    line2.textContent = n.detail;
+    text.appendChild(line2);
+  }
+  const cta = document.createElement("span");
+  cta.className = "pane-notice-cta";
+  cta.innerHTML = `${PLAY} ${n.action}`;
+  box.append(icon, text, cta);
+  if (n.hint) box.title = n.hint;
   // The decoration sits on top of the terminal: swallow the events xterm would read as
   // a selection drag, and let a click anywhere in the block trigger the action.
   box.addEventListener("mousedown", (e) => e.stopPropagation());

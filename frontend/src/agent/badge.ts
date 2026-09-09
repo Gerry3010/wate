@@ -1,12 +1,7 @@
 import type { Session } from "../api";
 import { showMenuAbove } from "../ui/menu";
 import { STATUS_LABEL, elapsed, fmtTokens, shortPath } from "../sidebar/sidebar";
-
-/** Claude's spark, drawn as eight rounded rays. */
-export const CLAUDE_LOGO =
-  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">' +
-  '<path d="M12 3v4.2M12 16.8V21M3 12h4.2M16.8 12H21M5.6 5.6l3 3M15.4 15.4l3 3M5.6 18.4l3-3M15.4 8.6l3-3"/>' +
-  "</svg>";
+import { CLAUDE_LOGO } from "../ui/icons";
 
 export interface BadgeHost {
   /** Latest state of the pane's session (undefined once it ended). */
