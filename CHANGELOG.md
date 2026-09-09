@@ -6,6 +6,8 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-09-10
+
 ### Added
 - Claude badge: a small rounded tab tucked into the pane's bottom-right corner (drawn like part of the
   pane border, so it covers no text) appears when Claude Code runs there; click it for the
@@ -107,5 +109,6 @@ to replace the old Claude Code hooks.
 - Desktop integration: `make install` (desktop entry, *Open With* for folders),
   `make install-nautilus` ("Open in wate" in the Nautilus context menu).
 
-[Unreleased]: https://github.com/Gerry3010/wate/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Gerry3010/wate/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Gerry3010/wate/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Gerry3010/wate/releases/tag/v0.1.0
