@@ -1,0 +1,10 @@
+[appearance.text]
+font_name = "JetBrains Mono"
+ligature_rendering_enabled = true
+font_size = 15.0
+
+[appearance.window]
+override_opacity = 70
+
+[appearance.themes]
+theme = { custom = { name = "Liquid Glass Custom Dark", path = "liquid_glass_custom_dark.yaml" } }

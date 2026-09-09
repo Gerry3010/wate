@@ -1,0 +1,6 @@
+---
+"pane_group:navigate_prev": shift-left
+"pane_group:navigate_next": shift-right
+"workspace:new_tab": ctrl-shift-t
+"terminal:increase_font_size": ctrl-=
+"agent:unknown_action": ctrl-shift-x

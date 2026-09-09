@@ -139,9 +139,11 @@ html, body {
   justify-content: center;
   opacity: 0.6;
   cursor: default;
-  transition: opacity 120ms, transform 300ms;
+  transition: opacity 120ms;
 }
-.tabbar-settings:hover { background: rgba(255, 255, 255, 0.12); opacity: 1; transform: rotate(30deg); }
+.tabbar-settings svg { transition: transform 300ms; }
+.tabbar-settings:hover { background: rgba(255, 255, 255, 0.12); opacity: 1; }
+.tabbar-settings:hover svg { transform: rotate(30deg); }
 .tabbar-drag {
   flex: 1 1 auto;
   --wails-draggable: drag;

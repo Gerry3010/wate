@@ -1,0 +1,13 @@
+# Ghostty
+font-family = "JetBrainsMono Nerd Font"
+font-size = 13
+font-feature = -calt
+theme = dark:mytheme,light:GitHub-Light
+background-opacity = 0.9
+keybind = ctrl+shift+enter=new_split:right
+keybind = ctrl+shift+d=new_split:down
+keybind = super+left=goto_split:left
+keybind = ctrl+shift+t=new_tab
+keybind = ctrl+a>c=new_tab
+keybind = ctrl+3=goto_tab:3
+keybind = ctrl+equal=increase_font_size:1

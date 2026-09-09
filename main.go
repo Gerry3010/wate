@@ -96,6 +96,8 @@ func main() {
 			application.NewService(&app.OpenerService{}),
 			application.NewService(&app.FileService{}),
 			application.NewService(&app.StateService{}),
+			application.NewService(&app.SessionService{}),
+			application.NewService(app.NewImportService(cfgSvc)),
 			application.NewServiceWithOptions(wp, application.ServiceOptions{Name: "Wallpaper", Route: "/wallpaper"}),
 		},
 		Assets: application.AssetOptions{
@@ -109,6 +111,7 @@ func main() {
 	wapp.Window.NewWithOptions(app.WindowOptions(cfgSvc.Current()))
 	wapp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		app.ApplyNativeTheme(themeSvc)
+		app.ApplyNativeBackground(cfgSvc.Current())
 	})
 	cfgSvc.OnChange = func() { app.ApplyNativeTheme(themeSvc) }
 

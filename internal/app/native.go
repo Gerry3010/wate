@@ -5,7 +5,17 @@ import (
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"github.com/Gerry3010/wate/internal/config"
 )
+
+// ApplyNativeBackground prepares the toolkit window for the configured background mode.
+// Translucency is decided at startup (the window is created with it), so this runs once.
+func ApplyNativeBackground(cfg config.Config) {
+	if cfg.Background.Mode == "translucent" {
+		application.InvokeAsync(setWindowTransparent)
+	}
+}
 
 // ApplyNativeTheme makes the toolkit's own chrome (the GTK title bar on Linux) follow the
 // wate theme: dark terminal colours get a dark title bar, light ones a light one.

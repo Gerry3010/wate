@@ -3,3 +3,5 @@
 package app
 
 func setPreferDark(bool) {}
+
+func setWindowTransparent() {}

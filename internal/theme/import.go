@@ -25,9 +25,9 @@ func ImportFile(path, userDir string) (string, error) {
 	var t Theme
 	switch {
 	case bytes.Contains(data, []byte("palette")) && bytes.Contains(data, []byte("=#")) || bytes.Contains(data, []byte("cursor-color")):
-		t, err = parseGhostty(data)
+		t, err = ParseGhostty(data)
 	case bytes.Contains(data, []byte("[colors.primary]")) || bytes.Contains(data, []byte("[colors.normal]")):
-		t, err = parseAlacritty(data)
+		t, err = ParseAlacritty(data)
 	case bytes.Contains(data, []byte("[colors]")):
 		var r Resolved
 		r, err = Parse(name, data)
@@ -41,19 +41,25 @@ func ImportFile(path, userDir string) (string, error) {
 	if t.Name == "" {
 		t.Name = name
 	}
+	return WriteUser(t, name, userDir, filepath.Base(path))
+}
+
+// WriteUser validates a theme, fills defaults and writes it as <userDir>/<slug(name)>.toml.
+// origin is mentioned in the file header. Returns the theme id.
+func WriteUser(t Theme, name, userDir, origin string) (string, error) {
 	fillDefaults(&t)
 	if err := validate(t); err != nil {
-		return "", fmt.Errorf("%s: %w", filepath.Base(path), err)
+		return "", fmt.Errorf("%s: %w", name, err)
 	}
 	id := Slug(name)
 	if id == "" {
-		return "", fmt.Errorf("%s: cannot derive a theme id", filepath.Base(path))
+		return "", fmt.Errorf("%s: cannot derive a theme id", name)
 	}
 	if err := os.MkdirAll(userDir, 0o755); err != nil {
 		return "", err
 	}
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "# imported by wate from %s\n", filepath.Base(path))
+	fmt.Fprintf(&buf, "# imported by wate from %s\n", origin)
 	if err := toml.NewEncoder(&buf).Encode(t); err != nil {
 		return "", err
 	}
@@ -72,7 +78,8 @@ func Slug(name string) string {
 
 var ghosttyLine = regexp.MustCompile(`^\s*([a-z-]+)\s*=\s*(.*?)\s*$`)
 
-func parseGhostty(data []byte) (Theme, error) {
+// ParseGhostty reads Ghostty's `key = value` colour keys (theme files and config files alike).
+func ParseGhostty(data []byte) (Theme, error) {
 	var t Theme
 	var pal [16]string
 	for _, line := range strings.Split(string(data), "\n") {
@@ -80,7 +87,7 @@ func parseGhostty(data []byte) (Theme, error) {
 		if m == nil {
 			continue
 		}
-		key, val := m[1], normHex(m[2])
+		key, val := m[1], NormHex(m[2])
 		switch key {
 		case "palette":
 			idx, col, ok := strings.Cut(m[2], "=")
@@ -88,7 +95,7 @@ func parseGhostty(data []byte) (Theme, error) {
 			if !ok || err != nil || n < 0 || n > 15 {
 				continue
 			}
-			pal[n] = normHex(col)
+			pal[n] = NormHex(col)
 		case "background":
 			t.Colors.Background = val
 		case "foreground":
@@ -103,7 +110,7 @@ func parseGhostty(data []byte) (Theme, error) {
 			t.Colors.SelectionForeground = val
 		}
 	}
-	assignPalette(&t.Colors, pal)
+	AssignPalette(&t.Colors, pal)
 	if t.Colors.Background == "" || t.Colors.Foreground == "" {
 		return t, fmt.Errorf("ghostty theme without background/foreground")
 	}
@@ -120,33 +127,35 @@ type alacrittyTheme struct {
 	} `toml:"colors"`
 }
 
-func parseAlacritty(data []byte) (Theme, error) {
+// ParseAlacritty reads the [colors.*] tables of an Alacritty TOML file.
+func ParseAlacritty(data []byte) (Theme, error) {
 	var a alacrittyTheme
 	if _, err := toml.Decode(string(data), &a); err != nil {
 		return Theme{}, err
 	}
 	var t Theme
 	c := &t.Colors
-	c.Background = normHex(a.Colors.Primary.Background)
-	c.Foreground = normHex(a.Colors.Primary.Foreground)
-	c.Cursor = normHex(a.Colors.Cursor.Cursor)
-	c.CursorText = normHex(a.Colors.Cursor.Text)
-	c.SelectionBackground = normHex(a.Colors.Selection.Background)
-	c.SelectionForeground = normHex(a.Colors.Selection.Text)
+	c.Background = NormHex(a.Colors.Primary.Background)
+	c.Foreground = NormHex(a.Colors.Primary.Foreground)
+	c.Cursor = NormHex(a.Colors.Cursor.Cursor)
+	c.CursorText = NormHex(a.Colors.Cursor.Text)
+	c.SelectionBackground = NormHex(a.Colors.Selection.Background)
+	c.SelectionForeground = NormHex(a.Colors.Selection.Text)
 	var pal [16]string
 	order := []string{"black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"}
 	for i, n := range order {
-		pal[i] = normHex(a.Colors.Normal[n])
-		pal[i+8] = normHex(a.Colors.Bright[n])
+		pal[i] = NormHex(a.Colors.Normal[n])
+		pal[i+8] = NormHex(a.Colors.Bright[n])
 	}
-	assignPalette(c, pal)
+	AssignPalette(c, pal)
 	if c.Background == "" || c.Foreground == "" {
 		return t, fmt.Errorf("alacritty theme without colors.primary")
 	}
 	return t, nil
 }
 
-func assignPalette(c *Colors, pal [16]string) {
+// AssignPalette copies the 16 ANSI colours (empty entries are skipped).
+func AssignPalette(c *Colors, pal [16]string) {
 	dst := []*string{&c.Black, &c.Red, &c.Green, &c.Yellow, &c.Blue, &c.Magenta, &c.Cyan, &c.White,
 		&c.BrightBlack, &c.BrightRed, &c.BrightGreen, &c.BrightYellow, &c.BrightBlue, &c.BrightMagenta, &c.BrightCyan, &c.BrightWhite}
 	for i, p := range dst {
@@ -156,8 +165,8 @@ func assignPalette(c *Colors, pal [16]string) {
 	}
 }
 
-// normHex accepts "#rrggbb", "rrggbb", "0xrrggbb" and quoted forms.
-func normHex(s string) string {
+// NormHex accepts "#rrggbb", "rrggbb", "0xrrggbb" and quoted forms.
+func NormHex(s string) string {
 	s = strings.Trim(strings.TrimSpace(s), `"'`)
 	s = strings.TrimPrefix(strings.TrimPrefix(s, "0x"), "#")
 	if len(s) != 6 {

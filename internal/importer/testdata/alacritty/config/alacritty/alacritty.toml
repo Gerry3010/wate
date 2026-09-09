@@ -1,0 +1,21 @@
+[general]
+import = ["themes/nord.toml"]
+
+[font]
+size = 12.5
+
+[font.normal]
+family = "Fira Code"
+
+[window]
+opacity = 0.8
+
+[[keyboard.bindings]]
+key = "T"
+mods = "Control|Shift"
+action = "CreateNewTab"
+
+[[keyboard.bindings]]
+key = "Plus"
+mods = "Control"
+action = "IncreaseFontSize"
