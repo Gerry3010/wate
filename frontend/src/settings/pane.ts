@@ -1,6 +1,7 @@
 import { Dialogs } from "@wailsio/runtime";
+import type { ImportedTab } from "../session";
 
-import { ConfigService, OpenerService, ThemeService, type Config, type Resolved } from "../api";
+import { ConfigService, ImportService, OpenerService, ThemeService, type Config, type ImportSource, type Resolved } from "../api";
 import { chordId, eventChord } from "../keymap/keymap";
 import type { Pane } from "../pane";
 
@@ -11,6 +12,8 @@ export interface SettingsPaneOptions {
   keyLabels: Record<string, string>;
   onOpenConfigFile(): void;
   onClose(): void;
+  /** Open tabs delivered by "Import from another terminal"; resolves to the number opened. */
+  onImportTabs(tabs: ImportedTab[]): Promise<number>;
 }
 
 /** Where compatible colour schemes live (Ghostty and Alacritty exports of every scheme). */
@@ -59,9 +62,12 @@ export class SettingsPane implements Pane {
   private themeGrid = document.createElement("div");
   private current = "appearance";
 
+  private importTabs: (tabs: ImportedTab[]) => Promise<number>;
+
   constructor(opts: SettingsPaneOptions) {
     this.id = opts.paneId;
     this.config = opts.config;
+    this.importTabs = opts.onImportTabs;
     this.element.className = "pane pane-settings";
     this.element.dataset.paneId = opts.paneId;
     this.element.tabIndex = -1;
@@ -97,7 +103,7 @@ export class SettingsPane implements Pane {
     this.content.scrollTop = scroll;
   }
 
-  private show(id: string) {
+  show(id: string) {
     this.current = id;
     for (const b of this.nav.querySelectorAll<HTMLButtonElement>("button")) b.classList.toggle("active", b.dataset.section === id);
     for (const sec of this.content.querySelectorAll<HTMLElement>("section")) sec.hidden = sec.dataset.section !== id;
@@ -221,6 +227,19 @@ export class SettingsPane implements Pane {
     this.text(cl, "Command", "claude.command", c.claude.command);
     this.check(cl, "Desktop notifications", "claude.notify", c.claude.notify);
 
+    const imp = this.section("Import", "import");
+    const impHint = document.createElement("p");
+    impHint.className = "settings-hint";
+    impHint.textContent =
+      "Bring theme, font, window and tab settings over from another terminal installed on this machine. " +
+      "Tick what you want, everything else stays as it is.";
+    imp.appendChild(impHint);
+    const impList = document.createElement("div");
+    impList.className = "import-list";
+    impList.textContent = "Looking for terminals…";
+    imp.appendChild(impList);
+    void this.buildImport(impList);
+
     const keys = this.section("Keybindings", "keys");
     const hint = document.createElement("p");
     hint.className = "settings-hint";
@@ -284,6 +303,91 @@ export class SettingsPane implements Pane {
     card.append(name, prompt, swatches);
     card.addEventListener("click", () => void this.set({ "general.theme": t.id }));
     return card;
+  }
+
+  private async buildImport(list: HTMLElement) {
+    let sources: ImportSource[] = [];
+    try {
+      sources = (await ImportService.Detect()) ?? [];
+    } catch (err) {
+      list.textContent = `Could not scan: ${err}`;
+      return;
+    }
+    list.replaceChildren();
+    if (sources.length === 0) {
+      list.textContent = "No Warp, Ghostty, Alacritty or kitty configuration found.";
+      return;
+    }
+    for (const src of sources) {
+      const card = document.createElement("div");
+      card.className = "import-card";
+      const head = document.createElement("div");
+      head.className = "import-head";
+      const name = document.createElement("strong");
+      name.textContent = src.name;
+      const path = document.createElement("span");
+      path.className = "import-path";
+      path.textContent = src.path;
+      head.append(name, path);
+      card.appendChild(head);
+      const boxes: HTMLInputElement[] = [];
+      for (const item of src.items ?? []) {
+        const row = document.createElement("label");
+        row.className = "import-item";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = item.key;
+        cb.checked = item.key !== "tabs" && !item.detail.includes("not on disk") && !item.detail.includes("not found");
+        const label = document.createElement("span");
+        label.className = "import-label";
+        label.textContent = item.label;
+        const detail = document.createElement("span");
+        detail.className = "import-detail";
+        detail.textContent = item.detail;
+        row.append(cb, label, detail);
+        card.appendChild(row);
+        boxes.push(cb);
+      }
+      const actions = document.createElement("div");
+      actions.className = "settings-actions";
+      const btn = document.createElement("button");
+      btn.textContent = `Import selected from ${src.name}`;
+      const out = document.createElement("span");
+      out.className = "settings-hint import-result";
+      btn.addEventListener("click", async () => {
+        const keys = boxes.filter((b) => b.checked).map((b) => b.value);
+        if (keys.length === 0) {
+          out.textContent = "Nothing selected.";
+          return;
+        }
+        btn.disabled = true;
+        out.textContent = "Importing…";
+        try {
+          const res = await ImportService.Apply(src.id, keys);
+          const done: string[] = [];
+          const n = Object.keys(res.settings ?? {}).length;
+          if (n) done.push(`${n} setting${n === 1 ? "" : "s"} written`);
+          if (res.theme_id) done.push(`theme "${res.theme_id}" installed and activated`);
+          if (res.tabs?.length) {
+            const opened = await this.importTabs(res.tabs as unknown as ImportedTab[]);
+            done.push(`${opened} tab${opened === 1 ? "" : "s"} opened`);
+          }
+          out.textContent = (done.length ? done.join(", ") + "." : "Nothing to import.") + (res.notes?.length ? " " + res.notes.join(" ") : "");
+          if (res.settings && "background.mode" in res.settings && res.settings["background.mode"] === "translucent") {
+            out.textContent += " Restart wate for the translucent window.";
+          }
+          this.flash("imported");
+        } catch (err) {
+          out.textContent = `Import failed: ${err}`;
+          this.flash(String(err), true);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+      actions.append(btn, out);
+      card.appendChild(actions);
+      list.appendChild(card);
+    }
   }
 
   private section(title: string, id: string): HTMLElement {

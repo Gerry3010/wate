@@ -147,11 +147,27 @@ or `wate theme import <file>`. Imported themes land in `~/.config/wate/themes/<i
 you can tweak them; the "Browse compatible themes" button in the settings links to the catalog. See [`internal/config/defaults.toml`](internal/config/defaults.toml) for every
 key with its default. `wate --config <file>` uses a different file.
 
+### Import from another terminal
+
+*Settings → Import* lists the terminals it finds on the machine — **Warp, Ghostty, Alacritty
+and kitty** — with what each one can contribute: colour theme, font (family, size, ligatures),
+window opacity, background image, key bindings, and for Warp the **saved tabs with their split
+layouts, working directories, titles and colours**. Tick what you want and import; everything else
+stays untouched. Warp tabs are read from its SQLite database with the `sqlite3` command-line tool
+(preinstalled on macOS, a small package on Linux).
+
+### Sessions, tab titles and colours
+
+The `⌄` button at the right of the tab bar (or a right-click on empty tab-bar space) saves the
+current tabs — layouts, directories, open files, titles, colours — under a name and reopens saved
+sessions later. Sessions are plain JSON in `~/.config/wate/sessions/`. Double-click a tab to
+rename it; right-click for colours.
+
 ### Translucent window on GNOME
 
 `mode = "translucent"` relies on the compositor for blur. On GNOME install
 [Blur my Shell](https://extensions.gnome.org/extension/3193/blur-my-shell/) and add
-`io.github.gerry3010.wate` (or the `wate` window class) to its *Applications* whitelist.
+`org.wails.wate` (or the `wate` window class) to its *Applications* whitelist.
 `mode = "wallpaper"` blurs an image of your choice inside the window and works everywhere.
 
 ## Support

@@ -6,6 +6,22 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 
 ## [Unreleased]
 
+### Added
+- *Settings → Import*: pull theme, font, window opacity, background image, key bindings and (for
+  Warp) saved tabs with split layouts, cwds, titles and colours from Warp, Ghostty, Alacritty or
+  kitty — with a checkbox per item.
+- Named sessions: the `⌄` dropdown (or right-click) on the tab bar saves the current tabs under a
+  name and reopens them later (`~/.config/wate/sessions/*.json`).
+- Tab titles (double-click to rename) and tab colours (right-click), kept in sessions.
+- Settings button (gear) in the tab bar; settings open in their own tab when the current one is split.
+
+### Fixed
+- Linux: the GTK title bar follows the theme (dark for dark themes) instead of always being light.
+- Linux: `background.mode = "translucent"` now actually makes the window see-through on GTK4.
+- Background settings: choosing wallpaper mode without an image opens the file dialog; sliders
+  that have no effect in the current mode are hidden.
+- GNOME shows wate's icon and name in the dock (desktop entry named after the GTK application id).
+
 ## [0.1.0] — 2026-09-09
 
 First release: a small, pretty terminal for Linux and macOS (Go + Wails v3 + xterm.js).

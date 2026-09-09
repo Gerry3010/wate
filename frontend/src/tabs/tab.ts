@@ -25,6 +25,9 @@ export class Tab {
   readonly panes = new Map<string, Pane>();
   tree: LayoutNode | null = null;
   focusedId: string | null = null;
+  /** User-given title (overrides the focused pane's title) and tab colour. */
+  customTitle = "";
+  color = "";
   private view: LayoutView;
   onChange?: () => void;
 
@@ -61,6 +64,12 @@ export class Tab {
   }
 
   get title(): string {
+    if (this.customTitle) return this.customTitle;
+    return this.autoTitle;
+  }
+
+  /** Title derived from the focused pane (shown as fallback / in the rename field). */
+  get autoTitle(): string {
     const p = this.focusedId ? this.panes.get(this.focusedId) : undefined;
     return p?.title || "wate";
   }

@@ -122,3 +122,19 @@
   text-align: center;
 }
 .keys-chord.recording { border-color: var(--accent) !important; color: var(--accent); }
+
+/* ---- import from another terminal -------------------------------------- */
+.import-list { display: flex; flex-direction: column; gap: 12px; }
+.import-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px 6px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.import-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.import-path { color: var(--tab-inactive-fg); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.import-item { display: flex; align-items: baseline; gap: 10px; padding: 4px 0; cursor: default; }
+.import-item input { margin: 0; align-self: center; }
+.import-label { flex: 0 0 140px; }
+.import-detail { color: var(--tab-inactive-fg); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-result { margin: 0; align-self: center; }

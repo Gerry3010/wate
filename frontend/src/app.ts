@@ -1,7 +1,7 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { AgentService, OpenerService, StateService, ThemeService, type Config, type Resolved, type Session, type Target } from "./api";
-import { parseSession, remapTree, type SavedPane, type SavedSession } from "./session";
+import { AgentService, OpenerService, SessionService, StateService, ThemeService, type Config, type Resolved, type Session, type Target } from "./api";
+import { fromImported, parseSession, remapTree, type ImportedTab, type SavedPane, type SavedSession, type SavedTab } from "./session";
 import { AgentStore } from "./agent/store";
 import { Sidebar } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
@@ -38,6 +38,19 @@ export class WateApp {
       close: (t) => this.closeTab(t),
       newTab: () => this.newTab(),
       openSettings: () => this.openSettings(),
+      renameTab: (t, title) => {
+        t.customTitle = title;
+        t.onChange?.();
+      },
+      colorTab: (t, color) => {
+        t.color = color;
+        t.onChange?.();
+      },
+      listSessions: async () => (await SessionService.List()) ?? [],
+      saveSession: (name) => void this.saveNamedSession(name),
+      openSession: (id) => void this.openNamedSession(id),
+      deleteSession: (id) => void SessionService.Delete(id).catch((err) => console.warn("delete session:", err)),
+      openImport: () => this.openSettings("import"),
       agentStatus: (t) => this.agents.forTab(t.id),
     });
     this.sidebar = new Sidebar(this.agents, {
@@ -68,6 +81,12 @@ export class WateApp {
 
   async saveSession(immediate = false): Promise<void> {
     if (this.restoring || !this.config.general.restore_session) return;
+    const state = await this.snapshot(immediate);
+    await StateService.Save(JSON.stringify(state)).catch((err) => console.warn("session save:", err));
+  }
+
+  /** Serialise every tab (layout, cwds, open files, titles, colours). */
+  async snapshot(immediate = false): Promise<SavedSession> {
     const tabs: SavedSession["tabs"] = [];
     for (const t of this.tabs) {
       if (!t.tree) continue;
@@ -76,10 +95,40 @@ export class WateApp {
         if (p instanceof EditorPane) panes.push({ id: p.id, kind: "editor", path: p.path });
         else if (p instanceof TerminalPane) panes.push({ id: p.id, kind: "terminal", cwd: immediate ? p.lastKnownCwd() : await p.cwd().catch(() => "") });
       }
-      tabs.push({ tree: t.tree, focused: t.focusedId, panes });
+      if (panes.length === 0) continue;
+      tabs.push({ tree: t.tree, focused: t.focusedId, panes, title: t.customTitle || undefined, color: t.color || undefined });
     }
-    const state: SavedSession = { version: 1, active: this.active ? this.tabs.indexOf(this.active) : 0, tabs };
-    await StateService.Save(JSON.stringify(state)).catch((err) => console.warn("session save:", err));
+    return { version: 1, active: this.active ? this.tabs.indexOf(this.active) : 0, tabs };
+  }
+
+  /** Store the current tabs under a name (tab bar dropdown). */
+  async saveNamedSession(name: string): Promise<void> {
+    try {
+      const state = await this.snapshot();
+      await SessionService.Save(name, JSON.stringify(state));
+    } catch (err) {
+      console.warn("save session:", err);
+    }
+  }
+
+  /** Open a named session: its tabs are added after the current ones. */
+  async openNamedSession(id: string): Promise<void> {
+    try {
+      const saved = parseSession(await SessionService.Load(id));
+      if (!saved) throw new Error("session file is empty or invalid");
+      const opened = await this.openTabs(saved.tabs);
+      const active = opened[Math.min(saved.active, opened.length - 1)];
+      if (active) this.activate(active);
+    } catch (err) {
+      console.warn("open session:", err);
+    }
+  }
+
+  /** Open tabs delivered by the importer (Warp etc.). */
+  async importTabs(tabs: ImportedTab[]): Promise<number> {
+    const opened = await this.openTabs(fromImported(tabs));
+    if (opened[0]) this.activate(opened[0]);
+    return opened.length;
   }
 
   /** Rebuild tabs from the saved state; returns false when nothing was restored. */
@@ -89,46 +138,57 @@ export class WateApp {
     if (!saved) return false;
     this.restoring = true;
     try {
-      for (const st of saved.tabs) {
-        const tab = new Tab();
-        tab.onChange = () => {
-          this.refreshChrome(tab);
-          if (tab === this.active) this.reportFocus();
-          this.scheduleSave();
-        };
-        const map = new Map<string, string>();
-        const panes: Pane[] = [];
-        const starts: Promise<unknown>[] = [];
-        for (const sp of st.panes) {
-          if (sp.kind === "editor") {
-            const pane = this.makeEditor(tab, sp.path);
-            map.set(sp.id, pane.id);
-            panes.push(pane);
-            starts.push(pane.load().catch((err) => {
-              console.warn("restore editor:", err);
-              tab.remove(pane.id);
-            }));
-          } else {
-            const pane = this.makeTerminal(tab, { cwd: sp.cwd });
-            map.set(sp.id, pane.id);
-            panes.push(pane);
-            starts.push(pane.start());
-          }
-        }
-        const tree = remapTree(st.tree, map);
-        if (!tree || panes.length === 0) continue;
-        this.tabs.push(tab);
-        this.activate(tab);
-        tab.restore(tree, panes, st.focused ? map.get(st.focused) ?? null : null);
-        await Promise.all(starts);
-      }
-      const active = this.tabs[saved.active];
+      const opened = await this.openTabs(saved.tabs);
+      const active = opened[saved.active];
       if (active) this.activate(active);
       this.active?.focusPane();
       return this.tabs.length > 0;
     } finally {
       this.restoring = false;
     }
+  }
+
+  /** Create tabs from saved descriptions (session restore, named sessions, imports). */
+  private async openTabs(saved: SavedTab[]): Promise<Tab[]> {
+    const opened: Tab[] = [];
+    for (const st of saved) {
+      const tab = new Tab();
+      tab.customTitle = st.title ?? "";
+      tab.color = st.color ?? "";
+      tab.onChange = () => {
+        this.refreshChrome(tab);
+        if (tab === this.active) this.reportFocus();
+        this.scheduleSave();
+      };
+      const map = new Map<string, string>();
+      const panes: Pane[] = [];
+      const starts: Promise<unknown>[] = [];
+      for (const sp of st.panes) {
+        if (sp.kind === "editor") {
+          const pane = this.makeEditor(tab, sp.path);
+          map.set(sp.id, pane.id);
+          panes.push(pane);
+          starts.push(pane.load().catch((err) => {
+            console.warn("restore editor:", err);
+            tab.remove(pane.id);
+          }));
+        } else {
+          const pane = this.makeTerminal(tab, { cwd: sp.cwd });
+          map.set(sp.id, pane.id);
+          panes.push(pane);
+          starts.push(pane.start());
+        }
+      }
+      const tree = remapTree(st.tree, map);
+      if (!tree || panes.length === 0) continue;
+      this.tabs.push(tab);
+      this.activate(tab);
+      tab.restore(tree, panes, st.focused ? map.get(st.focused) ?? null : null);
+      await Promise.all(starts);
+      opened.push(tab);
+    }
+    this.scheduleSave();
+    return opened;
   }
 
   // ---- Claude Code --------------------------------------------------------
@@ -180,7 +240,7 @@ export class WateApp {
   }
 
   /** Open (or focus) the settings pane in the active tab. */
-  openSettings() {
+  openSettings(section?: string) {
     // One settings pane per window: jump to it if it is already open somewhere.
     for (const t of this.tabs) {
       for (const p of t.panes.values()) {
@@ -188,6 +248,7 @@ export class WateApp {
           this.activate(t);
           t.setFocus(p.id);
           p.focus();
+          if (section) p.show(section);
           return;
         }
       }
@@ -201,9 +262,11 @@ export class WateApp {
       keyLabels: {},
       onOpenConfigFile: () => void this.openEditor(tab, this.configPath),
       onClose: () => this.removePane(tab, pane),
+      onImportTabs: (tabs) => this.importTabs(tabs),
     });
     tab.add(pane, "row");
     pane.focus();
+    if (section) pane.show(section);
   }
 
   /** Fetch the resolved theme and push it into CSS + panes. */
