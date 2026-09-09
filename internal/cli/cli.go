@@ -55,17 +55,21 @@ func Run(args []string) int {
 			return 2
 		}
 		req := ctl.Request{Cmd: args[1], Pane: os.Getenv("WATE_PANE_ID"), Tab: os.Getenv("WATE_TAB_ID")}
-		rest := strings.Join(args[2:], " ")
+		var words []string
+		for i := 2; i < len(args); i++ {
+			if args[i] == "--pane" && i+1 < len(args) {
+				req.Pane = args[i+1]
+				i++
+				continue
+			}
+			words = append(words, args[i])
+		}
+		rest := strings.Join(words, " ")
 		switch args[1] {
 		case "input":
 			req.Text = rest
 		case "action":
 			req.Name = rest
-		}
-		for i, a := range args[2:] {
-			if a == "--pane" && i+3 < len(args) {
-				req.Pane = args[i+3]
-			}
 		}
 		return send(req)
 	case "theme":
