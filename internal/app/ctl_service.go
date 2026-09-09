@@ -62,18 +62,36 @@ func (c *CtlService) ServiceStartup(context.Context, application.ServiceOptions)
 	}
 	c.server = s
 	c.pty.SetSocketPath(s.Path())
-	// Record the socket for later starts with the same config (see ctl.FindPrimary).
-	if err := os.MkdirAll(config.StateDir(), 0o755); err == nil {
-		_ = os.WriteFile(ctl.PrimaryFile(config.StateDir()), []byte(s.Path()+"\n"), 0o600)
+	// Record the socket for later starts with the same config (see ctl.FindPrimary). A secondary
+	// window must not take that role over from the instance that owns the session.
+	if !c.cfg.Secondary {
+		if err := os.MkdirAll(config.StateDir(), 0o755); err == nil {
+			_ = os.WriteFile(ctl.PrimaryFile(config.StateDir()), []byte(s.Path()+"\n"), 0o600)
+		}
 	}
 	return nil
 }
 
 func (c *CtlService) ServiceShutdown() error {
+	c.Resign()
 	if c.server != nil {
 		return c.server.Close()
 	}
 	return nil
+}
+
+// Resign drops the primary-instance record (if it is ours). Called as soon as shutdown begins:
+// the process stays alive for a few seconds while Claude sessions and shells wind down, and a
+// wate started in that window must take over and restore the session rather than come up as
+// an empty secondary window.
+func (c *CtlService) Resign() {
+	if c.server == nil {
+		return
+	}
+	path := ctl.PrimaryFile(config.StateDir())
+	if data, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(data)) == c.server.Path() {
+		_ = os.Remove(path)
+	}
 }
 
 // SocketPath is what shells get as $WATE_SOCKET.

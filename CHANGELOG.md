@@ -48,6 +48,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   follows the same rule.
 
 ### Fixed
+- Reopening wate right after closing it came up empty (and only the next start restored the
+  session): the closing process still counted as the running instance while its shells wound
+  down, so the new window started as a secondary one. The primary record is now released the
+  moment shutdown begins, and secondary windows no longer claim it.
 - Restoring a session in which a TUI (Claude Code) had been running left the shell echoing
   mouse and focus reports as garbage: the replayed text no longer carries terminal modes and
   every mode is reset before the new shell starts.

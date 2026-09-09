@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"log"
@@ -80,8 +81,12 @@ func main() {
 	themeSvc := app.NewThemeService(cfgSvc.Current)
 	notifySvc := notifications.New()
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc)
-	// Quitting: let Claude Code shut down before the shells get their SIGHUP.
-	ptySvc.BeforeKill = agentSvc.StopSessions
+	// Quitting: hand the primary role to whoever starts next, then let Claude Code shut down
+	// before the shells get their SIGHUP.
+	ptySvc.BeforeKill = func(ctx context.Context) {
+		ctlSvc.Resign()
+		agentSvc.StopSessions(ctx)
+	}
 	wp := &wallpaper.Handler{Path: func() string { return cfgSvc.Current().Background.Wallpaper }}
 
 	application.RegisterEvent[app.ConfigResponse]("config:changed")
