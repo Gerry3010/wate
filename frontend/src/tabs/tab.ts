@@ -27,6 +27,8 @@ export class Tab {
   readonly panes = new Map<string, Pane>();
   tree: LayoutNode | null = null;
   focusedId: string | null = null;
+  /** Fired after the layout settled, with the focused pane's rectangle (the sidebar edge follows it). */
+  onLayout?: (focused: DOMRect | null) => void;
   /** User-given title (overrides the focused pane's title) and tab colour. */
   customTitle = "";
   color = "";
@@ -47,6 +49,7 @@ export class Tab {
         for (const p of this.panes.values()) p.setFitSuspended?.(false);
         this.relayoutPanes();
       },
+      onLines: (r) => this.onLayout?.(r),
     });
   }
 

@@ -17,6 +17,7 @@ export const STATUS_LABEL: Record<string, string> = { running: "working", waitin
 export class Sidebar {
   readonly element = document.createElement("aside");
   private list = document.createElement("div");
+  private edge = document.createElement("div");
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(private store: AgentStore, private host: SidebarHost) {
@@ -37,7 +38,8 @@ export class Sidebar {
     launch.title = host.launchLabel;
     launch.addEventListener("click", () => host.launch());
     this.list.className = "sidebar-list";
-    this.element.append(head, this.list, launch);
+    this.edge.className = "sidebar-edge";
+    this.element.append(this.edge, head, this.list, launch);
     store.subscribe(() => this.render());
     this.render();
   }
@@ -48,6 +50,19 @@ export class Sidebar {
     clearInterval(this.timer);
     if (show) this.timer = setInterval(() => this.render(), 10_000);
     this.host.onVisibility?.();
+  }
+
+  /** Like the pane dividers, the panel's left hairline skips the stretch beside the focused pane. */
+  cutEdge(focused: DOMRect | null) {
+    let mask = "";
+    if (focused && this.visible) {
+      const r = this.element.getBoundingClientRect();
+      const lo = Math.max(r.top, focused.top) - r.top;
+      const hi = Math.min(r.bottom, focused.bottom) - r.top;
+      if (Math.abs(focused.right - r.left) <= 12 && hi - lo > 1) mask = `linear-gradient(to bottom, #000 ${lo}px, transparent ${lo}px, transparent ${hi}px, #000 ${hi}px)`;
+    }
+    this.edge.style.maskImage = mask;
+    this.edge.style.webkitMaskImage = mask;
   }
 
   get visible() {

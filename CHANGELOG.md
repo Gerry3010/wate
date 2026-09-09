@@ -44,7 +44,8 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ### Changed
 - Pane dividers draw their hairline only between two inactive panes: the stretch beside the
   focused pane is left out (also along sub-splits, where the line stops at the focused pane).
-  The divider still lights up on hover so it can be dragged.
+  The divider still lights up on hover so it can be dragged. The Claude sidebar's left edge
+  follows the same rule.
 
 ### Fixed
 - Restoring a session in which a TUI (Claude Code) had been running left the shell echoing

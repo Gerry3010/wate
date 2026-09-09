@@ -180,6 +180,7 @@ export class WateApp {
         if (tab === this.active) this.reportFocus();
         this.scheduleSave();
       };
+      tab.onLayout = (r) => this.sidebar.cutEdge(tab === this.active ? r : null);
       const map = new Map<string, string>();
       const panes: Pane[] = [];
       const starts: Promise<unknown>[] = [];
@@ -379,6 +380,7 @@ export class WateApp {
       if (tab === this.active) this.reportFocus();
       this.scheduleSave();
     };
+    tab.onLayout = (r) => this.sidebar.cutEdge(tab === this.active ? r : null);
     this.tabs.push(tab);
     this.activate(tab);
     return tab;

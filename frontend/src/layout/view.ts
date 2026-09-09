@@ -9,6 +9,8 @@ export interface LayoutViewHost {
   onDragStart(): void;
   /** Panes need to re-fit after their box changed. */
   onResized(): void;
+  /** The divider lines were redrawn; here is the focused pane's rectangle (null when none). */
+  onLines?(focused: DOMRect | null): void;
 }
 
 interface SplitEls {
@@ -83,6 +85,7 @@ export class LayoutView {
       line.style.maskImage = mask;
       line.style.webkitMaskImage = mask;
     }
+    this.host.onLines?.(f ?? null);
   }
 
   private build(n: LayoutNode): HTMLElement {

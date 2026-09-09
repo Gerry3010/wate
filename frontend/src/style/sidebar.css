@@ -12,10 +12,12 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--border);
+  position: relative;
   background: rgba(var(--bg-rgb), calc(var(--surface-alpha) * 0.7));
   font-size: 12.5px;
 }
+/* Left hairline; masked beside the focused pane (see Sidebar.cutEdge). */
+.sidebar-edge { position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--border); pointer-events: none; }
 :root[data-bg-mode="solid"] .sidebar { background: var(--sidebar-bg); }
 .sidebar-close {
   float: right;
