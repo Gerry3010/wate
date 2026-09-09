@@ -228,9 +228,12 @@ html, body {
 .pane.focused { outline-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .split > .pane.focused:only-of-type { outline-color: transparent; }
 
+.pane-terminal { overflow: hidden; }
 .pane-terminal .xterm {
   height: 100%;
 }
+/* DOM-renderer fallback: never let a row spill into the neighbouring pane. */
+.pane-terminal .xterm-rows > div { overflow: hidden; }
 
 /* xterm.js base styles are imported from the package; only overrides live here. */
 .xterm .xterm-viewport {

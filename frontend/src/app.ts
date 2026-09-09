@@ -317,9 +317,11 @@ export class WateApp {
     if (this.active === tab) return;
     this.scheduleSave();
     this.active?.element.classList.remove("active");
+    for (const p of this.active?.panes.values() ?? []) p.setVisible?.(false);
     this.active = tab;
     tab.element.classList.add("active");
     if (!tab.element.parentElement) this.content.appendChild(tab.element);
+    for (const p of tab.panes.values()) p.setVisible?.(true);
     tab.render();
     this.refreshChrome(tab);
     tab.focusPane();
@@ -566,6 +568,8 @@ export class WateApp {
         kind: p.kind,
         rect: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)],
         canvases: p.element.querySelectorAll("canvas").length,
+        rowsWidth: p.element.querySelector(".xterm-rows")?.clientWidth,
+        rowOverflow: Math.max(0, ...Array.from(p.element.querySelectorAll(".xterm-rows > div")).map((d) => d.scrollWidth - d.clientWidth)),
         cols: term?.cols,
         rows: term?.rows,
         line0: term?.buffer.active.getLine(0)?.translateToString(true).slice(0, 60),

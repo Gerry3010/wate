@@ -27,6 +27,9 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   that have no effect in the current mode are hidden.
 - GNOME shows wate's icon and name in the dock (desktop entry named after the GTK application id).
 - Pane outlines no longer get clipped by the window's rounded corners.
+- Panes in hidden tabs release their WebGL context (browsers allow only ~16), so visible panes
+  never fall back to the DOM renderer whose text could spill into neighbouring panes; panes
+  clip their rows as a safety net.
 
 ## [0.1.0] — 2026-09-09
 

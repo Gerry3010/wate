@@ -8,6 +8,8 @@ export interface Pane {
   focus(): void;
   /** Whether this is the tab's focused pane (cursor blink, highlight). */
   setActive?(active: boolean): void;
+  /** The pane's tab was shown or hidden (release GPU resources while hidden). */
+  setVisible?(visible: boolean): void;
   /** Working directory to inherit for new panes (best effort). */
   cwd(): Promise<string>;
   /** Called when the pane's box changed size. */

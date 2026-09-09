@@ -128,16 +128,34 @@ export class TerminalPane implements Pane {
     this.term.options.cursorBlink = active && this.opts.terminal.cursor_blink;
   }
 
+  private webgl?: WebglAddon;
+
+  /** Browsers allow ~16 WebGL contexts per page: only panes in the visible tab keep one,
+   *  hidden tabs fall back to the DOM renderer until they are shown again. */
+  setVisible(visible: boolean) {
+    if (visible && !this.webgl) this.enableWebgl();
+    else if (!visible && this.webgl) {
+      this.webgl.dispose();
+      this.webgl = undefined;
+    }
+  }
+
   private enableWebgl() {
+    if (this.disposed) return;
     try {
       const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
+      webgl.onContextLoss(() => {
+        webgl.dispose();
+        if (this.webgl === webgl) this.webgl = undefined;
+      });
       this.term.loadAddon(webgl);
+      this.webgl = webgl;
     } catch (err) {
       // WebKitGTK without GPU acceleration ends up here; the canvas/DOM renderer still works.
       console.warn("webgl renderer unavailable, falling back", err);
     }
   }
+
 
   /** Spawn the PTY and connect. Call once the element is in the DOM. */
   async start(): Promise<void> {
