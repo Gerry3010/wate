@@ -161,3 +161,18 @@ export function snapRatio(ratio: number, threshold = 0.02): { ratio: number; sna
   }
   return { ratio, snapped: null };
 }
+
+/** Exchange two leaves (their positions in the tree); unknown ids leave the tree unchanged. */
+export function swapLeaves(root: LayoutNode, a: string, b: string): LayoutNode {
+  const ids = leaves(root);
+  if (a === b || !ids.includes(a) || !ids.includes(b)) return root;
+  const walk = (n: LayoutNode): LayoutNode => {
+    if (n.kind === "leaf") {
+      if (n.id === a) return leaf(b);
+      if (n.id === b) return leaf(a);
+      return n;
+    }
+    return { ...n, a: walk(n.a), b: walk(n.b) };
+  };
+  return walk(root);
+}

@@ -77,14 +77,17 @@ export class WateApp {
   // ---- session persistence ------------------------------------------------
 
   /** Debounced: called after every structural change. */
+  /** Set for windows opened while another wate runs: they neither restore nor save the session. */
+  secondary = false;
+
   scheduleSave() {
-    if (this.restoring || !this.config.general.restore_session) return;
+    if (this.restoring || this.secondary || !this.config.general.restore_session) return;
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => void this.saveSession(), 800);
   }
 
   async saveSession(immediate = false): Promise<void> {
-    if (this.restoring || !this.config.general.restore_session) return;
+    if (this.restoring || this.secondary || !this.config.general.restore_session) return;
     const state = await this.snapshot(immediate, RESTORE_SCROLLBACK);
     await StateService.Save(JSON.stringify(state)).catch((err) => console.warn("session save:", err));
   }
@@ -140,7 +143,7 @@ export class WateApp {
 
   /** Rebuild tabs from the saved state; returns false when nothing was restored. */
   async restoreSession(): Promise<boolean> {
-    if (!this.config.general.restore_session) return false;
+    if (this.secondary || !this.config.general.restore_session) return false;
     const saved = parseSession(await StateService.Load().catch(() => ""));
     if (!saved) return false;
     this.restoring = true;
@@ -498,6 +501,12 @@ export class WateApp {
       case "focus_up":
       case "focus_down":
         this.focusDir(action.slice("focus_".length) as Direction);
+        break;
+      case "swap_left":
+      case "swap_right":
+      case "swap_up":
+      case "swap_down":
+        tab?.swapDir(action.slice("swap_".length) as Direction);
         break;
       case "resize_left":
       case "resize_right":

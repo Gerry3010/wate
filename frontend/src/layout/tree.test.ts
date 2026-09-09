@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { focusAfterClose, leaf, leaves, nearestSplit, neighbor, ratioOf, removeLeaf, resizeTowards, setRatio, snapRatio, splitLeaf, type Rect } from "./tree";
+import { focusAfterClose, leaf, leaves, nearestSplit, neighbor, ratioOf, removeLeaf, resizeTowards, setRatio, snapRatio, splitLeaf, type Rect, swapLeaves } from "./tree";
 
 describe("split tree", () => {
   it("splits and lists leaves in order", () => {
@@ -82,5 +82,16 @@ describe("resize", () => {
     expect(snapRatio(0.51)).toEqual({ ratio: 0.5, snapped: 0.5 });
     expect(snapRatio(0.34).ratio).toBeCloseTo(1 / 3);
     expect(snapRatio(0.42)).toEqual({ ratio: 0.42, snapped: null });
+  });
+});
+
+describe("swapLeaves", () => {
+  it("exchanges two leaves and keeps the structure", () => {
+    const tree = splitLeaf(splitLeaf(leaf("a"), "a", "row", "b"), "b", "col", "c");
+    const swapped = swapLeaves(tree, "a", "c");
+    expect(leaves(swapped)).toEqual(["c", "b", "a"]);
+    expect(swapped.kind).toBe("split");
+    expect(swapLeaves(tree, "a", "zzz")).toEqual(tree);
+    expect(swapLeaves(tree, "a", "a")).toBe(tree);
   });
 });

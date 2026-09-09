@@ -32,6 +32,15 @@ type Config struct {
 	Keys   map[string]string `toml:"-" json:"keys"`
 	Claude Claude            `toml:"claude" json:"claude"`
 	Editor Editor            `toml:"editor" json:"editor"`
+	Window Window            `toml:"window" json:"window"`
+}
+
+// Window is the main window's default geometry.
+type Window struct {
+	Width  int `toml:"width" json:"width"`
+	Height int `toml:"height" json:"height"`
+	// RememberSize reopens the window at its last size and position.
+	RememberSize bool `toml:"remember_size" json:"remember_size"`
 }
 
 type General struct {
@@ -200,6 +209,12 @@ func finish(c Config) Config {
 	}
 	if c.Background.Mode == "wallpaper" && c.Background.Wallpaper == "" {
 		c.Background.Mode = "solid"
+	}
+	if c.Window.Width < 400 {
+		c.Window.Width = 1100
+	}
+	if c.Window.Height < 240 {
+		c.Window.Height = 700
 	}
 	switch c.Terminal.CursorStyle {
 	case "block", "underline", "bar":

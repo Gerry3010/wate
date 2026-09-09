@@ -31,6 +31,10 @@ const ACTIONS: [string, string][] = [
   ["resize_right", "Resize: divider right"],
   ["resize_up", "Resize: divider up"],
   ["resize_down", "Resize: divider down"],
+  ["swap_left", "Swap pane with the left one"],
+  ["swap_right", "Swap pane with the right one"],
+  ["swap_up", "Swap pane with the one above"],
+  ["swap_down", "Swap pane with the one below"],
   ["close_pane", "Close pane"],
   ["new_tab", "New tab"],
   ["next_tab", "Next tab"],
@@ -152,18 +156,21 @@ export class SettingsPane implements Pane {
     importBtn.textContent = "Import file…";
     importBtn.title = "Ghostty, Alacritty or wate theme file";
     importBtn.addEventListener("click", () => void this.importTheme());
-    const browse = document.createElement("button");
-    browse.textContent = "Browse 400+ compatible themes ↗";
-    browse.addEventListener("click", () => void OpenerService.OpenURL(THEME_CATALOG));
     const folder = document.createElement("button");
-    folder.textContent = "Open themes folder";
+    folder.textContent = "Open folder";
+    folder.title = "Open the themes folder";
     folder.addEventListener("click", () => void ThemeService.ThemesDir().then((d) => OpenerService.Open(d)));
-    actions.append(pasteBtn, importBtn, browse, folder);
+    actions.append(pasteBtn, importBtn, folder);
     const note = document.createElement("p");
     note.className = "settings-hint";
     note.innerHTML =
+      '<a class="settings-link" href="#">Browse 400+ compatible themes ↗</a><br>' +
       "Any scheme from <b>iTerm2-Color-Schemes</b> works: open a file in its <code>ghostty/</code> or <code>alacritty/</code> " +
       "folder, copy the text and paste it here — or import the downloaded file. Your themes live in the themes folder as editable TOML.";
+    note.querySelector("a")!.addEventListener("click", (e) => {
+      e.preventDefault();
+      void OpenerService.OpenURL(THEME_CATALOG);
+    });
     const paste = this.pasteForm();
     pasteBtn.addEventListener("click", () => {
       paste.hidden = !paste.hidden;
@@ -234,6 +241,13 @@ export class SettingsPane implements Pane {
     this.list(gen, "Shell arguments", "general.shell_args", c.general.shell_args ?? [], "e.g. -l, --login");
     this.check(gen, "Shell integration (zsh)", "general.shell_integration", c.general.shell_integration);
     this.check(gen, "Restore session on start", "general.restore_session", c.general.restore_session);
+    this.number(gen, "Window width", "window.width", c.window.width, 400, 10000, "px", 10);
+    this.number(gen, "Window height", "window.height", c.window.height, 240, 10000, "px", 10);
+    this.check(gen, "Remember window size & position", "window.remember_size", c.window.remember_size);
+    const winHint = document.createElement("p");
+    winHint.className = "settings-hint";
+    winHint.textContent = "Width and height are the default for a fresh window (a second wate while one runs, or when remembering is off). Panes: Alt+drag a pane onto another to swap them, or use the swap keybindings.";
+    gen.appendChild(winHint);
     this.list(gen, "Pass-through chords", "general.passthrough", c.general.passthrough ?? [], "chords the terminal keeps even if bound, e.g. ctrl+space");
 
     const cl = this.section("Claude Code", "claude");

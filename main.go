@@ -68,6 +68,11 @@ func main() {
 
 	cfgSvc := app.NewConfigService(cfgPath)
 	cfgSvc.InitialCwd = initialCwd
+	// A second wate (first one still running) opens a plain default window and must not
+	// touch the first one's saved session or window geometry.
+	if _, err := ctl.FindSocket(); err == nil {
+		cfgSvc.Secondary = true
+	}
 	ptySvc := app.NewPtyService(cfgSvc.Current)
 	ctlSvc := app.NewCtlService(ptySvc, cfgSvc)
 	themeSvc := app.NewThemeService(cfgSvc.Current)
@@ -108,7 +113,16 @@ func main() {
 		},
 	})
 
-	wapp.Window.NewWithOptions(app.WindowOptions(cfgSvc.Current()))
+	var saved *app.WindowState
+	if cfg := cfgSvc.Current(); cfg.Window.RememberSize && !cfgSvc.Secondary {
+		if st, ok := app.LoadWindowState(); ok {
+			saved = &st
+		}
+	}
+	win := wapp.Window.NewWithOptions(app.WindowOptions(cfgSvc.Current(), saved))
+	if !cfgSvc.Secondary {
+		app.TrackWindow(win)
+	}
 	wapp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		app.ApplyNativeTheme(themeSvc)
 		app.ApplyNativeBackground(cfgSvc.Current())

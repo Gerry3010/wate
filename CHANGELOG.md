@@ -7,8 +7,14 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- Swap panes: `Ctrl+Shift+Arrow` exchanges the focused pane with its neighbour, Alt+drag a pane
+  onto another does the same with the mouse.
+- `[window] width/height/remember_size`: default window size, and the last size/position/maximised
+  state is restored. A second wate started while one runs opens a default-size empty window that
+  leaves the saved session alone.
 - Themes page: paste a Ghostty/Alacritty/wate theme as text and save it under a name; your themes
-  are listed in their own group (with delete), the grid scrolls while the buttons stay put.
+  are listed in their own group (with delete), the grid scrolls while the buttons stay put; the
+  catalog link sits on its own line.
 - *Settings → Import*: pull theme, font, window opacity, background image, key bindings and (for
   Warp) saved tabs with split layouts, cwds, titles and colours from Warp, Ghostty, Alacritty or
   kitty — with a checkbox per item. Warp's command history (recent blocks with output) can be

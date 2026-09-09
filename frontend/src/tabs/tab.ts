@@ -9,6 +9,8 @@ import {
   resizeTowards,
   setRatio,
   splitLeaf,
+  swapLeaves,
+  neighbor,
   type Dir,
   type Direction,
   type LayoutNode,
@@ -101,8 +103,73 @@ export class Tab {
 
   private attach(pane: Pane) {
     this.panes.set(pane.id, pane);
+    pane.element.dataset.paneId = pane.id;
     pane.element.addEventListener("focusin", () => this.setFocus(pane.id));
-    pane.element.addEventListener("pointerdown", () => this.setFocus(pane.id), { capture: true });
+    pane.element.addEventListener(
+      "pointerdown",
+      (e) => {
+        this.setFocus(pane.id);
+        // Alt + drag moves the pane: drop it on another pane to swap the two.
+        if (e.altKey && e.button === 0 && !e.ctrlKey && !e.metaKey) this.startSwapDrag(pane.id, e);
+      },
+      { capture: true },
+    );
+  }
+
+  /** Exchange two panes' positions. */
+  swap(a: string, b: string): void {
+    if (!this.tree || a === b || !this.panes.has(a) || !this.panes.has(b)) return;
+    this.tree = swapLeaves(this.tree, a, b);
+    this.render();
+    this.setFocus(a);
+    this.onChange?.();
+  }
+
+  /** Swap the focused pane with its neighbour in a direction (keyboard). */
+  swapDir(direction: Direction): void {
+    if (!this.focusedId) return;
+    const other = neighbor(this.rects(), this.focusedId, direction);
+    if (other) this.swap(this.focusedId, other);
+  }
+
+  private startSwapDrag(id: string, start: PointerEvent): void {
+    start.preventDefault();
+    start.stopPropagation();
+    const source = this.panes.get(id)?.element;
+    if (!source) return;
+    source.classList.add("swap-source");
+    let target: HTMLElement | null = null;
+    const paneAt = (x: number, y: number) => {
+      const el = document.elementFromPoint(x, y)?.closest<HTMLElement>(".pane[data-pane-id]") ?? null;
+      return el && el !== source && this.panes.has(el.dataset.paneId ?? "") ? el : null;
+    };
+    const move = (e: PointerEvent) => {
+      const t = paneAt(e.clientX, e.clientY);
+      if (t !== target) {
+        target?.classList.remove("swap-target");
+        target = t;
+        target?.classList.add("swap-target");
+      }
+    };
+    const finish = (e: PointerEvent) => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", finish, true);
+      window.removeEventListener("pointercancel", cancel, true);
+      source.classList.remove("swap-source");
+      target?.classList.remove("swap-target");
+      const t = paneAt(e.clientX, e.clientY);
+      if (t?.dataset.paneId) this.swap(id, t.dataset.paneId);
+    };
+    const cancel = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", finish, true);
+      window.removeEventListener("pointercancel", cancel, true);
+      source.classList.remove("swap-source");
+      target?.classList.remove("swap-target");
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", finish, true);
+    window.addEventListener("pointercancel", cancel, true);
   }
 
   remove(id: string): void {

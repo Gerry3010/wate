@@ -227,6 +227,9 @@ html, body {
 }
 .pane.focused { outline-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .split > .pane.focused:only-of-type { outline-color: transparent; }
+/* Alt+drag pane swap */
+.pane.swap-source { opacity: 0.55; cursor: grabbing; }
+.pane.swap-target { outline: 2px solid var(--accent) !important; outline-offset: -2px; }
 
 .pane-terminal { overflow: hidden; }
 .pane-terminal .xterm {

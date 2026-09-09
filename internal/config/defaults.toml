@@ -9,6 +9,11 @@ shell_integration = true                # zsh: auto-load ~/.config/wate/shell/wa
 restore_session = true                  # reopen tabs, splits, directories and editor files on start
 passthrough = []                        # chords to hand to the terminal even if bound, e.g. ["ctrl+space"]
 
+[window]
+width = 1100                            # default size in px (used for extra windows and when remember_size is off)
+height = 700
+remember_size = true                    # reopen at the last size, position and maximised state
+
 [terminal]
 font = "JetBrainsMono Nerd Font, JetBrains Mono, Hack Nerd Font, Menlo, monospace"
 font_size = 13                          # px
@@ -37,6 +42,10 @@ resize_left    = "alt+shift+left"
 resize_right   = "alt+shift+right"
 resize_up      = "alt+shift+up"
 resize_down    = "alt+shift+down"
+swap_left      = "ctrl+shift+left"      # exchange the focused pane with its neighbour (Alt+drag with the mouse)
+swap_right     = "ctrl+shift+right"
+swap_up        = "ctrl+shift+up"
+swap_down      = "ctrl+shift+down"
 close_pane     = "ctrl+w"
 new_tab        = "ctrl+shift+t"
 next_tab       = "ctrl+tab"

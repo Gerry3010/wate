@@ -183,3 +183,6 @@
 .import-label { flex: 0 0 140px; }
 .import-detail { color: var(--tab-inactive-fg); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .import-result { margin: 0; align-self: center; }
+
+.settings-link { color: var(--accent); text-decoration: none; font-size: 12.5px; display: inline-block; margin-bottom: 4px; }
+.settings-link:hover { text-decoration: underline; }

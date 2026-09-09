@@ -44,6 +44,7 @@ notifications, session sidebar) without any AI of its own.
 | Focus pane left / right / up / down | `Shift+←` / `Shift+→` / `Shift+↑` / `Shift+↓` |
 | Resize: move the nearest divider left / right / up / down | `Alt+Shift+←` / `→` / `↑` / `↓` |
 | Close pane (last pane closes the tab) | `Ctrl+W` |
+| Swap pane with its neighbour | `Ctrl+Shift+Arrow` (or **Alt+drag** a pane onto another) |
 | New tab / next / previous / tab *n* | `Ctrl+Shift+T` / `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Alt+n` |
 | Copy / paste | `Ctrl+Shift+C` / `Ctrl+Shift+V` (macOS also `Cmd+C` / `Cmd+V`) |
 | Launch Claude Code in the current directory | `Ctrl+Shift+K` |
@@ -148,6 +149,13 @@ Paste theme…* (give it a name), or import the downloaded file (*Import file…
 deleted from their card, and live in `~/.config/wate/themes/<id>.toml` where you can tweak them;
 the "Browse compatible themes" button links to the catalog. See [`internal/config/defaults.toml`](internal/config/defaults.toml) for every
 key with its default. `wate --config <file>` uses a different file.
+
+### Window size and second windows
+
+`[window] width/height` is the default size; with `remember_size = true` (default) wate reopens
+at the last size, position and maximised state. Starting wate while it is already running opens a
+fresh window at the default size with a single tab; that window neither restores nor overwrites
+the saved session — the first window owns it. `wate <dir>` still opens a tab in the running window.
 
 ### Import from another terminal
 

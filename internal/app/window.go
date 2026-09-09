@@ -6,13 +6,14 @@ import (
 	"github.com/Gerry3010/wate/internal/config"
 )
 
-// WindowOptions derives the main window options from the background config.
-func WindowOptions(cfg config.Config) application.WebviewWindowOptions {
+// WindowOptions derives the main window options from the config; saved (when non-nil) is the
+// remembered geometry of the last run and wins over the configured default size.
+func WindowOptions(cfg config.Config, saved *WindowState) application.WebviewWindowOptions {
 	opts := application.WebviewWindowOptions{
 		Name:      "main",
 		Title:     "wate",
-		Width:     1100,
-		Height:    700,
+		Width:     cfg.Window.Width,
+		Height:    cfg.Window.Height,
 		MinWidth:  400,
 		MinHeight: 240,
 		URL:       "/",
@@ -26,6 +27,14 @@ func WindowOptions(cfg config.Config) application.WebviewWindowOptions {
 		},
 		BackgroundType:   application.BackgroundTypeSolid,
 		BackgroundColour: application.NewRGB(30, 30, 46),
+	}
+	if saved != nil {
+		opts.Width, opts.Height = saved.Width, saved.Height
+		opts.X, opts.Y = saved.X, saved.Y
+		opts.InitialPosition = application.WindowXY
+		if saved.Maximised {
+			opts.StartState = application.WindowStateMaximised
+		}
 	}
 	switch cfg.Background.Mode {
 	case "translucent":

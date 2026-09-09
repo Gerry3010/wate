@@ -19,6 +19,9 @@ type ConfigService struct {
 	warning string
 	// InitialCwd is the directory given on the command line for the first tab.
 	InitialCwd string
+	// Secondary is true when another wate was already running at startup: this window starts
+	// empty at the default size and leaves the saved session and geometry to the first one.
+	Secondary bool
 	// OnChange, if set, runs after every reload (used to sync native chrome with the theme).
 	OnChange func()
 }
@@ -64,13 +67,14 @@ type ConfigResponse struct {
 	Warning    string        `json:"warning"`
 	OS         string        `json:"os"`
 	InitialCwd string        `json:"initial_cwd"`
+	Secondary  bool          `json:"secondary"`
 }
 
 // Get returns the effective config plus metadata.
 func (c *ConfigService) Get() ConfigResponse {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return ConfigResponse{Config: c.cfg, Path: c.path, Warning: c.warning, OS: goos, InitialCwd: c.InitialCwd}
+	return ConfigResponse{Config: c.cfg, Path: c.path, Warning: c.warning, OS: goos, InitialCwd: c.InitialCwd, Secondary: c.Secondary}
 }
 
 // Reload re-reads the file and broadcasts config:changed.
