@@ -79,6 +79,12 @@ export class Tab {
     return p?.title || "wate";
   }
 
+  /** Tooltip text from the focused pane (the shell's own title and its full path). */
+  get detail(): string {
+    const p = this.focusedId ? this.panes.get(this.focusedId) : undefined;
+    return p?.detail ?? "";
+  }
+
   get focused(): Pane | undefined {
     return this.focusedId ? this.panes.get(this.focusedId) : undefined;
   }

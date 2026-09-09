@@ -116,7 +116,8 @@ export class TabBar {
           title.appendChild(this.renameField(tab));
         } else {
           title.textContent = tab.title;
-          title.title = tab.customTitle ? `${tab.customTitle} (${tab.autoTitle})` : tab.title;
+          const detail = tab.detail || tab.autoTitle;
+          title.title = tab.customTitle ? `${tab.customTitle}\n${detail}` : detail;
         }
         const close = document.createElement("button");
         close.className = "tabbar-close";

@@ -7,9 +7,10 @@ import "@xterm/xterm/css/xterm.css";
 import { LigaturesAddon } from "@xterm/addon-ligatures";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 
-import { OpenerService, PtyService, type Target, type TerminalConfig } from "../api";
+import { Events, OpenerService, PtyService, type Target, type TerminalConfig } from "../api";
 import type { Pane } from "../pane";
 import { FileLinkProvider, isModifierClick } from "./links";
+import { paneTitle, type PaneCommand } from "./title";
 import { CLAUDE_LOGO, PLAY } from "../ui/icons";
 
 /** A call-to-action block drawn across the pane between the restored history and the prompt. */
@@ -92,7 +93,11 @@ export class TerminalPane implements Pane {
   readonly kind = "terminal" as const;
   readonly element: HTMLElement;
   readonly term: Terminal;
-  title = "";
+  /** The shell's own title (OSC 0/2), kept for tooltips and as a last fallback. */
+  oscTitle = "";
+  /** What the pane runs right now; the backend polls it (see PtyService.watchForeground). */
+  private cmd?: PaneCommand;
+  private unsubscribe?: () => void;
   private fit = new FitAddon();
   private serializer = new SerializeAddon();
   private ws?: WebSocket;
@@ -150,13 +155,19 @@ export class TerminalPane implements Pane {
     this.term.onBinary((data) => this.send(data, true));
     this.term.onResize(({ cols, rows }) => this.sendResize(cols, rows));
     this.term.onTitleChange((title) => {
-      this.title = title;
-      opts.onTitle?.(title);
+      this.oscTitle = title;
+      opts.onTitle?.(this.title);
     });
     // OSC 7: file://host/path — the shell tells us its cwd (cheaper and more reliable than /proc).
     this.term.parser.registerOscHandler(7, (data) => {
       const m = /^file:\/\/[^/]*(\/.*)$/.exec(data);
-      if (m) this.osc7Cwd = decodeURIComponent(m[1]);
+      if (m) {
+        const cwd = decodeURIComponent(m[1]);
+        if (cwd !== this.osc7Cwd) {
+          this.osc7Cwd = cwd;
+          opts.onTitle?.(this.title);
+        }
+      }
       return true;
     });
     // OSC 133 (FinalTerm / kitty / VS Code convention): A marks where the prompt starts, C that a
@@ -184,6 +195,29 @@ export class TerminalPane implements Pane {
     this.term.loadAddon(new WebLinksAddon(openUrl));
     this.term.options.linkHandler = { activate: openUrl };
     this.term.registerLinkProvider(new FileLinkProvider(this.term, () => this.cwd(), (t) => opts.onOpenFile?.(t)));
+    // The backend polls what each pane runs; the title follows it ("ssh io-main").
+    this.unsubscribe = Events.On("pty:command", (ev: { data: PaneCommand }) => this.onCommand(ev.data));
+  }
+
+  /**
+   * Prompt-style title: the ssh host while a session is up, otherwise the working directory
+   * the way the shell prompt writes it. The shell's own title is only the last resort.
+   */
+  get title(): string {
+    return paneTitle(this.cmd, this.lastKnownCwd(), this.oscTitle);
+  }
+
+  /** Tooltip: what the shell calls itself (user@host:path) plus the full directory. */
+  get detail(): string {
+    const cwd = this.lastKnownCwd();
+    return [this.oscTitle, cwd && cwd !== this.oscTitle ? cwd : ""].filter(Boolean).join("\n");
+  }
+
+  private onCommand(c: PaneCommand) {
+    if (c.pane !== this.opts.paneId) return;
+    const before = this.title;
+    this.cmd = c;
+    if (this.title !== before) this.opts.onTitle?.(this.title);
   }
 
   /** The focused pane blinks its cursor; the others show a still outline. */
@@ -273,6 +307,10 @@ export class TerminalPane implements Pane {
       return;
     }
     this.sessionId = res.id;
+    // The poller only reports changes, so ask once for where this shell starts out.
+    PtyService.Command(this.opts.paneId)
+      .then((c) => this.onCommand(c))
+      .catch(() => {});
     const ws = new WebSocket(res.url);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
@@ -375,9 +413,9 @@ export class TerminalPane implements Pane {
     this.send(text + "\r");
   }
 
-  /** Synchronous best guess (OSC 7 or the spawn cwd) for use where we can't await. */
+  /** Synchronous best guess (OSC 7, the polled process cwd, or the spawn cwd). */
   lastKnownCwd(): string {
-    return this.osc7Cwd ?? this.opts.cwd ?? "";
+    return this.osc7Cwd ?? this.cmd?.cwd ?? this.opts.cwd ?? "";
   }
 
   async cwd(): Promise<string> {
@@ -447,6 +485,7 @@ export class TerminalPane implements Pane {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.unsubscribe?.();
     this.resizeObserver.disconnect();
     this.clearNotice();
     this.ws?.close();

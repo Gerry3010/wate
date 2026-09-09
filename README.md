@@ -176,6 +176,11 @@ a name and reopens saved sessions later (the scrollback comes back as dimmed his
 prompt). Sessions are plain JSON in `~/.config/wate/sessions/`. Double-click a tab to
 rename it; right-click for colours.
 
+A tab names itself after the shell prompt: the working directory with `~` for home, parent
+directories shortened when the path grows long (`~/Sy/GO-Projekte/wate`), and `ssh <host>` while an
+ssh session is running in the focused pane. Hovering the tab shows the shell's own title and the
+full path.
+
 ### Translucent window on GNOME
 
 `mode = "translucent"` relies on the compositor for blur. On GNOME install

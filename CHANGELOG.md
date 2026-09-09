@@ -11,6 +11,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   kitty's and Ghostty's `close_tab` binding is picked up on import.
 
 ### Changed
+- Tabs are named like the shell prompt — the working directory with `~` for home and shortened
+  parents (`~/Sy/GO-Projekte/wate`) — instead of the shell's `user@host:path` title. While an ssh
+  session runs in the focused pane the tab reads `ssh <host>`; the old title and the full path
+  moved into the tab's tooltip.
 - The tab bar no longer shifts when the mouse passes over it: the close button now appears in the
   slot of the tab's number instead of next to the title. Tabs also breathe a little more on the right.
 

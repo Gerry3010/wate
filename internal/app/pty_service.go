@@ -28,6 +28,8 @@ type PtyService struct {
 	// Claude Code sessions gracefully.
 	BeforeKill func(context.Context)
 
+	stop chan struct{}
+
 	mu     sync.RWMutex
 	socket string
 	// byPane maps WATE_PANE_ID → session id so the control socket can address panes.
@@ -36,7 +38,13 @@ type PtyService struct {
 }
 
 func NewPtyService(cfg func() config.Config) *PtyService {
-	return &PtyService{sessions: pty.NewManager(), cfg: cfg, byPane: map[string]string{}, tabOf: map[string]string{}}
+	return &PtyService{
+		sessions: pty.NewManager(),
+		cfg:      cfg,
+		byPane:   map[string]string{},
+		tabOf:    map[string]string{},
+		stop:     make(chan struct{}),
+	}
 }
 
 func (p *PtyService) ServiceName() string { return "PtyService" }
@@ -50,12 +58,14 @@ func (p *PtyService) ServiceStartup(ctx context.Context, _ application.ServiceOp
 	if err := shell.Install(shellDir()); err != nil {
 		slog.Warn("shell integration not installed", "err", err)
 	}
+	go p.watchForeground()
 	return nil
 }
 
 func shellDir() string { return filepath.Join(config.Dir(), "shell") }
 
 func (p *PtyService) ServiceShutdown() error {
+	close(p.stop)
 	if p.BeforeKill != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		p.BeforeKill(ctx)
@@ -235,4 +245,79 @@ func (p *PtyService) Panes() []PaneInfo {
 		out = append(out, PaneInfo{PaneID: paneID, TabID: p.tabOf[paneID], SessionID: sid, Pid: s.Pid()})
 	}
 	return out
+}
+
+// PaneCommand is what a pane currently runs, as far as its terminal can tell. The frontend
+// titles tabs with it: "ssh io-main" while a session is up, the prompt's path otherwise.
+type PaneCommand struct {
+	Pane string `json:"pane"`
+	// Name is empty while the shell sits at its prompt.
+	Name string `json:"name"`
+	// Host is the ssh destination when Name is "ssh".
+	Host string `json:"host"`
+	Cwd  string `json:"cwd"`
+}
+
+// Command reports what a pane is running right now (the frontend asks after a spawn,
+// before the first poll tick has run).
+func (p *PtyService) Command(paneID string) (PaneCommand, error) {
+	id, ok := p.SessionForPane(paneID)
+	if !ok {
+		return PaneCommand{}, fmt.Errorf("no such pane %q", paneID)
+	}
+	s, ok := p.sessions.Get(id)
+	if !ok {
+		return PaneCommand{}, fmt.Errorf("pane %q has no live session", paneID)
+	}
+	return paneCommand(paneID, s), nil
+}
+
+func paneCommand(paneID string, s *pty.Session) PaneCommand {
+	c := PaneCommand{Pane: paneID}
+	c.Cwd, _ = s.Cwd()
+	fg, ok := s.Foreground()
+	if !ok || fg.Name == "" {
+		return c
+	}
+	c.Name = fg.Name
+	if fg.Name == "ssh" {
+		c.Host = pty.SSHTarget(fg.Args)
+	}
+	return c
+}
+
+// watchForeground polls the panes and tells the frontend when what they run changes.
+// One ioctl plus a /proc read per pane; only changes are emitted.
+func (p *PtyService) watchForeground() {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	last := map[string]PaneCommand{}
+	for {
+		select {
+		case <-p.stop:
+			return
+		case <-t.C:
+			seen := make(map[string]bool, len(last))
+			for _, info := range p.Panes() {
+				s, ok := p.sessions.Get(info.SessionID)
+				if !ok {
+					continue
+				}
+				seen[info.PaneID] = true
+				c := paneCommand(info.PaneID, s)
+				if last[info.PaneID] == c {
+					continue
+				}
+				last[info.PaneID] = c
+				if app := application.Get(); app != nil {
+					app.Event.Emit("pty:command", c)
+				}
+			}
+			for pane := range last {
+				if !seen[pane] {
+					delete(last, pane)
+				}
+			}
+		}
+	}
 }

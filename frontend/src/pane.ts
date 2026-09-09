@@ -3,8 +3,10 @@ export interface Pane {
   readonly id: string;
   readonly kind: "terminal" | "editor" | "settings";
   readonly element: HTMLElement;
-  /** Display title (shell title, file name). */
+  /** Display title (prompt path, file name). */
   title: string;
+  /** Longer form for tooltips (the shell's own title, the file's path). */
+  readonly detail?: string;
   focus(): void;
   /** Whether this is the tab's focused pane (cursor blink, highlight). */
   setActive?(active: boolean): void;
