@@ -45,5 +45,16 @@ func (t *ThemeService) Import(path string) (string, error) {
 	return theme.ImportFile(path, userThemesDir())
 }
 
+// ImportText saves pasted theme text (wate, Ghostty or Alacritty format) as a user theme.
+func (t *ThemeService) ImportText(name, text string) (string, error) {
+	return theme.ImportData(name, []byte(text), userThemesDir())
+}
+
+// ListInfo lists themes with display names and origin (built-in or user).
+func (t *ThemeService) ListInfo() []theme.Info { return theme.ListInfo(userThemesDir()) }
+
+// Delete removes a user theme.
+func (t *ThemeService) Delete(id string) error { return theme.DeleteUser(id, userThemesDir()) }
+
 // ThemesDir is where user themes live (shown in the settings pane).
 func (t *ThemeService) ThemesDir() string { return userThemesDir() }

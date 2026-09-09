@@ -22,7 +22,22 @@ func ImportFile(path, userDir string) (string, error) {
 		return "", err
 	}
 	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	id, err := ImportData(name, data, userDir)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", filepath.Base(path), err)
+	}
+	return id, nil
+}
+
+// ImportData converts theme text (wate TOML, Ghostty or Alacritty — pasted from a repo, say)
+// into a user theme called name. The name decides the id and overrides any name in the text.
+func ImportData(name string, data []byte, userDir string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("theme needs a name")
+	}
 	var t Theme
+	var err error
 	switch {
 	case bytes.Contains(data, []byte("palette")) && bytes.Contains(data, []byte("=#")) || bytes.Contains(data, []byte("cursor-color")):
 		t, err = ParseGhostty(data)
@@ -30,18 +45,55 @@ func ImportFile(path, userDir string) (string, error) {
 		t, err = ParseAlacritty(data)
 	case bytes.Contains(data, []byte("[colors]")):
 		var r Resolved
-		r, err = Parse(name, data)
+		r, err = Parse(Slug(name), data)
 		t = r.Theme
 	default:
-		return "", fmt.Errorf("%s: unknown theme format (expected wate, Ghostty or Alacritty)", filepath.Base(path))
+		return "", fmt.Errorf("unknown theme format (expected wate, Ghostty or Alacritty)")
 	}
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", filepath.Base(path), err)
+		return "", err
 	}
-	if t.Name == "" {
-		t.Name = name
+	t.Name = name
+	return WriteUser(t, name, userDir, "pasted text")
+}
+
+// Info describes a theme in a listing.
+type Info struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Builtin bool   `json:"builtin"`
+}
+
+// ListInfo is List with names and whether the theme is built in or in the user dir
+// (a user theme shadows a built-in one with the same id).
+func ListInfo(userDir string) []Info {
+	var out []Info
+	for _, id := range List(userDir) {
+		info := Info{ID: id, Name: id, Builtin: true}
+		if userDir != "" {
+			if _, err := os.Stat(filepath.Join(userDir, id+".toml")); err == nil {
+				info.Builtin = false
+			}
+		}
+		if r, err := Load(id, userDir); err == nil && r.Theme.Name != "" {
+			info.Name = r.Theme.Name
+		}
+		out = append(out, info)
 	}
-	return WriteUser(t, name, userDir, filepath.Base(path))
+	return out
+}
+
+// DeleteUser removes a theme from the user dir (built-in themes cannot be deleted).
+func DeleteUser(id, userDir string) error {
+	id = strings.TrimSuffix(filepath.Base(id), ".toml")
+	if userDir == "" || id == "" || id == "." {
+		return fmt.Errorf("invalid theme id")
+	}
+	p := filepath.Join(userDir, id+".toml")
+	if _, err := os.Stat(p); err != nil {
+		return fmt.Errorf("theme %q is not a user theme", id)
+	}
+	return os.Remove(p)
 }
 
 // WriteUser validates a theme, fills defaults and writes it as <userDir>/<slug(name)>.toml.

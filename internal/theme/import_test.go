@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -81,5 +82,51 @@ func TestImportGhosttyAndAlacritty(t *testing.T) {
 	}
 	if Slug("  Tokyo Night (Storm)! ") != "tokyo-night-storm" {
 		t.Fatal("slug")
+	}
+}
+
+func TestImportDataAndListInfo(t *testing.T) {
+	dir := t.TempDir()
+	ghostty := "background = 101010\nforeground = f0f0f0\n"
+	for i := 0; i < 16; i++ {
+		ghostty += fmt.Sprintf("palette = %d=#%02x0000\n", i, 0x10*i+0xf)
+	}
+	id, err := ImportData("My Paste Theme", []byte(ghostty), dir)
+	if err != nil || id != "my-paste-theme" {
+		t.Fatalf("ImportData: %v %q", err, id)
+	}
+	r, err := Load(id, dir)
+	if err != nil || r.Theme.Name != "My Paste Theme" || r.Theme.Colors.Red != "#1f0000" {
+		t.Fatalf("Load: %v %+v", err, r.Theme)
+	}
+	if _, err := ImportData("", []byte(ghostty), dir); err == nil {
+		t.Error("empty name should fail")
+	}
+	if _, err := ImportData("x", []byte("nothing useful"), dir); err == nil {
+		t.Error("unknown format should fail")
+	}
+	infos := ListInfo(dir)
+	var user, builtin int
+	for _, i := range infos {
+		if i.Builtin {
+			builtin++
+		} else {
+			user++
+			if i.ID != id || i.Name != "My Paste Theme" {
+				t.Errorf("user info: %+v", i)
+			}
+		}
+	}
+	if user != 1 || builtin < 5 {
+		t.Errorf("list: %d user, %d builtin", user, builtin)
+	}
+	if err := DeleteUser("catppuccin-mocha", dir); err == nil {
+		t.Error("deleting a built-in theme must fail")
+	}
+	if err := DeleteUser(id, dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(id, dir); err == nil {
+		t.Error("user theme still loads after delete")
 	}
 }

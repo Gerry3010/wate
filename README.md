@@ -142,9 +142,11 @@ survive, and changes apply live. Editing the file by hand works just as well.
 Five themes are built in (Catppuccin Mocha, Dracula, Nord, Gruvbox Dark, Tokyo Night). wate
 also **imports Ghostty and Alacritty colour schemes**, which means every scheme in
 [iTerm2-Color-Schemes](https://github.com/mbadolato/iTerm2-Color-Schemes) (400+) works:
-grab a file from its `ghostty/` or `alacritty/` folder, then *Settings → Themes → Import theme…*
-or `wate theme import <file>`. Imported themes land in `~/.config/wate/themes/<id>.toml` where
-you can tweak them; the "Browse compatible themes" button in the settings links to the catalog. See [`internal/config/defaults.toml`](internal/config/defaults.toml) for every
+open a file in its `ghostty/` or `alacritty/` folder, copy the text and use *Settings → Themes →
+Paste theme…* (give it a name), or import the downloaded file (*Import file…* or
+`wate theme import <file>`). Your themes appear in their own group above the built-in ones, can be
+deleted from their card, and live in `~/.config/wate/themes/<id>.toml` where you can tweak them;
+the "Browse compatible themes" button links to the catalog. See [`internal/config/defaults.toml`](internal/config/defaults.toml) for every
 key with its default. `wate --config <file>` uses a different file.
 
 ### Import from another terminal

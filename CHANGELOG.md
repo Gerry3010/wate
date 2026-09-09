@@ -7,6 +7,8 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- Themes page: paste a Ghostty/Alacritty/wate theme as text and save it under a name; your themes
+  are listed in their own group (with delete), the grid scrolls while the buttons stay put.
 - *Settings → Import*: pull theme, font, window opacity, background image, key bindings and (for
   Warp) saved tabs with split layouts, cwds, titles and colours from Warp, Ghostty, Alacritty or
   kitty — with a checkbox per item. Warp's command history (recent blocks with output) can be

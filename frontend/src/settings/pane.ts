@@ -105,6 +105,8 @@ export class SettingsPane implements Pane {
 
   show(id: string) {
     this.current = id;
+    // The themes page scrolls its own grid and pins the buttons; other pages scroll as a whole.
+    this.content.classList.toggle("fixed", id === "appearance");
     for (const b of this.nav.querySelectorAll<HTMLButtonElement>("button")) b.classList.toggle("active", b.dataset.section === id);
     for (const sec of this.content.querySelectorAll<HTMLElement>("section")) sec.hidden = sec.dataset.section !== id;
     this.content.scrollTop = 0;
@@ -135,13 +137,19 @@ export class SettingsPane implements Pane {
     this.content.replaceChildren();
 
     const appearance = this.section("Themes", "appearance");
-    this.themeGrid.className = "theme-grid";
+    appearance.classList.add("settings-section-themes");
+    this.themeGrid.className = "theme-scroll";
     appearance.appendChild(this.themeGrid);
     void this.buildThemeGrid();
+    const footer = document.createElement("div");
+    footer.className = "theme-footer";
     const actions = document.createElement("div");
     actions.className = "settings-actions";
+    const pasteBtn = document.createElement("button");
+    pasteBtn.textContent = "Paste theme…";
+    pasteBtn.title = "Paste a Ghostty, Alacritty or wate theme and save it under a name";
     const importBtn = document.createElement("button");
-    importBtn.textContent = "Import theme…";
+    importBtn.textContent = "Import file…";
     importBtn.title = "Ghostty, Alacritty or wate theme file";
     importBtn.addEventListener("click", () => void this.importTheme());
     const browse = document.createElement("button");
@@ -150,14 +158,19 @@ export class SettingsPane implements Pane {
     const folder = document.createElement("button");
     folder.textContent = "Open themes folder";
     folder.addEventListener("click", () => void ThemeService.ThemesDir().then((d) => OpenerService.Open(d)));
-    actions.append(importBtn, browse, folder);
-    appearance.appendChild(actions);
+    actions.append(pasteBtn, importBtn, browse, folder);
     const note = document.createElement("p");
     note.className = "settings-hint";
     note.innerHTML =
-      "Any scheme from <b>iTerm2-Color-Schemes</b> works: download it from the <code>ghostty/</code> or <code>alacritty/</code> " +
-      "folder and import it here, or drop wate TOML files into the themes folder. Imported themes can be edited there.";
-    appearance.appendChild(note);
+      "Any scheme from <b>iTerm2-Color-Schemes</b> works: open a file in its <code>ghostty/</code> or <code>alacritty/</code> " +
+      "folder, copy the text and paste it here — or import the downloaded file. Your themes live in the themes folder as editable TOML.";
+    const paste = this.pasteForm();
+    pasteBtn.addEventListener("click", () => {
+      paste.hidden = !paste.hidden;
+      if (!paste.hidden) paste.querySelector<HTMLInputElement>("input")?.focus();
+    });
+    footer.append(paste, actions, note);
+    appearance.appendChild(footer);
 
     const bg = this.section("Background", "background");
     const mode = c.background.mode;
@@ -271,17 +284,93 @@ export class SettingsPane implements Pane {
   }
 
   private async buildThemeGrid() {
-    const ids = (await ThemeService.List().catch(() => [])) ?? [];
+    const infos = (await ThemeService.ListInfo().catch(() => [])) ?? [];
     const cards = await Promise.all(
-      ids.map(async (id) => {
-        const t = await ThemeService.Preview(id).catch(() => null);
-        return t ? this.themeCard(t) : null;
+      infos.map(async (info) => {
+        const t = await ThemeService.Preview(info.id).catch(() => null);
+        return t ? { info, card: this.themeCard(t, !info.builtin) } : null;
       }),
     );
-    this.themeGrid.replaceChildren(...cards.filter((c): c is HTMLElement => !!c));
+    const ok = cards.filter((c): c is NonNullable<typeof c> => !!c);
+    const group = (title: string, items: typeof ok, empty?: string) => {
+      const h = document.createElement("h3");
+      h.className = "theme-group";
+      h.textContent = title;
+      const grid = document.createElement("div");
+      grid.className = "theme-grid";
+      grid.append(...items.map((c) => c.card));
+      if (items.length === 0 && empty) {
+        const e = document.createElement("p");
+        e.className = "settings-hint";
+        e.textContent = empty;
+        grid.appendChild(e);
+      }
+      return [h, grid];
+    };
+    this.themeGrid.replaceChildren(
+      ...group(
+        "Your themes",
+        ok.filter((c) => !c.info.builtin),
+        "None yet — paste a theme from the catalog or import a file with the buttons below.",
+      ),
+      ...group("Built-in", ok.filter((c) => c.info.builtin)),
+    );
   }
 
-  private themeCard(t: Resolved): HTMLElement {
+  /** Inline form: name + pasted theme text → user theme. */
+  private pasteForm(): HTMLElement {
+    const form = document.createElement("form");
+    form.className = "theme-paste";
+    form.hidden = true;
+    const name = document.createElement("input");
+    name.type = "text";
+    name.placeholder = "Theme name (e.g. Rosé Pine Moon)";
+    name.required = true;
+    const text = document.createElement("textarea");
+    text.placeholder = "Paste the theme here: Ghostty (palette = 0=#… lines), Alacritty TOML ([colors.primary] …) or wate TOML ([colors] …)";
+    text.rows = 7;
+    text.spellcheck = false;
+    for (const el of [name, text]) el.addEventListener("keydown", (e) => e.stopPropagation());
+    const row = document.createElement("div");
+    row.className = "settings-actions";
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.textContent = "Save & activate";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => (form.hidden = true));
+    row.append(save, cancel);
+    form.append(name, text, row);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const id = await ThemeService.ImportText(name.value, text.value);
+        await this.set({ "general.theme": id });
+        this.flash(`saved ${id}`);
+        name.value = "";
+        text.value = "";
+        form.hidden = true;
+        void this.buildThemeGrid();
+      } catch (err) {
+        this.flash(String(err), true);
+      }
+    });
+    return form;
+  }
+
+  private async deleteTheme(id: string) {
+    try {
+      await ThemeService.Delete(id);
+      this.flash(`deleted ${id}`);
+      if (this.config.general.theme === id) await this.set({ "general.theme": "catppuccin-mocha" });
+      void this.buildThemeGrid();
+    } catch (err) {
+      this.flash(String(err), true);
+    }
+  }
+
+  private themeCard(t: Resolved, deletable = false): HTMLElement {
     const c = t.theme.colors;
     const card = document.createElement("button");
     card.className = "theme-card" + (t.id === this.config.general.theme ? " active" : "");
@@ -307,6 +396,18 @@ export class SettingsPane implements Pane {
     name.style.color = t.theme.ui.accent;
     card.append(name, prompt, swatches);
     card.addEventListener("click", () => void this.set({ "general.theme": t.id }));
+    if (deletable) {
+      const del = document.createElement("span");
+      del.className = "theme-delete";
+      del.textContent = "×";
+      del.title = "Delete this theme";
+      del.setAttribute("role", "button");
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void this.deleteTheme(t.id);
+      });
+      card.appendChild(del);
+    }
     return card;
   }
 
