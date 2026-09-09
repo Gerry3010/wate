@@ -1,4 +1,4 @@
-import { Terminal, type IMarker, type ITerminalOptions } from "@xterm/xterm";
+import { Terminal, type IDecoration, type IMarker, type ITerminalOptions } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -10,6 +10,17 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { OpenerService, PtyService, type Target, type TerminalConfig } from "../api";
 import type { Pane } from "../pane";
 import { FileLinkProvider, isModifierClick } from "./links";
+
+/** A call-to-action block drawn across the pane between the restored history and the prompt. */
+export interface PaneNotice {
+  /** Shown in quotes after "Claude Session". */
+  title: string;
+  /** Button label ("Resume"). */
+  action: string;
+  /** Tooltip / hint for the button. */
+  hint?: string;
+  onActivate(): void;
+}
 
 export interface TerminalPaneOptions {
   paneId: string;
@@ -23,6 +34,8 @@ export interface TerminalPaneOptions {
   terminal: TerminalConfig;
   theme?: Record<string, string>;
   fontDelta?: number;
+  /** Block shown after the replay (a Claude Code session that ran here before the restart). */
+  notice?: PaneNotice;
   /** Return false for keys the app handles itself (so xterm ignores them). */
   keyFilter?: (e: KeyboardEvent) => boolean;
   onExit?: (code: number) => void;
@@ -30,6 +43,12 @@ export interface TerminalPaneOptions {
   /** Ctrl/Cmd-click on an existing file or directory. */
   onOpenFile?: (t: Target) => void;
 }
+
+/** Terminal rows the notice block occupies. */
+const NOTICE_ROWS = 3;
+
+const PLAY =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
 
 /** Spawns run one after another: a burst of concurrent binding calls can lose an answer in
  *  the WebView IPC (seen on WebKitGTK), and a single queue keeps restores deterministic. */
@@ -77,6 +96,8 @@ export class TerminalPane implements Pane {
   private osc7Cwd?: string;
   /** Start of the current prompt (OSC 133;A), used to resize without artifacts. */
   private promptMarker?: IMarker;
+  /** The CTA block hanging on a buffer line (see showNotice). */
+  private notice?: IDecoration;
 
   constructor(private opts: TerminalPaneOptions) {
     this.id = opts.paneId;
@@ -214,6 +235,7 @@ export class TerminalPane implements Pane {
         this.applyVisibility();
       }
     }
+    if (this.opts.notice) await this.showNotice(this.opts.notice);
     const res = await spawnQueued(() =>
       withRetry(
         () =>
@@ -292,6 +314,47 @@ export class TerminalPane implements Pane {
     return text.replace(/\r?\n/g, "\r\n") + "\r\n\x1b[0m\x1b[2m── restored ──\x1b[0m\r\n";
   }
 
+  /** Set (or clear) the CTA block before start(); a later call replaces the visible one. */
+  setNotice(notice: PaneNotice | undefined) {
+    this.opts.notice = notice;
+    if (this.sessionId && notice) void this.showNotice(notice);
+  }
+
+  /**
+   * Reserve rows below the replayed history and hang a full-width block on them: an xterm
+   * decoration, so the block scrolls with the buffer and vanishes with its lines.
+   */
+  private async showNotice(n: PaneNotice) {
+    this.clearNotice();
+    await new Promise<void>((done) => this.term.write("\r\n", done));
+    const marker = this.term.registerMarker(0);
+    if (!marker) return;
+    await new Promise<void>((done) => this.term.write("\r\n".repeat(NOTICE_ROWS), done));
+    const dec = this.term.registerDecoration({ marker, x: 0, width: this.term.cols, height: NOTICE_ROWS, layer: "top" });
+    if (!dec) return;
+    this.notice = dec;
+    dec.onRender((el) => {
+      // The width is fixed in cells at registration; keep it full width across resizes.
+      el.style.width = "100%";
+      if (el.firstChild) return;
+      el.classList.add("pane-notice");
+      el.appendChild(noticeBlock(n, () => {
+        this.clearNotice();
+        n.onActivate();
+      }));
+    });
+  }
+
+  private clearNotice() {
+    this.notice?.dispose();
+    this.notice = undefined;
+  }
+
+  /** Type a command into the shell and run it (the restore CTA). */
+  runCommand(text: string) {
+    this.send(text + "\r");
+  }
+
   /** Synchronous best guess (OSC 7 or the spawn cwd) for use where we can't await. */
   lastKnownCwd(): string {
     return this.osc7Cwd ?? this.opts.cwd ?? "";
@@ -365,9 +428,40 @@ export class TerminalPane implements Pane {
     if (this.disposed) return;
     this.disposed = true;
     this.resizeObserver.disconnect();
+    this.clearNotice();
     this.ws?.close();
     if (this.sessionId) PtyService.Kill(this.sessionId);
     this.term.dispose();
     this.element.remove();
   }
+}
+
+/** The notice's contents: play icon, 'Claude Session "…"' and the action button. */
+function noticeBlock(n: PaneNotice, activate: () => void): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "pane-notice-box";
+  const icon = document.createElement("span");
+  icon.className = "pane-notice-icon";
+  icon.innerHTML = PLAY;
+  const label = document.createElement("span");
+  label.className = "pane-notice-label";
+  label.append("Claude Session ");
+  const name = document.createElement("b");
+  name.textContent = `"${n.title}"`;
+  label.appendChild(name);
+  const btn = document.createElement("button");
+  btn.className = "pane-notice-btn";
+  btn.textContent = n.action;
+  if (n.hint) btn.title = n.hint;
+  box.append(icon, label, btn);
+  box.title = n.hint ?? "";
+  // The decoration sits on top of the terminal: swallow the events xterm would read as
+  // a selection drag, and let a click anywhere in the block trigger the action.
+  box.addEventListener("mousedown", (e) => e.stopPropagation());
+  box.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    activate();
+  });
+  return box;
 }

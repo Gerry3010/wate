@@ -22,10 +22,12 @@ const (
 
 // Session is the state wate keeps per pane.
 type Session struct {
-	PaneID    string    `json:"pane_id"`
-	TabID     string    `json:"tab_id"`
-	Status    Status    `json:"status"`
-	SessionID string    `json:"session_id"`
+	PaneID    string `json:"pane_id"`
+	TabID     string `json:"tab_id"`
+	Status    Status `json:"status"`
+	SessionID string `json:"session_id"`
+	// Title names the session like `claude --resume` does (summary or first prompt).
+	Title     string    `json:"title"`
 	Cwd       string    `json:"cwd"`
 	Message   string    `json:"message"`
 	StartedAt time.Time `json:"started_at"`
@@ -57,12 +59,12 @@ func NewTracker() *Tracker {
 
 // hookPayload is the subset of Claude Code's hook JSON we care about.
 type hookPayload struct {
-	SessionID string `json:"session_id"`
-	Cwd       string `json:"cwd"`
-	Message   string `json:"message"`
-	Title     string `json:"title"`
-	HookEvent string `json:"hook_event_name"`
-	Prompt    string `json:"prompt"`
+	SessionID  string `json:"session_id"`
+	Cwd        string `json:"cwd"`
+	Message    string `json:"message"`
+	Title      string `json:"title"`
+	HookEvent  string `json:"hook_event_name"`
+	Prompt     string `json:"prompt"`
 	Transcript string `json:"transcript_path"`
 }
 
@@ -112,8 +114,8 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 	}
 }
 
-// RefreshContexts re-reads the transcript of every session whose file grew and reports changed
-// context usage. home locates transcripts for sessions without hook data; window (0 = auto)
+// RefreshContexts reads each session's transcript: its title once, and the context usage
+// whenever the file grew. home locates transcripts for sessions without hook data; window (0 = auto)
 // is the configured context size.
 func (t *Tracker) RefreshContexts(home string, window int) {
 	t.mu.Lock()
@@ -127,21 +129,29 @@ func (t *Tracker) RefreshContexts(home string, window int) {
 			}
 		}
 		st, err := os.Stat(s.TranscriptPath)
-		if err != nil || st.Size() == s.transcriptSize {
+		if err != nil {
 			continue
 		}
-		s.transcriptSize = st.Size()
-		c, ok := ReadContext(s.TranscriptPath)
-		if !ok {
-			continue
+		dirty := false
+		if s.Title == "" {
+			if title := ReadTitle(s.TranscriptPath); title != "" {
+				s.Title = title
+				dirty = true
+			}
 		}
-		c.Window = WindowFor(c.Model, window, c.Tokens)
-		pct := c.Percent()
-		if c == s.Context && pct == s.ContextPercent {
-			continue
+		if st.Size() != s.transcriptSize {
+			s.transcriptSize = st.Size()
+			if c, ok := ReadContext(s.TranscriptPath); ok {
+				c.Window = WindowFor(c.Model, window, c.Tokens)
+				if pct := c.Percent(); c != s.Context || pct != s.ContextPercent {
+					s.Context, s.ContextPercent = c, pct
+					dirty = true
+				}
+			}
 		}
-		s.Context, s.ContextPercent = c, pct
-		changed = append(changed, *s)
+		if dirty {
+			changed = append(changed, *s)
+		}
 	}
 	t.mu.Unlock()
 	if t.OnChange != nil {

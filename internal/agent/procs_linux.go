@@ -13,6 +13,26 @@ func ClaudeRunningUnder(pid int) bool {
 	return isClaude(pid) || walk(pid, 0)
 }
 
+// ClaudePidsUnder returns the pids of the Claude Code processes in pid's tree (pid included),
+// so they can be asked to exit before the pane's shell goes away.
+func ClaudePidsUnder(pid int) []int {
+	var out []int
+	collect(pid, 0, &out)
+	return out
+}
+
+func collect(pid, depth int, out *[]int) {
+	if isClaude(pid) {
+		*out = append(*out, pid)
+	}
+	if depth > 6 {
+		return
+	}
+	for _, child := range children(pid) {
+		collect(child, depth+1, out)
+	}
+}
+
 func walk(pid, depth int) bool {
 	if depth > 6 {
 		return false
@@ -63,4 +83,19 @@ func isClaude(pid int) bool {
 		}
 	}
 	return false
+}
+
+// processAlive reports whether the pid is still running; a zombie waiting to be reaped by its
+// shell counts as gone (it can still be signalled, but it is not doing anything any more).
+func processAlive(pid int) bool {
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return false
+	}
+	// "pid (comm) state …" — comm may contain spaces and brackets, so scan from the right.
+	i := strings.LastIndex(string(b), ") ")
+	if i < 0 || len(b) < i+3 {
+		return false
+	}
+	return b[i+2] != 'Z'
 }

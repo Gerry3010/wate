@@ -24,6 +24,10 @@ type PtyService struct {
 	bridge   *wsbridge.Server
 	cfg      func() config.Config
 
+	// BeforeKill runs on shutdown before the shells are signalled: wate uses it to end
+	// Claude Code sessions gracefully.
+	BeforeKill func(context.Context)
+
 	mu     sync.RWMutex
 	socket string
 	// byPane maps WATE_PANE_ID → session id so the control socket can address panes.
@@ -52,6 +56,11 @@ func (p *PtyService) ServiceStartup(ctx context.Context, _ application.ServiceOp
 func shellDir() string { return filepath.Join(config.Dir(), "shell") }
 
 func (p *PtyService) ServiceShutdown() error {
+	if p.BeforeKill != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		p.BeforeKill(ctx)
+		cancel()
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	p.sessions.Shutdown(ctx)

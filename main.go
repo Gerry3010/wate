@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -78,6 +80,8 @@ func main() {
 	themeSvc := app.NewThemeService(cfgSvc.Current)
 	notifySvc := notifications.New()
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc)
+	// Quitting: let Claude Code shut down before the shells get their SIGHUP.
+	ptySvc.BeforeKill = agentSvc.StopSessions
 	wp := &wallpaper.Handler{Path: func() string { return cfgSvc.Current().Background.Wallpaper }}
 
 	application.RegisterEvent[app.ConfigResponse]("config:changed")
@@ -135,6 +139,15 @@ func main() {
 	} else {
 		defer stopWatch()
 	}
+
+	// A SIGINT/SIGTERM (logout, `kill`, a crashing launcher) quits like closing the window
+	// does, so the shutdown sequence still runs: Claude sessions first, then the shells.
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+		<-sig
+		wapp.Quit()
+	}()
 
 	if err := wapp.Run(); err != nil {
 		log.Fatal(err)

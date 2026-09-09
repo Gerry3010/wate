@@ -1,10 +1,10 @@
 package app
 
 import (
-	"github.com/Gerry3010/wate/internal/config"
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Gerry3010/wate/internal/config"
 	"log/slog"
 	"os"
 	"path/filepath"

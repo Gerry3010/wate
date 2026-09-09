@@ -17,8 +17,24 @@ export interface SavedTab {
 }
 
 export type SavedPane =
-  | { id: string; kind: "terminal"; cwd: string; /** ANSI scrollback replayed before the shell starts. */ replay?: string }
+  | {
+      id: string;
+      kind: "terminal";
+      cwd: string;
+      /** ANSI scrollback replayed before the shell starts. */
+      replay?: string;
+      /** A Claude Code session that was running here (offered for resume on restore). */
+      claude?: SavedClaude;
+    }
   | { id: string; kind: "editor"; path: string };
+
+/** The Claude Code session a pane held when the state was saved. */
+export interface SavedClaude {
+  /** Session title: its transcript summary, or the first prompt. */
+  title: string;
+  /** Claude Code session id, for `claude --resume <id>`. */
+  sessionId?: string;
+}
 
 export function parseSession(raw: string): SavedSession | null {
   if (!raw) return null;

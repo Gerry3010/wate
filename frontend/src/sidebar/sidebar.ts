@@ -62,10 +62,13 @@ export class Sidebar {
         main.className = "sidebar-main";
         const title = document.createElement("div");
         title.className = "sidebar-title";
-        title.textContent = shortPath(s.cwd) || "Claude";
+        title.textContent = s.title || shortPath(s.cwd) || "Claude";
+        title.title = s.title ? `${s.title}\n${s.cwd}` : s.cwd;
         const sub = document.createElement("div");
         sub.className = "sidebar-sub";
-        sub.textContent = [STATUS_LABEL[s.status] ?? s.status, elapsed(s.started_at)].filter(Boolean).join(" · ");
+        sub.textContent = [s.title ? shortPath(s.cwd) : "", STATUS_LABEL[s.status] ?? s.status, elapsed(s.started_at)]
+          .filter(Boolean)
+          .join(" · ");
         main.append(title, sub);
         const ctx = contextRow(s);
         if (ctx) main.appendChild(ctx);

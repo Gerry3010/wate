@@ -1,7 +1,7 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
 import { AgentService, OpenerService, SessionService, StateService, ThemeService, type Config, type Resolved, type Session, type Target } from "./api";
-import { fromImported, parseSession, remapTree, type ImportedTab, type SavedPane, type SavedSession, type SavedTab } from "./session";
+import { fromImported, parseSession, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedSession, type SavedTab } from "./session";
 import { AgentStore } from "./agent/store";
 import { Sidebar } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
@@ -10,7 +10,7 @@ import { neighbor, type Dir, type Direction } from "./layout/tree";
 import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
 import { TabBar } from "./tabs/tabbar";
-import { TerminalPane } from "./terminal/pane";
+import { TerminalPane, type PaneNotice } from "./terminal/pane";
 import { EditorPane } from "./editor/pane";
 import { SettingsPane } from "./settings/pane";
 
@@ -102,7 +102,13 @@ export class WateApp {
         if (p instanceof EditorPane) panes.push({ id: p.id, kind: "editor", path: p.path });
         else if (p instanceof TerminalPane) {
           const cwd = immediate ? p.lastKnownCwd() : await p.cwd().catch(() => "");
-          panes.push({ id: p.id, kind: "terminal", cwd, replay: scrollback > 0 ? p.serialize(scrollback) || undefined : undefined });
+          panes.push({
+            id: p.id,
+            kind: "terminal",
+            cwd,
+            replay: scrollback > 0 ? p.serialize(scrollback) || undefined : undefined,
+            claude: this.claudeOf(p),
+          });
         }
       }
       if (panes.length === 0) continue;
@@ -184,6 +190,7 @@ export class WateApp {
           }));
         } else {
           const pane = this.makeTerminal(tab, { cwd: sp.cwd, replay: sp.replay, visible: false });
+          if (sp.claude) pane.setNotice(this.claudeNotice(pane, sp.claude));
           map.set(sp.id, pane.id);
           panes.push(pane);
           starts.push(pane.start());
@@ -209,6 +216,27 @@ export class WateApp {
 
   // ---- Claude Code --------------------------------------------------------
 
+  /** The Claude Code session running in a pane, in the shape the session file keeps. */
+  private claudeOf(p: TerminalPane): SavedClaude | undefined {
+    const s = this.agents.forPane(p.id);
+    if (!s) return undefined;
+    return { title: s.title || s.message || "Claude Code", sessionId: s.session_id || undefined };
+  }
+
+  /** The block a restored pane shows where its Claude session was: one click brings it back. */
+  private claudeNotice(pane: TerminalPane, c: SavedClaude): PaneNotice {
+    const cmd = () => this.config.claude.command || "claude";
+    return {
+      title: c.title,
+      action: c.sessionId ? "Resume" : "Continue",
+      hint: c.sessionId ? `${cmd()} --resume ${c.sessionId}` : `${cmd()} --continue`,
+      onActivate: () => {
+        pane.runCommand(c.sessionId ? `${cmd()} --resume ${c.sessionId}` : `${cmd()} --continue`);
+        pane.focus();
+      },
+    };
+  }
+
   /** Backend event: a session changed. */
   onAgentStatus(s: Session) {
     this.agents.apply(s);
@@ -223,7 +251,21 @@ export class WateApp {
         p.element.classList.toggle("agent-done", s?.status === "done");
       }
     }
+    // Which panes hold which session belongs in the saved state, so a restore can offer them
+    // again even if the save on quit does not get through.
+    const sig = this.agents
+      .list()
+      .map((s) => `${s.pane_id}:${s.session_id}:${s.title}`)
+      .sort()
+      .join("|");
+    if (sig !== this.claudeSig) {
+      this.claudeSig = sig;
+      this.scheduleSave();
+    }
   }
+
+  /** Signature of the live Claude sessions, to notice when the set changes. */
+  private claudeSig = "";
 
   private reportFocus() {
     AgentService.SetFocus(this.active?.focusedId ?? "", document.hasFocus()).catch(() => {});

@@ -1,10 +1,10 @@
 package app
 
 import (
-	"os"
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -98,6 +98,27 @@ func (a *AgentService) onChange(s agent.Session) {
 	if err != nil {
 		slog.Debug("notification", "err", err)
 	}
+}
+
+// StopSessions ends every Claude Code session running in a pane and waits for it (bounded by
+// ctx). wate is quitting: a SIGHUP from the closing PTY would cut the agent off mid-write,
+// SIGTERM lets it flush its transcript and run its SessionEnd hooks.
+func (a *AgentService) StopSessions(ctx context.Context) {
+	var pids []int
+	for _, p := range a.pty.Panes() {
+		pids = append(pids, agent.ClaudePidsUnder(p.Pid)...)
+	}
+	if len(pids) == 0 {
+		return
+	}
+	timeout := 3 * time.Second
+	if dl, ok := ctx.Deadline(); ok {
+		if left := time.Until(dl); left < timeout {
+			timeout = left
+		}
+	}
+	signalled, left := agent.StopProcesses(pids, timeout)
+	slog.Info("claude sessions stopped", "signalled", signalled, "still_running", left)
 }
 
 // List returns all known sessions (sidebar initial state).
