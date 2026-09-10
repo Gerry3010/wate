@@ -6,6 +6,8 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-09-10
+
 ### Changed
 - The tab's number (and its Claude status dot) moved to the end of the tab, where the close
   button takes its place on hover.
@@ -132,7 +134,8 @@ to replace the old Claude Code hooks.
 - Desktop integration: `make install` (desktop entry, *Open With* for folders),
   `make install-nautilus` ("Open in wate" in the Nautilus context menu).
 
-[Unreleased]: https://github.com/Gerry3010/wate/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Gerry3010/wate/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/Gerry3010/wate/releases/tag/v0.2.2
 [0.2.1]: https://github.com/Gerry3010/wate/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Gerry3010/wate/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Gerry3010/wate/releases/tag/v0.1.0
