@@ -6,6 +6,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 
 ## [Unreleased]
 
+### Changed
+- The tab's number (and its Claude status dot) moved to the end of the tab, where the close
+  button takes its place on hover.
+
 ### Fixed
 - Restoring a session no longer stacks the history: a pane saved everything on its screen,
   including the scrollback that had just been replayed into it, so every restart added another

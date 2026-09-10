@@ -127,12 +127,12 @@ export class TabBar {
           e.stopPropagation();
           this.host.close(tab);
         });
-        // Index/status dot and the close button share one fixed slot: hovering swaps
-        // them in place, so revealing the × never reflows the bar.
-        const lead = document.createElement("span");
-        lead.className = "tabbar-lead";
-        lead.append(idx, close);
-        b.append(lead, title);
+        // Index/status dot and the close button share one fixed slot at the tab's end:
+        // hovering swaps them in place, so revealing the × never reflows the bar.
+        const slot = document.createElement("span");
+        slot.className = "tabbar-slot";
+        slot.append(idx, close);
+        b.append(title, slot);
         b.addEventListener("mousedown", (e) => {
           if (this.renaming === tab) return;
           if (e.button === 1) {
