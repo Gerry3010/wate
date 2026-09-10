@@ -1,6 +1,6 @@
 import { Terminal, type IDecoration, type IMarker, type ITerminalOptions } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { SerializeAddon } from "@xterm/addon-serialize";
+import { SerializeAddon, type ISerializeOptions } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 
@@ -113,6 +113,8 @@ export class TerminalPane implements Pane {
   private promptMarker?: IMarker;
   /** The CTA block hanging on a buffer line (see showNotice). */
   private notice?: IDecoration;
+  /** Where the replayed history ends: only what this session added is saved again. */
+  private replayEnd?: IMarker;
 
   constructor(private opts: TerminalPaneOptions) {
     this.id = opts.paneId;
@@ -288,6 +290,9 @@ export class TerminalPane implements Pane {
       }
     }
     if (this.opts.notice) await this.showNotice(this.opts.notice);
+    // Everything above this line came out of the session file; saving it again would stack
+    // one restored copy of the history on top of the next with every restart.
+    this.replayEnd = this.term.registerMarker(0) ?? undefined;
     const res = await spawnQueued(() =>
       withRetry(
         () =>
@@ -358,7 +363,7 @@ export class TerminalPane implements Pane {
     let text: string;
     try {
       // Modes (mouse tracking, alt screen, …) belong to the program that set them, not to the text.
-      text = this.serializer.serialize({ scrollback: this.term.options.scrollback ?? 1000, excludeModes: true, excludeAltBuffer: true });
+      text = this.serializer.serialize({ ...this.savedRange(), excludeModes: true, excludeAltBuffer: true });
     } catch {
       return "";
     }
@@ -369,6 +374,18 @@ export class TerminalPane implements Pane {
       text = text.slice(cut >= 0 ? cut + 1 : text.length - maxBytes);
     }
     return text.replace(/\r?\n/g, "\r\n") + "\r\n\x1b[0m\x1b[2m── restored ──\x1b[0m\r\n";
+  }
+
+  /**
+   * What gets saved: the lines this session wrote, never the history that was replayed into the
+   * pane — saving that again stacks another copy of it with every restart. Once the marker has
+   * scrolled out of the buffer the whole scrollback belongs to this session anyway.
+   */
+  private savedRange(): ISerializeOptions {
+    const limit = this.term.options.scrollback ?? 1000;
+    if (!this.replayEnd || this.replayEnd.isDisposed) return { scrollback: limit };
+    const end = this.term.buffer.normal.length - 1;
+    return { range: { start: this.replayEnd.line, end: Math.max(this.replayEnd.line, end) } };
   }
 
   /** Set (or clear) the CTA block before start(); a later call replaces the visible one. */

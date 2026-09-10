@@ -6,6 +6,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 
 ## [Unreleased]
 
+### Fixed
+- Restoring a session no longer stacks the history: a pane saved everything on its screen,
+  including the scrollback that had just been replayed into it, so every restart added another
+  copy with its own `── restored ──` line. Only what a session wrote itself is saved now.
+
 ## [0.2.1] — 2026-09-10
 
 ### Added
