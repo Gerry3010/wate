@@ -15,6 +15,9 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   clipboard is never answered.
 
 ### Changed
+- Word-wise deleting works inside Claude Code too: it reads the `0x08` a terminal sends for
+  `Ctrl+Backspace` as a plain backspace on Linux and macOS, so wate tells it otherwise
+  (`CLAUDE_CODE_BS_AS_CTRL_BACKSPACE`) whenever `word_keys` includes Ctrl.
 - The zsh integration re-applies the word-key bindings before every prompt (a plugin that
   rebinds later would otherwise win) and also accepts `ESC ^H`, which is what a remapped
   Ctrl/Alt key can produce.

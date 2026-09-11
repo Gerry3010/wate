@@ -126,6 +126,10 @@ xterm.js-based terminals otherwise show with powerlevel10k. Disable with
 `shell_integration = false`. bash and fish: `source ~/.config/wate/shell/wate.bash` /
 `source ~/.config/wate/shell/wate.fish` in your rc file.
 
+Claude Code is told that `Ctrl+Backspace` is a word delete (`CLAUDE_CODE_BS_AS_CTRL_BACKSPACE`):
+it reads the `0x08` every terminal sends for that key as a plain backspace on Linux and macOS
+otherwise, so the key would behave differently inside it than in the shell.
+
 The snippet also binds the word-wise keys: `[terminal] word_keys` picks the modifier —
 `"ctrl"` (default: `Ctrl+←/→` jumps, `Ctrl+Backspace` / `Ctrl+Delete` deletes a word), `"alt"`,
 `"both"` or `"off"`. zsh gets them from the first prompt, i.e. after your own rc has had its say;

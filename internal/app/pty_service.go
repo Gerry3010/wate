@@ -126,6 +126,12 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 		// The shell integration binds the word-wise keys according to this.
 		"WATE_WORD_KEYS=" + cfg.Terminal.WordKeys,
 	}
+	// Ctrl+Backspace arrives as 0x08, which Claude Code reads as a plain backspace on Linux
+	// and macOS unless this is set — so the key would delete a character there while deleting
+	// a word everywhere else.
+	if cfg.Terminal.WordKeys == "ctrl" || cfg.Terminal.WordKeys == "both" {
+		env = append(env, "CLAUDE_CODE_BS_AS_CTRL_BACKSPACE=1")
+	}
 	if cfg.General.ShellIntegration {
 		env = append(env, shell.Env(cmd[0], shellDir())...)
 	}
