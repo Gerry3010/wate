@@ -1,6 +1,7 @@
 import type { Tab } from "./tab";
 import { showMenu, closeMenu, type MenuEntry } from "../ui/menu";
 import type { SessionInfo } from "../api";
+import { perf } from "../perf";
 
 export interface TabBarHost {
   activate(tab: Tab): void;
@@ -100,6 +101,7 @@ export class TabBar {
       .join("\u001e");
     if (!this.renaming && sig === this.sig) return;
     this.sig = this.renaming ? "" : sig;
+    perf.tabRenders++;
     this.list.replaceChildren(
       ...tabs.map((tab, i) => {
         const b = document.createElement("div");

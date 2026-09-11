@@ -10,9 +10,10 @@ import { Clipboard } from "@wailsio/runtime";
 
 import { Events, OpenerService, PtyService, type Target, type TerminalConfig } from "../api";
 import type { Pane } from "../pane";
-import { FileLinkProvider, isModifierClick } from "./links";
+import { FileLinkProvider, clearLinkCache, isModifierClick } from "./links";
 import { paneTitle, type PaneCommand } from "./title";
 import { parseOsc52 } from "./osc52";
+import { perf, sample } from "../perf";
 import { ligatureJoiner } from "./ligatures";
 import { CLAUDE_LOGO, PLAY } from "../ui/icons";
 
@@ -126,6 +127,8 @@ export class TerminalPane implements Pane {
   private replayEnd?: IMarker;
   /** Id of the ligature joiner while ligatures are on. */
   private joinerId?: number;
+  /** When the oldest unrendered PTY chunk arrived (perf timing only). */
+  private pendingSince = 0;
 
   constructor(private opts: TerminalPaneOptions) {
     this.id = opts.paneId;
@@ -159,6 +162,11 @@ export class TerminalPane implements Pane {
     if (this.wantVisible) this.enableWebgl();
     if (t.ligatures) this.enableLigatures();
 
+    this.term.onRender(() => {
+      if (this.pendingSince === 0) return;
+      sample(performance.now() - this.pendingSince);
+      this.pendingSince = 0;
+    });
     this.term.onData((data) => this.send(data));
     this.term.onBinary((data) => this.send(data, true));
     this.term.onResize(({ cols, rows }) => this.sendResize(cols, rows));
@@ -167,7 +175,10 @@ export class TerminalPane implements Pane {
       // of the tab bar (paneTitle() prefers the ssh host and the cwd over the shell's title).
       const before = this.title;
       this.oscTitle = title;
-      if (this.title !== before) opts.onTitle?.(this.title);
+      if (this.title !== before) {
+        perf.titleFires++;
+        opts.onTitle?.(this.title);
+      }
     });
     // OSC 7: file://host/path — the shell tells us its cwd (cheaper and more reliable than /proc).
     this.term.parser.registerOscHandler(7, (data) => {
@@ -190,6 +201,8 @@ export class TerminalPane implements Pane {
       } else if (data.startsWith("C")) {
         this.promptMarker?.dispose();
         this.promptMarker = undefined;
+        // A command runs: it may create or delete files, so stop trusting what we resolved.
+        clearLinkCache();
       }
       return true;
     });
@@ -338,7 +351,13 @@ export class TerminalPane implements Pane {
     ws.binaryType = "arraybuffer";
     this.ws = ws;
     ws.onmessage = (ev) => {
-      if (ev.data instanceof ArrayBuffer) this.term.write(new Uint8Array(ev.data));
+      if (!(ev.data instanceof ArrayBuffer)) return;
+      perf.writes++;
+      perf.bytes += ev.data.byteLength;
+      // Time from "bytes arrived" to "the screen showed them" (see the onRender hook below) —
+      // the number that decides whether typing feels immediate.
+      if (perf.timing && this.pendingSince === 0) this.pendingSince = performance.now();
+      this.term.write(new Uint8Array(ev.data));
     };
     ws.onopen = () => this.sendResize(this.term.cols, this.term.rows);
     ws.onclose = (ev) => {
@@ -398,6 +417,7 @@ export class TerminalPane implements Pane {
 
   /** Scrollback + screen as ANSI text (for sessions); at most maxBytes, cut at a line boundary. */
   serialize(maxBytes: number): string {
+    const started = perf.timing ? performance.now() : 0;
     let text: string;
     try {
       // Modes (mouse tracking, alt screen, …) belong to the program that set them, not to the text.
@@ -405,6 +425,7 @@ export class TerminalPane implements Pane {
     } catch {
       return "";
     }
+    if (perf.timing) perf.serializeMs += performance.now() - started;
     text = text.replace(/\s+$/, "");
     if (!text) return "";
     if (text.length > maxBytes) {

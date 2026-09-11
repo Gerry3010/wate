@@ -10,6 +10,8 @@
  * character can start a ligature at all — and almost none can.
  */
 
+import { perf } from "../perf";
+
 /** The ligature set the addon falls back to (Iosevka's `calt`), longest first so `<==>` beats `<=`. */
 export const COMMON_LIGATURES: readonly string[] = [
   "<--", "<---", "<<-", "<-", "->", "->>", "-->", "--->",
@@ -64,7 +66,15 @@ export function ligatureRanges(text: string, table: LigatureTable = DEFAULT_TABL
   return ranges;
 }
 
-/** Character joiner for `term.registerCharacterJoiner`. */
+/** Character joiner for `term.registerCharacterJoiner`, counted for `ctl debug`. */
 export function ligatureJoiner(table: LigatureTable = DEFAULT_TABLE): (text: string) => [number, number][] {
-  return (text) => ligatureRanges(text, table);
+  return (text) => {
+    perf.joinerCalls++;
+    perf.joinerChars += text.length;
+    if (!perf.timing) return ligatureRanges(text, table);
+    const t = performance.now();
+    const ranges = ligatureRanges(text, table);
+    perf.joinerMs += performance.now() - t;
+    return ranges;
+  };
 }

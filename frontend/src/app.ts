@@ -8,6 +8,7 @@ import { closeMenu } from "./ui/menu";
 import { Sidebar, shortPath } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
+import { perf, takePerf } from "./perf";
 import { neighbor, type Dir, type Direction } from "./layout/tree";
 import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
@@ -101,6 +102,7 @@ export class WateApp {
 
   async saveSession(immediate = false): Promise<void> {
     if (this.restoring || this.secondary || !this.config.general.restore_session) return;
+    perf.saves++;
     const state = await this.snapshot(immediate, RESTORE_SCROLLBACK);
     await StateService.Save(JSON.stringify(state)).catch((err) => console.warn("session save:", err));
   }
@@ -585,6 +587,13 @@ export class WateApp {
       this.debugDump();
       return;
     }
+    if (action === "__perf") {
+      // Timing costs a little on the hot path, so it is off until someone asks for it.
+      perf.timing = !perf.timing;
+      takePerf();
+      console.warn("[perf] timing", perf.timing);
+      return;
+    }
     const m = /^tab_(\d)$/.exec(action);
     if (m) {
       const t = this.tabs[Number(m[1]) - 1];
@@ -697,6 +706,7 @@ export class WateApp {
       size: [window.innerWidth, window.innerHeight],
       visibility: document.visibilityState,
       tabs: this.tabs.length,
+      perf: takePerf(),
       panes,
     });
   }

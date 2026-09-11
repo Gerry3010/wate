@@ -15,6 +15,14 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   clipboard is never answered.
 
 ### Changed
+- The zsh integration re-applies the word-key bindings before every prompt (a plugin that
+  rebinds later would otherwise win) and also accepts `ESC ^H`, which is what a remapped
+  Ctrl/Alt key can produce.
+- `wate ctl debug` reports where a frame's time goes (ligature joiner, tab-bar rebuilds, title
+  changes, saves, bytes in, and the latency from a PTY chunk arriving to the screen showing it);
+  `wate ctl action __perf` turns the timing on.
+- Resolved file links are cached per directory until the next command runs, so hovering a busy
+  pane no longer asks the backend to stat the same paths over and over.
 - Ligatures no longer go through `@xterm/addon-ligatures`, which could never load a font in a
   WebView and fell back to scanning every character against 62 strings on every rendered frame.
   wate now joins them itself — same ligatures, ~27× less work per frame.
