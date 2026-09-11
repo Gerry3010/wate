@@ -84,10 +84,19 @@ export class WateApp {
   /** Set for windows opened while another wate runs: they neither restore nor save the session. */
   secondary = false;
 
+  private saveDeadline = 0;
+
   scheduleSave() {
     if (this.restoring || this.secondary || !this.config.general.restore_session) return;
+    const now = Date.now();
+    // Debounced, but with a ceiling: a busy pane would otherwise push the save out forever.
+    if (this.saveTimer && now > this.saveDeadline) return;
+    if (!this.saveTimer) this.saveDeadline = now + 5000;
     clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => void this.saveSession(), 800);
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = undefined;
+      void this.saveSession();
+    }, 800);
   }
 
   async saveSession(immediate = false): Promise<void> {
@@ -105,7 +114,8 @@ export class WateApp {
       for (const p of t.panes.values()) {
         if (p instanceof EditorPane) panes.push({ id: p.id, kind: "editor", path: p.path });
         else if (p instanceof TerminalPane) {
-          const cwd = immediate ? p.lastKnownCwd() : await p.cwd().catch(() => "");
+          // lastKnownCwd is what OSC 7 reported; only ask the backend when the shell stayed quiet.
+          const cwd = p.lastKnownCwd() || (immediate ? "" : await p.cwd().catch(() => ""));
           panes.push({
             id: p.id,
             kind: "terminal",
@@ -254,11 +264,17 @@ export class WateApp {
     this.agents.apply(s);
   }
 
+  /** Last status painted per pane, so an unchanged one costs no DOM work. */
+  private paneStatus = new Map<string, string>();
+
   private onAgentsChanged() {
     this.tabBar.render(this.tabs, this.active);
     for (const t of this.tabs) {
       for (const p of t.panes.values()) {
         const s = this.agents.forPane(p.id);
+        const status = s ? `${s.status}|${s.context_percent}|${s.title}` : "";
+        if (this.paneStatus.get(p.id) === status) continue;
+        this.paneStatus.set(p.id, status);
         p.element.classList.toggle("agent-waiting", s?.status === "waiting");
         p.element.classList.toggle("agent-done", s?.status === "done");
         if (p instanceof TerminalPane) {
@@ -288,8 +304,16 @@ export class WateApp {
   /** Signature of the live Claude sessions, to notice when the set changes. */
   private claudeSig = "";
 
+  private lastFocusReport = "";
+
   private reportFocus() {
-    AgentService.SetFocus(this.active?.focusedId ?? "", document.hasFocus()).catch(() => {});
+    const pane = this.active?.focusedId ?? "";
+    const key = `${pane}|${document.hasFocus()}`;
+    // The backend answers a focus report with an agent:status event, which repaints the
+    // chrome — so only report when it actually says something new.
+    if (key === this.lastFocusReport) return;
+    this.lastFocusReport = key;
+    AgentService.SetFocus(pane, document.hasFocus()).catch(() => {});
   }
 
   async launchClaude(): Promise<void> {
@@ -415,9 +439,15 @@ export class WateApp {
     this.refreshChrome();
   }
 
+  private lastWindowTitle = "";
+
   private refreshChrome(tab?: Tab) {
     this.tabBar.render(this.tabs, this.active);
-    if (this.active && (!tab || tab === this.active)) void Window.SetTitle(`${this.active.title} — wate`).catch(() => {});
+    if (!this.active || (tab && tab !== this.active)) return;
+    const title = `${this.active.title} — wate`;
+    if (title === this.lastWindowTitle) return;
+    this.lastWindowTitle = title;
+    void Window.SetTitle(title).catch(() => {});
   }
 
   // ---- panes ------------------------------------------------------------
@@ -518,6 +548,7 @@ export class WateApp {
 
   private removePane(tab: Tab, pane: Pane) {
     AgentService.Forget(pane.id).catch(() => {});
+    this.paneStatus.delete(pane.id);
     tab.remove(pane.id);
     if (tab.isEmpty) this.closeTab(tab);
     else tab.focusPane();

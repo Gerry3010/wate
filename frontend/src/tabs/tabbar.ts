@@ -54,6 +54,8 @@ export class TabBar {
   readonly element = document.createElement("div");
   private list = document.createElement("div");
   private renaming: Tab | null = null;
+  /** Everything render() reads, as one string: unchanged means the DOM can stay as it is. */
+  private sig = "";
 
   constructor(private host: TabBarHost) {
     this.element.className = "tabbar";
@@ -91,6 +93,13 @@ export class TabBar {
   }
 
   render(tabs: Tab[], active: Tab | null) {
+    // Rebuilding the bar throws away every tab's DOM and listeners; while a Claude session
+    // streams, the callers fire constantly with nothing actually changed.
+    const sig = tabs
+      .map((t) => [t.id, t.title, t.detail, t.color, this.host.agentStatus(t), t === active].join("\u001f"))
+      .join("\u001e");
+    if (!this.renaming && sig === this.sig) return;
+    this.sig = this.renaming ? "" : sig;
     this.list.replaceChildren(
       ...tabs.map((tab, i) => {
         const b = document.createElement("div");

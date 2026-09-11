@@ -105,11 +105,18 @@ export class Keymap {
     for (const spec of passthrough) this.passthrough.add(chordId(parseChord(spec)));
   }
 
+  private lastEvent?: KeyLike;
+  private lastMatch: string | null = null;
+
   /** Action for the event, or null when unbound / passed through. */
   match(e: KeyLike): string | null {
+    // Every key is matched twice (window capture handler, then xterm's key filter); the
+    // second call gets the same object, so it can be answered from the last result.
+    if (e === this.lastEvent) return this.lastMatch;
     const id = chordId(eventChord(e));
-    if (this.passthrough.has(id)) return null;
-    return this.byChord.get(id) ?? null;
+    this.lastEvent = e;
+    this.lastMatch = this.passthrough.has(id) ? null : this.byChord.get(id) ?? null;
+    return this.lastMatch;
   }
 
   /** Human readable chord for an action (for tooltips), e.g. "Ctrl+Shift+Space". */

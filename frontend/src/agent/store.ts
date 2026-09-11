@@ -8,8 +8,15 @@ export class AgentStore {
   private listeners = new Set<() => void>();
 
   apply(s: Session) {
-    if (s.status === "idle") this.sessions.delete(s.pane_id);
-    else this.sessions.set(s.pane_id, s);
+    if (s.status === "idle") {
+      if (!this.sessions.delete(s.pane_id)) return;
+    } else {
+      const known = this.sessions.get(s.pane_id);
+      // The poller re-sends a session whenever anything in it moves; an identical one would
+      // only cost the UI a full repaint.
+      if (known && JSON.stringify(known) === JSON.stringify(s)) return;
+      this.sessions.set(s.pane_id, s);
+    }
     this.emit();
   }
 

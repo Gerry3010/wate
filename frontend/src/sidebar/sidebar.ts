@@ -48,7 +48,10 @@ export class Sidebar {
     const show = force ?? this.element.hidden;
     this.element.hidden = !show;
     clearInterval(this.timer);
-    if (show) this.timer = setInterval(() => this.render(), 10_000);
+    if (show) {
+      this.render();
+      this.timer = setInterval(() => this.render(), 10_000);
+    }
     this.host.onVisibility?.();
   }
 
@@ -70,6 +73,8 @@ export class Sidebar {
   }
 
   render() {
+    // The store fires on every status tick; a hidden panel has nothing to show for it.
+    if (!this.visible) return;
     const sessions = this.store.list();
     if (sessions.length === 0) {
       const empty = document.createElement("div");

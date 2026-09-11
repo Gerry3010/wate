@@ -46,17 +46,35 @@ func walk(pid, depth int) bool {
 }
 
 func children(pid int) []int {
-	matches, _ := filepath.Glob("/proc/" + strconv.Itoa(pid) + "/task/*/children")
-	var out []int
-	for _, m := range matches {
-		b, err := os.ReadFile(m)
-		if err != nil {
+	// The main thread's children file covers everything a shell spawns; only a process that
+	// forks from another thread (node does not, for the pane's purposes) needs the full walk,
+	// and enumerating a node process's threads every two seconds is the expensive part.
+	dir := "/proc/" + strconv.Itoa(pid) + "/task/"
+	out := readChildren(dir+strconv.Itoa(pid)+"/children", nil)
+	if len(out) > 0 {
+		return out
+	}
+	tasks, err := os.ReadDir(dir)
+	if err != nil {
+		return out
+	}
+	for _, t := range tasks {
+		if t.Name() == strconv.Itoa(pid) {
 			continue
 		}
-		for _, f := range strings.Fields(string(b)) {
-			if n, err := strconv.Atoi(f); err == nil {
-				out = append(out, n)
-			}
+		out = readChildren(dir+t.Name()+"/children", out)
+	}
+	return out
+}
+
+func readChildren(path string, out []int) []int {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return out
+	}
+	for _, f := range strings.Fields(string(b)) {
+		if n, err := strconv.Atoi(f); err == nil {
+			out = append(out, n)
 		}
 	}
 	return out
@@ -84,6 +102,10 @@ func isClaude(pid int) bool {
 	}
 	return false
 }
+
+// IsLiveClaude reports whether a pid seen earlier is still the running Claude Code process,
+// so the poller can skip walking the pane's process tree while nothing changed.
+func IsLiveClaude(pid int) bool { return pid > 0 && processAlive(pid) && isClaude(pid) }
 
 // processAlive reports whether the pid is still running; a zombie waiting to be reaped by its
 // shell counts as gone (it can still be signalled, but it is not doing anything any more).

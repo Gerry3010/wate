@@ -65,6 +65,12 @@ type Terminal struct {
 	CursorStyle string  `toml:"cursor_style" json:"cursor_style"`
 	CursorBlink bool    `toml:"cursor_blink" json:"cursor_blink"`
 	Padding     int     `toml:"padding" json:"padding"`
+	// WordKeys picks the modifier that jumps and deletes word-wise in the shell:
+	// "ctrl", "alt", "both" or "off" (wate's shell integration binds the sequences).
+	WordKeys string `toml:"word_keys" json:"word_keys"`
+	// OSC52 lets programs put text on the clipboard with the OSC 52 escape (Claude Code,
+	// tmux, vim over ssh). Reading the clipboard is never allowed.
+	OSC52 bool `toml:"osc52" json:"osc52"`
 }
 
 type Background struct {
@@ -220,6 +226,11 @@ func finish(c Config) Config {
 	case "block", "underline", "bar":
 	default:
 		c.Terminal.CursorStyle = "block"
+	}
+	switch c.Terminal.WordKeys {
+	case "ctrl", "alt", "both", "off":
+	default:
+		c.Terminal.WordKeys = "ctrl"
 	}
 	switch c.Editor.MarkdownDefaultMode {
 	case "code", "split", "preview":

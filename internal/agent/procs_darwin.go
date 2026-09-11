@@ -55,5 +55,15 @@ func ClaudePidsUnder(pid int) []int {
 	return out
 }
 
+// IsLiveClaude reports whether a pid seen earlier is still the running Claude Code process,
+// so the poller can skip walking the pane's process tree while nothing changed.
+func IsLiveClaude(pid int) bool {
+	if pid <= 0 || !processAlive(pid) {
+		return false
+	}
+	_, name := procTree()
+	return strings.HasSuffix(name[pid], "/claude") || name[pid] == "claude"
+}
+
 // processAlive reports whether the pid can still be signalled (its shell reaps the zombie).
 func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }

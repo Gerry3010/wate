@@ -226,6 +226,21 @@ export class SettingsPane implements Pane {
     this.check(term, "Cursor blink", "terminal.cursor_blink", c.terminal.cursor_blink);
     this.number(term, "Scrollback", "terminal.scrollback", c.terminal.scrollback, 100, 1000000, " lines", 100);
     this.number(term, "Padding", "terminal.padding", c.terminal.padding, 0, 40, "px");
+    this.select(term, "Word keys", "terminal.word_keys", c.terminal.word_keys, [
+      ["ctrl", "Ctrl + ←/→ and Ctrl+Backspace"],
+      ["alt", "Alt + ←/→ and Alt+Backspace"],
+      ["both", "Both"],
+      ["off", "Off — whatever the shell binds"],
+    ]);
+    this.check(term, "Let programs set the clipboard (OSC 52)", "terminal.osc52", c.terminal.osc52);
+    const termHint = document.createElement("p");
+    termHint.className = "settings-hint";
+    termHint.textContent =
+      "Word keys jump and delete a word at the prompt; wate binds them through its shell integration, " +
+      "so they take effect in panes opened after the change (bash and fish need the source line from the README). " +
+      "OSC 52 is how a full-screen program (Claude Code, tmux, vim over ssh) copies — reading the clipboard is never allowed. " +
+      "Hold Shift while dragging to select text while a program has the mouse.";
+    term.appendChild(termHint);
 
     const ed = this.section("Editor", "editor");
     this.text(ed, "Font", "editor.font", c.editor.font);

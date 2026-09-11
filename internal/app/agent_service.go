@@ -52,18 +52,35 @@ func (a *AgentService) ServiceShutdown() error {
 func (a *AgentService) poll() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
+	// Pane → the Claude pid seen last time: checking that one process is still alive is two
+	// small /proc reads, where the tree walk costs a directory listing per process.
+	known := map[string]int{}
 	for {
 		select {
 		case <-a.stop:
 			return
 		case <-t.C:
+			seen := make(map[string]bool, len(known))
 			for _, p := range a.pty.Panes() {
-				running := agent.ClaudeRunningUnder(p.Pid)
+				seen[p.PaneID] = true
+				pid := known[p.PaneID]
+				if pid == 0 || !agent.IsLiveClaude(pid) {
+					pid = 0
+					if pids := agent.ClaudePidsUnder(p.Pid); len(pids) > 0 {
+						pid = pids[0]
+					}
+					known[p.PaneID] = pid
+				}
 				cwd := ""
-				if running {
+				if pid != 0 {
 					cwd, _ = a.pty.Cwd(p.SessionID)
 				}
-				a.tracker.Observe(p.PaneID, p.TabID, running, cwd)
+				a.tracker.Observe(p.PaneID, p.TabID, pid != 0, cwd)
+			}
+			for pane := range known {
+				if !seen[pane] {
+					delete(known, pane)
+				}
 			}
 			a.tracker.RefreshContexts(homeDir(), a.cfg().Claude.ContextWindow)
 		}

@@ -6,6 +6,24 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 
 ## [Unreleased]
 
+### Added
+- `[terminal] word_keys` picks the modifier for word-wise jumping and deleting at the prompt —
+  `"ctrl"` (default), `"alt"`, `"both"` or `"off"`. wate's shell integration binds the sequences
+  in zsh, bash and fish, so `Ctrl+Backspace` deletes a word instead of a character.
+- Programs can put text on the clipboard with OSC 52 (`[terminal] osc52`, on by default): copying
+  inside Claude Code, tmux or vim over ssh now actually reaches the system clipboard. Reading the
+  clipboard is never answered.
+
+### Changed
+- Ligatures no longer go through `@xterm/addon-ligatures`, which could never load a font in a
+  WebView and fell back to scanning every character against 62 strings on every rendered frame.
+  wate now joins them itself — same ligatures, ~27× less work per frame.
+- Less work while a TUI is busy: the tab bar only repaints when something visible changed, a
+  shell title that does not change the tab title no longer triggers anything, the session
+  autosave serializes a capped number of lines and skips a per-pane backend call, the hidden
+  sidebar does not render, and the Claude poller remembers the process instead of walking the
+  pane's process tree every two seconds.
+
 ## [0.2.2] — 2026-09-10
 
 ### Changed

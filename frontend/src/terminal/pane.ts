@@ -4,13 +4,16 @@ import { SerializeAddon, type ISerializeOptions } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 
-import { LigaturesAddon } from "@xterm/addon-ligatures";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+
+import { Clipboard } from "@wailsio/runtime";
 
 import { Events, OpenerService, PtyService, type Target, type TerminalConfig } from "../api";
 import type { Pane } from "../pane";
 import { FileLinkProvider, isModifierClick } from "./links";
 import { paneTitle, type PaneCommand } from "./title";
+import { parseOsc52 } from "./osc52";
+import { ligatureJoiner } from "./ligatures";
 import { CLAUDE_LOGO, PLAY } from "../ui/icons";
 
 /** A call-to-action block drawn across the pane between the restored history and the prompt. */
@@ -56,6 +59,12 @@ export interface TerminalPaneOptions {
 const MODE_RESET =
   "\x1b[?9l\x1b[?1000l\x1b[?1001l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l" +
   "\x1b[?2004l\x1b[?1l\x1b>\x1b[?7h\x1b[?25h\x1b[0m\x1b(B\x1b[4l";
+
+/** Rough cost of a serialized line (text plus its colour escapes); see savedRange(). */
+const BYTES_PER_LINE = 24;
+
+/** One encoder for every keystroke; allocating one per send shows up under fast typing. */
+const ENCODER = new TextEncoder();
 
 /** Terminal rows the notice block occupies. */
 const NOTICE_ROWS = 3;
@@ -115,6 +124,8 @@ export class TerminalPane implements Pane {
   private notice?: IDecoration;
   /** Where the replayed history ends: only what this session added is saved again. */
   private replayEnd?: IMarker;
+  /** Id of the ligature joiner while ligatures are on. */
+  private joinerId?: number;
 
   constructor(private opts: TerminalPaneOptions) {
     this.id = opts.paneId;
@@ -135,6 +146,9 @@ export class TerminalPane implements Pane {
       allowProposedApi: true,
       allowTransparency: true,
       macOptionIsMeta: true,
+      // macOS has no Shift-drag override, so Option+drag is what selects text while a
+      // program (Claude Code, vim, htop) has mouse reporting on.
+      macOptionClickForcesSelection: true,
       theme: opts.theme,
     };
     this.term = new Terminal(termOpts);
@@ -143,22 +157,17 @@ export class TerminalPane implements Pane {
     this.term.open(this.element);
     this.wantVisible = opts.visible !== false;
     if (this.wantVisible) this.enableWebgl();
-    if (t.ligatures) {
-      // Without Node the addon can't read the font file; it falls back to a built-in
-      // list of common programming ligatures, which is what we want here.
-      try {
-        this.term.loadAddon(new LigaturesAddon());
-      } catch (err) {
-        console.warn("ligatures addon unavailable", err);
-      }
-    }
+    if (t.ligatures) this.enableLigatures();
 
     this.term.onData((data) => this.send(data));
     this.term.onBinary((data) => this.send(data, true));
     this.term.onResize(({ cols, rows }) => this.sendResize(cols, rows));
     this.term.onTitleChange((title) => {
+      // A TUI rewrites its title constantly; only a changed *pane* title is worth a repaint
+      // of the tab bar (paneTitle() prefers the ssh host and the cwd over the shell's title).
+      const before = this.title;
       this.oscTitle = title;
-      opts.onTitle?.(this.title);
+      if (this.title !== before) opts.onTitle?.(this.title);
     });
     // OSC 7: file://host/path — the shell tells us its cwd (cheaper and more reliable than /proc).
     this.term.parser.registerOscHandler(7, (data) => {
@@ -184,6 +193,15 @@ export class TerminalPane implements Pane {
       }
       return true;
     });
+    // OSC 52: the program hands us text for the clipboard. Claude Code copies this way (it owns
+    // the mouse, so there is no terminal selection to copy), as do tmux and vim over ssh.
+    if (t.osc52) {
+      this.term.parser.registerOscHandler(52, (data) => {
+        const text = parseOsc52(data);
+        if (text) Clipboard.SetText(text).catch((err) => console.warn("osc52 clipboard:", err));
+        return true;
+      });
+    }
     if (opts.keyFilter) this.term.attachCustomKeyEventHandler((e) => opts.keyFilter!(e));
 
     // Debounced: a divider drag fires dozens of size changes per second and every
@@ -329,6 +347,22 @@ export class TerminalPane implements Pane {
     };
   }
 
+  /** Join ligature runs so the renderer draws them as one glyph (see terminal/ligatures.ts). */
+  private enableLigatures() {
+    if (this.joinerId !== undefined) return;
+    this.joinerId = this.term.registerCharacterJoiner(ligatureJoiner());
+    // The joiner groups the cells; the font feature is what substitutes the glyph when a pane
+    // falls back to the DOM renderer (hidden tabs have no WebGL context).
+    if (this.term.element) this.term.element.style.fontFeatureSettings = '"calt" on';
+  }
+
+  private disableLigatures() {
+    if (this.joinerId === undefined) return;
+    this.term.deregisterCharacterJoiner(this.joinerId);
+    this.joinerId = undefined;
+    if (this.term.element) this.term.element.style.fontFeatureSettings = "";
+  }
+
   private send(data: string, binary = false) {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     if (binary) {
@@ -336,7 +370,7 @@ export class TerminalPane implements Pane {
       for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i) & 0xff;
       this.ws.send(bytes);
     } else {
-      this.ws.send(new TextEncoder().encode(data));
+      this.ws.send(ENCODER.encode(data));
     }
   }
 
@@ -347,6 +381,8 @@ export class TerminalPane implements Pane {
 
   /** Re-apply appearance settings (config reload, zoom). */
   applyConfig(t: TerminalConfig, fontDelta = 0, theme?: Record<string, string>) {
+    // Keep the pane's copy current: setActive() and the OSC 52 gate read from it.
+    this.opts.terminal = t;
     if (theme) this.term.options.theme = theme;
     this.term.options.fontFamily = t.font;
     this.term.options.fontSize = Math.max(6, t.font_size + fontDelta);
@@ -355,6 +391,8 @@ export class TerminalPane implements Pane {
     this.term.options.cursorStyle = t.cursor_style as ITerminalOptions["cursorStyle"];
     this.term.options.cursorBlink = this.active && t.cursor_blink;
     this.element.style.padding = `${t.padding}px`;
+    if (t.ligatures) this.enableLigatures();
+    else this.disableLigatures();
     this.fitNow();
   }
 
@@ -363,7 +401,7 @@ export class TerminalPane implements Pane {
     let text: string;
     try {
       // Modes (mouse tracking, alt screen, …) belong to the program that set them, not to the text.
-      text = this.serializer.serialize({ ...this.savedRange(), excludeModes: true, excludeAltBuffer: true });
+      text = this.serializer.serialize({ ...this.savedRange(maxBytes), excludeModes: true, excludeAltBuffer: true });
     } catch {
       return "";
     }
@@ -381,11 +419,15 @@ export class TerminalPane implements Pane {
    * pane — saving that again stacks another copy of it with every restart. Once the marker has
    * scrolled out of the buffer the whole scrollback belongs to this session anyway.
    */
-  private savedRange(): ISerializeOptions {
-    const limit = this.term.options.scrollback ?? 1000;
-    if (!this.replayEnd || this.replayEnd.isDisposed) return { scrollback: limit };
+  private savedRange(maxBytes: number): ISerializeOptions {
+    // Serialising 10 000 lines for a 48 KiB budget is most of the cost of an autosave, so the
+    // line count is capped to what the budget can hold anyway (colour escapes included).
+    const cap = Math.max(200, Math.ceil(maxBytes / BYTES_PER_LINE));
+    const limit = Math.min(this.term.options.scrollback ?? 1000, cap);
     const end = this.term.buffer.normal.length - 1;
-    return { range: { start: this.replayEnd.line, end: Math.max(this.replayEnd.line, end) } };
+    if (!this.replayEnd || this.replayEnd.isDisposed) return { scrollback: limit };
+    const start = Math.max(this.replayEnd.line, end - limit);
+    return { range: { start, end: Math.max(start, end) } };
   }
 
   /** Set (or clear) the CTA block before start(); a later call replaces the visible one. */
@@ -409,7 +451,8 @@ export class TerminalPane implements Pane {
     this.notice = dec;
     dec.onRender((el) => {
       // The width is fixed in cells at registration; keep it full width across resizes.
-      el.style.width = "100%";
+      // onRender fires every frame, so only touch the style when it actually differs.
+      if (el.style.width !== "100%") el.style.width = "100%";
       if (el.firstChild) return;
       el.classList.add("pane-notice");
       const font = { family: String(this.term.options.fontFamily ?? ""), size: Number(this.term.options.fontSize ?? 13) };

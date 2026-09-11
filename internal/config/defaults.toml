@@ -23,6 +23,8 @@ scrollback = 10000
 cursor_style = "block"                  # "block" | "underline" | "bar"
 cursor_blink = true
 padding = 8                             # px around the terminal grid
+word_keys = "ctrl"                      # modifier for word-wise jump/delete: "ctrl" | "alt" | "both" | "off"
+osc52 = true                            # let programs copy to the clipboard (OSC 52); reading is never allowed
 
 [background]
 mode = "solid"                          # "wallpaper" | "translucent" | "solid"

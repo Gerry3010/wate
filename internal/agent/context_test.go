@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -86,9 +88,19 @@ func TestFindTranscriptAndRefresh(t *testing.T) {
 	if len(changes) != 2 {
 		t.Fatal("unchanged transcript re-emitted")
 	}
-	f, _ := os.OpenFile(newer, os.O_APPEND|os.O_WRONLY, 0o600)
-	f.WriteString(`{"type":"assistant","message":{"model":"m","usage":{"input_tokens":1,"cache_read_input_tokens":149999}}}` + "\n")
-	f.Close()
+	// A trickle of new tokens waits for the pacing (a streaming session appends constantly).
+	appendLine := func(reads int, pad int) {
+		f, _ := os.OpenFile(newer, os.O_APPEND|os.O_WRONLY, 0o600)
+		fmt.Fprintf(f, `{"type":"assistant","pad":"%s","message":{"model":"m","usage":{"input_tokens":1,"cache_read_input_tokens":%d}}}`+"\n", strings.Repeat("x", pad), reads)
+		f.Close()
+	}
+	appendLine(50_000, 0)
+	tr.RefreshContexts(home, 0)
+	if len(changes) != 2 {
+		t.Fatalf("a small append should wait for the next interval: %+v", changes[len(changes)-1])
+	}
+	// Once it has grown by a chunk, the context is re-read straight away.
+	appendLine(149_999, contextGrowth)
 	tr.RefreshContexts(home, 0)
 	if len(changes) != 3 || changes[2].ContextPercent != 75 {
 		t.Fatalf("after growth: %+v", changes[len(changes)-1])

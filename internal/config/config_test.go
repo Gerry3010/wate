@@ -71,6 +71,21 @@ func TestParseInvalidModeFallsBack(t *testing.T) {
 	}
 }
 
+func TestWordKeys(t *testing.T) {
+	if got := Defaults().Terminal.WordKeys; got != "ctrl" {
+		t.Fatalf("default word_keys = %q", got)
+	}
+	for in, want := range map[string]string{"alt": "alt", "both": "both", "off": "off", "nonsense": "ctrl", "": "ctrl"} {
+		c, err := Parse([]byte("[terminal]\nword_keys = \""+in+"\"\n"), Defaults())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.Terminal.WordKeys != want {
+			t.Errorf("word_keys %q → %q, want %q", in, c.Terminal.WordKeys, want)
+		}
+	}
+}
+
 func TestDarwinOverrides(t *testing.T) {
 	raw := Defaults().KeysRaw
 	linux := effectiveKeys(raw, "linux")

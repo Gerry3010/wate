@@ -42,7 +42,24 @@ type Session struct {
 	ContextPercent int `json:"context_percent"`
 	// transcriptSize is the file size at the last context read (skip unchanged files).
 	transcriptSize int64
+	// contextReadAt throttles re-reading a transcript that grows with every token.
+	contextReadAt time.Time
+	// titleTried/titleTriedSize remember the last attempt at reading a title: a transcript
+	// that has none yet is only worth re-reading once it has grown.
+	titleTried     bool
+	titleTriedSize int64
+	// transcriptTriedAt keeps the search for a missing transcript off every tick.
+	transcriptTriedAt time.Time
 }
+
+// Transcript re-reads are paced: an active session appends constantly, and the sidebar's
+// context bar does not need to follow every token.
+const (
+	contextInterval   = 4 * time.Second
+	contextGrowth     = 8 * 1024
+	transcriptRetry   = 30 * time.Second
+	titleRetryMinimum = 4 * 1024
+)
 
 // Tracker is the in-memory session table.
 type Tracker struct {
@@ -83,7 +100,7 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 	}
 	if p.Transcript != "" && p.Transcript != s.TranscriptPath {
 		s.TranscriptPath = p.Transcript
-		s.transcriptSize = -1
+		s.transcriptSize, s.titleTried = -1, false
 	}
 	switch event {
 	case "SessionStart":
@@ -120,10 +137,17 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 func (t *Tracker) RefreshContexts(home string, window int) {
 	t.mu.Lock()
 	var changed []Session
+	now := time.Now()
 	for _, s := range t.sessions {
 		if s.TranscriptPath == "" {
+			// Scanning the project directory for a transcript that is not there yet is not
+			// worth doing twice a second.
+			if now.Sub(s.transcriptTriedAt) < transcriptRetry {
+				continue
+			}
+			s.transcriptTriedAt = now
 			s.TranscriptPath = FindTranscript(home, s.Cwd)
-			s.transcriptSize = -1
+			s.transcriptSize, s.titleTried = -1, false
 			if s.TranscriptPath == "" {
 				continue
 			}
@@ -133,14 +157,20 @@ func (t *Tracker) RefreshContexts(home string, window int) {
 			continue
 		}
 		dirty := false
-		if s.Title == "" {
+		// A transcript whose early entries hold no usable title will not grow one out of thin
+		// air: try again only once it has grown, not on every tick.
+		if s.Title == "" && (!s.titleTried || st.Size()-s.titleTriedSize >= titleRetryMinimum) {
+			s.titleTried, s.titleTriedSize = true, st.Size()
 			if title := ReadTitle(s.TranscriptPath); title != "" {
 				s.Title = title
 				dirty = true
 			}
 		}
-		if st.Size() != s.transcriptSize {
+		grown := st.Size() - s.transcriptSize
+		// s.transcriptSize < 0 means a fresh (or newly handed over) transcript: read it now.
+		if s.transcriptSize < 0 || grown >= contextGrowth || (grown != 0 && now.Sub(s.contextReadAt) >= contextInterval) {
 			s.transcriptSize = st.Size()
+			s.contextReadAt = now
 			if c, ok := ReadContext(s.TranscriptPath); ok {
 				c.Window = WindowFor(c.Model, window, c.Tokens)
 				if pct := c.Percent(); c != s.Context || pct != s.ContextPercent {

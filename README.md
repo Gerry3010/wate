@@ -48,6 +48,8 @@ notifications, session sidebar) without any AI of its own.
 | Swap pane with its neighbour | `Ctrl+Shift+Arrow` (or **Alt+drag** a pane onto another) |
 | New tab / next / previous / tab *n* | `Ctrl+Shift+T` / `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Alt+n` |
 | Copy / paste | `Ctrl+Shift+C` / `Ctrl+Shift+V` (macOS also `Cmd+C` / `Cmd+V`) |
+| Select text while a program owns the mouse | hold `Shift` while dragging (macOS: `Option`) |
+| Jump / delete by word at the prompt | `Ctrl+←` / `Ctrl+→`, `Ctrl+Backspace` / `Ctrl+Delete` (`[terminal] word_keys`) |
 | Launch Claude Code in the current directory | `Ctrl+Shift+K` |
 | Toggle agent sidebar | `Ctrl+Shift+A` |
 | Settings pane | `Ctrl+,` |
@@ -97,6 +99,9 @@ No AI inside wate — just a good seat for Claude Code:
 - Any pane running Claude gets a status dot in its tab: blue = working, yellow = waiting for
   you, green = finished. The pane frame lights up while Claude waits.
 - `Ctrl+Shift+A` opens the session sidebar (directory, state, last message); click a row to jump.
+- Copying out of Claude Code works: it hands the text to the terminal with OSC 52, and wate puts
+  it on the clipboard (`[terminal] osc52 = false` turns that off; a program can never *read* the
+  clipboard). Claude Code owns the mouse, so drag with `Shift` held to select text yourself.
 - A desktop notification fires when Claude needs you and you are looking elsewhere.
 
 Process detection works out of the box. For precise states run **`wate install-hooks`** once:
@@ -120,6 +125,11 @@ current directory and — like kitty — lets wate resize without the duplicated
 xterm.js-based terminals otherwise show with powerlevel10k. Disable with
 `shell_integration = false`. bash and fish: `source ~/.config/wate/shell/wate.bash` /
 `source ~/.config/wate/shell/wate.fish` in your rc file.
+
+The snippet also binds the word-wise keys: `[terminal] word_keys` picks the modifier —
+`"ctrl"` (default: `Ctrl+←/→` jumps, `Ctrl+Backspace` / `Ctrl+Delete` deletes a word), `"alt"`,
+`"both"` or `"off"`. zsh gets them from the first prompt, i.e. after your own rc has had its say;
+a changed setting applies to panes opened afterwards.
 
 ## CLI
 

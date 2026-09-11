@@ -123,6 +123,8 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 		"WATE_PANE_ID=" + req.PaneID,
 		"WATE_TAB_ID=" + req.TabID,
 		"WATE_SOCKET=" + socket,
+		// The shell integration binds the word-wise keys according to this.
+		"WATE_WORD_KEYS=" + cfg.Terminal.WordKeys,
 	}
 	if cfg.General.ShellIntegration {
 		env = append(env, shell.Env(cmd[0], shellDir())...)

@@ -27,6 +27,22 @@ func TestInstallAndEnv(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Word-wise keys: every snippet honours WATE_WORD_KEYS and binds both modifier sets.
+	for f, want := range map[string][]string{
+		"wate.zsh":  {"WATE_WORD_KEYS", "backward-kill-word", "^[[1;5D", "^[[1;3D", "^H"},
+		"wate.bash": {"WATE_WORD_KEYS", "backward-kill-word", "\\e[1;5D", "\\e[1;3D", "\\C-h"},
+		"wate.fish": {"WATE_WORD_KEYS", "backward-kill-word", "1\\;5D", "1\\;3D"},
+	} {
+		body, err := os.ReadFile(filepath.Join(dir, f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range want {
+			if !strings.Contains(string(body), w) {
+				t.Errorf("%s does not bind %q", f, w)
+			}
+		}
+	}
 	t.Setenv("ZDOTDIR", "")
 	env := Env("/bin/zsh", dir)
 	if len(env) != 1 || env[0] != "ZDOTDIR="+filepath.Join(dir, "zsh") {
