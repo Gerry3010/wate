@@ -9,6 +9,7 @@ import { Sidebar, shortPath } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
 import { perf, takePerf } from "./perf";
+import { keys, logKey, takeKeys } from "./keys-debug";
 import { neighbor, type Dir, type Direction } from "./layout/tree";
 import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
@@ -574,6 +575,7 @@ export class WateApp {
   // ---- actions ----------------------------------------------------------
 
   private onKey(e: KeyboardEvent) {
+    logKey(e);
     const action = this.keymap.match(e);
     if (!action) return;
     e.preventDefault();
@@ -585,6 +587,12 @@ export class WateApp {
     const tab = this.active;
     if (action === "__debug") {
       this.debugDump();
+      return;
+    }
+    if (action === "__keys") {
+      keys.recording = !keys.recording;
+      takeKeys();
+      console.warn("[keys] recording", keys.recording);
       return;
     }
     if (action === "__perf") {
@@ -707,6 +715,7 @@ export class WateApp {
       visibility: document.visibilityState,
       tabs: this.tabs.length,
       perf: takePerf(),
+      keys: keys.recording ? takeKeys() : undefined,
       panes,
     });
   }

@@ -14,6 +14,7 @@ import { FileLinkProvider, clearLinkCache, isModifierClick } from "./links";
 import { paneTitle, type PaneCommand } from "./title";
 import { parseOsc52 } from "./osc52";
 import { perf, sample } from "../perf";
+import { logData } from "../keys-debug";
 import { ligatureJoiner } from "./ligatures";
 import { CLAUDE_LOGO, PLAY } from "../ui/icons";
 
@@ -167,7 +168,10 @@ export class TerminalPane implements Pane {
       sample(performance.now() - this.pendingSince);
       this.pendingSince = 0;
     });
-    this.term.onData((data) => this.send(data));
+    this.term.onData((data) => {
+      logData(data);
+      this.send(data);
+    });
     this.term.onBinary((data) => this.send(data, true));
     this.term.onResize(({ cols, rows }) => this.sendResize(cols, rows));
     this.term.onTitleChange((title) => {
