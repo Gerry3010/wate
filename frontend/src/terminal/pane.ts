@@ -130,6 +130,8 @@ export class TerminalPane implements Pane {
   private joinerId?: number;
   /** When the oldest unrendered PTY chunk arrived (perf timing only). */
   private pendingSince = 0;
+  /** Which arming pendingSince belongs to, so a stale disarm cannot drop a newer chunk's clock. */
+  private pendingSeq = 0;
 
   constructor(private opts: TerminalPaneOptions) {
     this.id = opts.paneId;
@@ -358,10 +360,29 @@ export class TerminalPane implements Pane {
       if (!(ev.data instanceof ArrayBuffer)) return;
       perf.writes++;
       perf.bytes += ev.data.byteLength;
+      const bytes = new Uint8Array(ev.data);
+      if (!perf.timing) {
+        this.term.write(bytes);
+        return;
+      }
       // Time from "bytes arrived" to "the screen showed them" (see the onRender hook below) —
       // the number that decides whether typing feels immediate.
-      if (perf.timing && this.pendingSince === 0) this.pendingSince = performance.now();
-      this.term.write(new Uint8Array(ev.data));
+      let seq = this.pendingSeq;
+      if (this.pendingSince === 0) {
+        this.pendingSince = performance.now();
+        seq = ++this.pendingSeq;
+      }
+      this.term.write(bytes, () => {
+        // Plenty of chunks change nothing on screen (a title, an OSC 7 cwd, the answer to a
+        // status query) and never reach the renderer. Their clock has to stop once they are
+        // parsed, or the wait for the *next* keystroke is charged to them and every latency
+        // after that reads far too high.
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            if (this.pendingSeq === seq) this.pendingSince = 0;
+          }),
+        );
+      });
     };
     ws.onopen = () => this.sendResize(this.term.cols, this.term.rows);
     ws.onclose = (ev) => {

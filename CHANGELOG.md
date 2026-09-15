@@ -35,6 +35,12 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   sidebar does not render, and the Claude poller remembers the process instead of walking the
   pane's process tree every two seconds.
 
+### Fixed
+- Dragging a file into a pane no longer takes the app down: the WebView used to navigate to
+  `file:///…`, so the image covered every pane with no way back and wate had to be killed. A drop
+  now types the (shell-quoted) paths into the pane it was dropped on; in an editor pane the file
+  is opened instead.
+
 ## [0.2.2] — 2026-09-10
 
 ### Changed

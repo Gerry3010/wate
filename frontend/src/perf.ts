@@ -46,7 +46,8 @@ export function takePerf() {
     saves: p.saves,
     serializeMs: Math.round(p.serializeMs),
     output: { writes: p.writes, bytes: p.bytes },
-    latencyMs: { p50: pct(p.latency, 0.5), p95: pct(p.latency, 0.95), max: pct(p.latency, 1) },
+    // Samples < writes is normal: a chunk that renders nothing is not a latency.
+    latencyMs: { samples: p.latency.length, p50: pct(p.latency, 0.5), p95: pct(p.latency, 0.95), max: pct(p.latency, 1) },
   };
   p.joinerCalls = p.joinerChars = p.joinerMs = 0;
   p.tabRenders = p.titleFires = p.saves = p.serializeMs = 0;

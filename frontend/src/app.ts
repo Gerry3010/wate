@@ -10,6 +10,7 @@ import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
 import { perf, takePerf } from "./perf";
 import { keys, logKey, takeKeys } from "./keys-debug";
+import { dropText, droppedPaths } from "./drop";
 import { neighbor, type Dir, type Direction } from "./layout/tree";
 import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
@@ -17,6 +18,11 @@ import { TabBar } from "./tabs/tabbar";
 import { TerminalPane, type PaneNotice } from "./terminal/pane";
 import { EditorPane } from "./editor/pane";
 import { SettingsPane } from "./settings/pane";
+
+/** Is the event inside a CodeMirror editor? Then the editor owns the drop, not us. */
+function inEditor(target: EventTarget | null): boolean {
+  return !!(target as HTMLElement | null)?.closest?.(".cm-editor");
+}
 
 /** Top-level UI state: tabs, panes, keybindings and the actions they trigger. */
 /** Scrollback kept per pane (bytes of ANSI text): named sessions keep more than the auto-restore file. */
@@ -73,6 +79,16 @@ export class WateApp {
     this.main.append(this.content, this.sidebar.element);
     root.append(this.tabBar.element, this.main);
     window.addEventListener("keydown", (e) => this.onKey(e), { capture: true });
+    // A dropped file would otherwise navigate the WebView to file:///… — the image then covers
+    // every pane and only a restart brings them back. So wate takes the drop itself (see drop.ts).
+    for (const type of ["dragenter", "dragover"] as const) {
+      window.addEventListener(type, (e) => {
+        if (inEditor(e.target)) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      }, { capture: true });
+    }
+    window.addEventListener("drop", (e) => this.onDrop(e), { capture: true });
     window.addEventListener("focus", () => this.reportFocus());
     window.addEventListener("blur", () => this.reportFocus());
     this.agents.subscribe(() => this.onAgentsChanged());
@@ -573,6 +589,25 @@ export class WateApp {
   }
 
   // ---- actions ----------------------------------------------------------
+
+  /** A file dropped on a pane: its path lands in that pane's prompt, ready to run or send. */
+  private onDrop(e: DragEvent) {
+    // CodeMirror reads a dropped file into the buffer itself; everywhere else the default is
+    // a navigation away from the app, so it never gets to run.
+    if (inEditor(e.target)) return;
+    e.preventDefault();
+    const tab = this.active;
+    const paths = droppedPaths(e.dataTransfer);
+    if (paths.length === 0 || !tab) return;
+    const el = (e.target as HTMLElement | null)?.closest?.("[data-pane-id]") as HTMLElement | null;
+    const pane = (el?.dataset.paneId ? tab.panes.get(el.dataset.paneId) : undefined) ?? tab.focused;
+    if (pane && pane.id !== tab.focusedId) {
+      tab.setFocus(pane.id);
+      tab.focusPane();
+    }
+    if (pane instanceof TerminalPane) pane.term.paste(dropText(paths));
+    else void this.openEditor(tab, paths[0]);
+  }
 
   private onKey(e: KeyboardEvent) {
     logKey(e);
