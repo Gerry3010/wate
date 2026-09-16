@@ -123,17 +123,32 @@ export class LayoutView {
       d.classList.add("dragging");
       this.host.onDragStart();
       const guides = this.showGuides(box, dir);
+      // The split keeps its own size while the divider travels inside it, so it is measured once:
+      // asking for it per event would force a layout right after the last one was written.
+      const r = box.getBoundingClientRect();
       let current: number | null = null;
-      const move = (ev: PointerEvent) => {
-        const r = box.getBoundingClientRect();
-        const raw = dir === "row" ? (ev.clientX - r.left) / r.width : (ev.clientY - r.top) / r.height;
+      let frame = 0;
+      let point = 0;
+      const apply = () => {
+        frame = 0;
+        const raw = dir === "row" ? (point - r.left) / r.width : (point - r.top) / r.height;
         const { ratio, snapped } = snapRatio(Math.min(0.9, Math.max(0.1, raw)));
         current = ratio;
         this.setRatio(splitId, ratio);
         d.classList.toggle("snapped", snapped !== null);
         for (const g of guides.children) (g as HTMLElement).classList.toggle("active", Number((g as HTMLElement).dataset.p) === snapped);
       };
+      // A mouse reports moves several times per frame; laying the panes out that often is what
+      // makes a drag feel heavy, so the newest position wins and the work happens once a frame.
+      const move = (ev: PointerEvent) => {
+        point = dir === "row" ? ev.clientX : ev.clientY;
+        if (!frame) frame = requestAnimationFrame(apply);
+      };
       const up = () => {
+        if (frame) {
+          cancelAnimationFrame(frame);
+          apply(); // the last move may still be waiting for its frame
+        }
         d.classList.remove("dragging", "snapped");
         d.removeEventListener("pointermove", move);
         d.removeEventListener("pointerup", up);

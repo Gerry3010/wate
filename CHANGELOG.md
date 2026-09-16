@@ -43,6 +43,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- Dragging feels lighter: the drop highlight is moved with a transform (the browser composites
+  that, where animating its position and size re-painted the whole translucent rectangle every
+  frame), and both it and a divider drag do their work once per frame instead of once per
+  reported mouse position — a mouse reports several of those per frame, and each one was laying
+  out every pane again.
 - The bottom row of a pane is no longer cut in half. The gap around the grid was padding on the
   pane, while `FitAddon` divides the pane's `getComputedStyle().height` by the cell height —
   and WebKitGTK resolves that to the padding box (Blink resolves it to the content box), so the

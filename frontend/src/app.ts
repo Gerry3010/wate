@@ -98,7 +98,7 @@ export class WateApp {
     }
     window.addEventListener("drop", (e) => this.onDrop(e), { capture: true });
     this.drops = new DropHighlight(root);
-    installDragMotion({ move: (x, y) => this.previewDrop(x, y), leave: () => this.drops?.hide() });
+    installDragMotion({ move: (x, y) => this.previewDrop(x, y), leave: () => this.endDrag() });
     window.addEventListener("focus", () => this.reportFocus());
     window.addEventListener("blur", () => this.reportFocus());
     this.agents.subscribe(() => this.onAgentsChanged());
@@ -117,6 +117,9 @@ export class WateApp {
   /** The drop preview, and when the native path last delivered one (the DOM fallback defers to it). */
   private drops?: DropHighlight;
   private lastNativeDrop = 0;
+  /** Pane geometry for the drag in progress: measuring it per motion event would make the whole
+   *  window (terminal included) lay out again several times a second. */
+  private dragRects?: (Box & { id: string })[];
   /** What the last drop resolved to — `wate ctl debug` prints it. */
   private lastDrop?: { paths: string[]; x: number; y: number; pane: string | null; zone: DropZone };
 
@@ -629,7 +632,8 @@ export class WateApp {
 
   /** Paint what the drop under the cursor would do. */
   private previewDrop(x: number, y: number) {
-    const hit = this.active ? boxAt(this.active.rects(), x, y) : undefined;
+    this.dragRects ??= this.active?.rects();
+    const hit = this.dragRects ? boxAt(this.dragRects, x, y) : undefined;
     if (!hit) {
       this.drops?.hide();
       return;
@@ -638,12 +642,18 @@ export class WateApp {
     this.drops?.show(zoneRect(hit, zone), zone);
   }
 
+  /** The drag is over (or gone): forget the measurements and take the preview down. */
+  private endDrag() {
+    this.dragRects = undefined;
+    this.drops?.hide();
+  }
+
   /**
    * One entry for every drop, wherever it came from: dropped in the middle of a pane the paths are
    * typed into it, dropped near an edge the pane splits towards that edge and the file opens there.
    */
   async handleDrop(paths: string[], x: number, y: number): Promise<void> {
-    this.drops?.hide();
+    this.endDrag();
     const tab = this.active;
     if (!tab || paths.length === 0) return;
     const hit = boxAt<Box & { id: string }>(tab.rects(), x, y);
@@ -826,7 +836,7 @@ export class WateApp {
     }
     if (spec.motion) {
       this.previewDrop(spec.x, spec.y);
-      setTimeout(() => this.drops?.hide(), 2000);
+      setTimeout(() => this.endDrag(), 2000);
     } else {
       await this.handleDrop(spec.paths ?? [], spec.x, spec.y);
     }
