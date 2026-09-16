@@ -132,6 +132,10 @@ export class TerminalPane implements Pane {
   private pendingSince = 0;
   /** Which arming pendingSince belongs to, so a stale disarm cannot drop a newer chunk's clock. */
   private pendingSeq = 0;
+  /** Text waiting for the shell's first prompt (see pasteSoon), and its safety net. */
+  private pendingPaste?: string;
+  private pasteTimer?: ReturnType<typeof setTimeout>;
+  private promptSeen = false;
 
   constructor(private opts: TerminalPaneOptions) {
     this.id = opts.paneId;
@@ -204,6 +208,8 @@ export class TerminalPane implements Pane {
       if (data.startsWith("A")) {
         this.promptMarker?.dispose();
         this.promptMarker = this.term.registerMarker(0) ?? undefined;
+        this.promptSeen = true;
+        this.flushPaste();
       } else if (data.startsWith("C")) {
         this.promptMarker?.dispose();
         this.promptMarker = undefined;
@@ -405,6 +411,35 @@ export class TerminalPane implements Pane {
     this.term.deregisterCharacterJoiner(this.joinerId);
     this.joinerId = undefined;
     if (this.term.element) this.term.element.style.fontFeatureSettings = "";
+  }
+
+  /**
+   * Type text into the shell once it is listening. A fresh pane is handed its text (a dropped
+   * path, say) long before zsh has finished starting, and anything sent during that startup is
+   * swallowed — bracketed paste included. So it waits for the prompt the shell integration
+   * announces, and for shells without it, for a short grace period.
+   */
+  pasteSoon(text: string) {
+    if (this.promptSeen) {
+      this.term.paste(text);
+      return;
+    }
+    this.pendingPaste = text;
+    clearTimeout(this.pasteTimer);
+    this.pasteTimer = setTimeout(() => {
+      this.promptSeen = true;
+      this.flushPaste();
+    }, 2000);
+  }
+
+  private flushPaste() {
+    const text = this.pendingPaste;
+    if (text === undefined) return;
+    this.pendingPaste = undefined;
+    clearTimeout(this.pasteTimer);
+    this.pasteTimer = undefined;
+    // One frame after the prompt: zsh turns bracketed paste on as it draws it.
+    setTimeout(() => this.term.paste(text), 30);
   }
 
   private send(data: string, binary = false) {
@@ -625,6 +660,7 @@ export class TerminalPane implements Pane {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    clearTimeout(this.pasteTimer);
     this.unsubscribe?.();
     this.resizeObserver.disconnect();
     this.clearNotice();

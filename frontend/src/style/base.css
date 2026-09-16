@@ -237,6 +237,20 @@ html, body {
 .snap-guides-col .snap-guide { left: 12px; right: 12px; height: 2px; margin-top: -1px; }
 .snap-guide.active { background: var(--accent); transform: scale(1.5); }
 
+/* Where a dropped file would land: the whole pane (its path goes to the prompt) or the half it
+   would split off. Never pointer-events: auto — elementFromPoint drives both the runtime's drop
+   target lookup and the Alt+drag pane swap. */
+.drop-zone {
+  position: fixed;
+  z-index: 900;
+  pointer-events: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  outline-offset: -2px;
+  transition: left 90ms, top 90ms, width 90ms, height 90ms;
+}
+
 .pane {
   position: relative;
   flex: 1 1 0;

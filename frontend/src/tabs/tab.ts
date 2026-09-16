@@ -89,13 +89,18 @@ export class Tab {
     return this.focusedId ? this.panes.get(this.focusedId) : undefined;
   }
 
-  /** Add a pane; splits the focused leaf or becomes the root. */
-  add(pane: Pane, dir: Dir = "row", target = this.focusedId): void {
+  /**
+   * Add a pane; splits the focused leaf (or `target`) or becomes the root. A split always appends,
+   * so `before` — the new pane left of / above the old one — swaps the two leaves afterwards,
+   * while the tree is still unrendered and nobody has seen the intermediate arrangement.
+   */
+  add(pane: Pane, dir: Dir = "row", target = this.focusedId, before = false): void {
     this.attach(pane);
     if (!this.tree || !target) {
       this.tree = { kind: "leaf", id: pane.id };
     } else {
       this.tree = splitLeaf(this.tree, target, dir, pane.id);
+      if (before) this.tree = swapLeaves(this.tree, pane.id, target);
     }
     this.render();
     this.setFocus(pane.id);

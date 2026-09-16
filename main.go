@@ -95,6 +95,7 @@ func main() {
 	application.RegisterEvent[app.OpenRequest]("ctl:new-tab")
 	application.RegisterEvent[app.HookEvent]("agent:hook")
 	application.RegisterEvent[agent.Session]("agent:status")
+	application.RegisterEvent[app.DropRequest]("window:drop")
 
 	wapp := application.New(application.Options{
 		Name:        "wate",
@@ -132,6 +133,7 @@ func main() {
 	if !cfgSvc.Secondary {
 		app.TrackWindow(win)
 	}
+	app.ForwardFileDrops(win)
 	wapp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		app.ApplyNativeTheme(themeSvc)
 		app.ApplyNativeBackground(cfgSvc.Current())

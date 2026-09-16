@@ -16,7 +16,12 @@ func WindowOptions(cfg config.Config, saved *WindowState) application.WebviewWin
 		Height:    cfg.Window.Height,
 		MinWidth:  400,
 		MinHeight: 240,
-		URL:       "/",
+		// The WebView's own drop handling is useless here — WebKitGTK advertises the uri-list but
+		// hands out no data — and its default is to navigate the document to file:///…, which
+		// buries every pane. Wails' native drop target reports real paths plus the drop point
+		// instead; internal/app/drop.go forwards them to the frontend.
+		EnableFileDrop: true,
+		URL:            "/",
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 36,
 			TitleBar:                application.MacTitleBarHiddenInset,

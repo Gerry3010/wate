@@ -11,7 +11,9 @@
   </head>
   <body>
     <div id="bg" hidden></div>
-    <div id="app"></div>
+    <!-- The Wails runtime only reports an OS file drop when the point is inside an element
+         carrying data-file-drop-target; on this one it is always true. -->
+    <div id="app" data-file-drop-target></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

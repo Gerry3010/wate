@@ -35,6 +35,13 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   sidebar does not render, and the Claude poller remembers the process instead of walking the
   pane's process tree every two seconds.
 
+- A file dragged into wate lands where it is dropped: in the middle of a pane its (shell-quoted)
+  path goes to the prompt, near an edge the pane splits towards that edge and the file opens
+  there — a text file in the editor, a directory as a shell that starts in it, anything else as a
+  shell with the path typed in. A highlight shows which of the two a drop would do. The paths come
+  from the OS rather than from the WebView, because WebKitGTK reports a file drop with an empty
+  DataTransfer: it advertises `text/uri-list` and then hands out nothing.
+
 ### Fixed
 - The bottom row of a pane is no longer cut in half. The gap around the grid was padding on the
   pane, while `FitAddon` divides the pane's `getComputedStyle().height` by the cell height —
@@ -43,9 +50,7 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   terminal element, which is the one the addon subtracts. `wate ctl debug` reports the grid's
   geometry (cell height, grid height, and how far it overflows its pane) so this stays visible.
 - Dragging a file into a pane no longer takes the app down: the WebView used to navigate to
-  `file:///…`, so the image covered every pane with no way back and wate had to be killed. A drop
-  now types the (shell-quoted) paths into the pane it was dropped on; in an editor pane the file
-  is opened instead.
+  `file:///…`, so the image covered every pane with no way back and wate had to be killed.
 
 ## [0.2.2] — 2026-09-10
 

@@ -10,7 +10,8 @@ import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
 import { perf, takePerf } from "./perf";
 import { keys, logKey, takeKeys } from "./keys-debug";
-import { dropText, droppedPaths } from "./drop";
+import { boxAt, dropText, dropZone, droppedPaths, zoneRect, zoneSplit, type Box, type DropZone } from "./drop";
+import { DropHighlight, installDragMotion } from "./drop-overlay";
 import { neighbor, type Dir, type Direction } from "./layout/tree";
 import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
@@ -22,6 +23,13 @@ import { SettingsPane } from "./settings/pane";
 /** Is the event inside a CodeMirror editor? Then the editor owns the drop, not us. */
 function inEditor(target: EventTarget | null): boolean {
   return !!(target as HTMLElement | null)?.closest?.(".cm-editor");
+}
+
+/** Where a new pane goes: which pane is split, in which direction, and on which side of it. */
+export interface SplitAt {
+  dir?: Dir;
+  target?: string | null;
+  before?: boolean;
 }
 
 /** Top-level UI state: tabs, panes, keybindings and the actions they trigger. */
@@ -89,6 +97,8 @@ export class WateApp {
       }, { capture: true });
     }
     window.addEventListener("drop", (e) => this.onDrop(e), { capture: true });
+    this.drops = new DropHighlight(root);
+    installDragMotion({ move: (x, y) => this.previewDrop(x, y), leave: () => this.drops?.hide() });
     window.addEventListener("focus", () => this.reportFocus());
     window.addEventListener("blur", () => this.reportFocus());
     this.agents.subscribe(() => this.onAgentsChanged());
@@ -103,6 +113,12 @@ export class WateApp {
   secondary = false;
 
   private saveDeadline = 0;
+
+  /** The drop preview, and when the native path last delivered one (the DOM fallback defers to it). */
+  private drops?: DropHighlight;
+  private lastNativeDrop = 0;
+  /** What the last drop resolved to — `wate ctl debug` prints it. */
+  private lastDrop?: { paths: string[]; x: number; y: number; pane: string | null; zone: DropZone };
 
   scheduleSave() {
     if (this.restoring || this.secondary || !this.config.general.restore_session) return;
@@ -490,10 +506,10 @@ export class WateApp {
     return pane;
   }
 
-  private async addTerminal(tab: Tab, dir: Dir, opts: { cwd?: string; command?: string[] } = {}): Promise<TerminalPane> {
+  private async addTerminal(tab: Tab, dir: Dir, opts: { cwd?: string; command?: string[] } = {}, at?: SplitAt): Promise<TerminalPane> {
     const cwd = opts.cwd ?? (await tab.focused?.cwd().catch(() => "")) ?? "";
     const pane = this.makeTerminal(tab, { ...opts, cwd });
-    tab.add(pane, dir);
+    tab.add(pane, dir, at?.target ?? tab.focusedId, at?.before ?? false);
     this.scheduleSave();
     await pane.start();
     pane.focus();
@@ -509,8 +525,8 @@ export class WateApp {
     OpenerService.Open(t.path).catch((err) => console.warn("open failed", err));
   }
 
-  /** Open (or focus) an editor for path, split to the right of the focused pane. */
-  async openEditor(tab: Tab, path: string, line?: number, col?: number): Promise<void> {
+  /** Open (or focus) an editor for path; by default split to the right of the focused pane. */
+  async openEditor(tab: Tab, path: string, line?: number, col?: number, at?: SplitAt): Promise<void> {
     for (const p of tab.panes.values()) {
       if (p instanceof EditorPane && p.path === path) {
         tab.setFocus(p.id);
@@ -521,7 +537,7 @@ export class WateApp {
     }
     const pane = this.makeEditor(tab, path, line, col);
     try {
-      tab.add(pane, "row");
+      tab.add(pane, at?.dir ?? "row", at?.target ?? tab.focusedId, at?.before ?? false);
       this.scheduleSave();
       await pane.load();
       pane.focus();
@@ -590,23 +606,87 @@ export class WateApp {
 
   // ---- actions ----------------------------------------------------------
 
-  /** A file dropped on a pane: its path lands in that pane's prompt, ready to run or send. */
+  /** The OS dropped files on the window (see internal/app/drop.go for why this comes from Go). */
+  onFilesDropped(req: { paths: string[] | null; x: number; y: number }) {
+    this.lastNativeDrop = Date.now();
+    void this.handleDrop(req.paths ?? [], req.x, req.y);
+  }
+
+  /**
+   * A drop that did reach the DOM. Only engines that hand over the paths get here (WebKitGTK does
+   * not), so this is a fallback — and it stays quiet right after a native drop rather than acting
+   * on the same files twice.
+   */
   private onDrop(e: DragEvent) {
     // CodeMirror reads a dropped file into the buffer itself; everywhere else the default is
     // a navigation away from the app, so it never gets to run.
     if (inEditor(e.target)) return;
     e.preventDefault();
-    const tab = this.active;
     const paths = droppedPaths(e.dataTransfer);
-    if (paths.length === 0 || !tab) return;
-    const el = (e.target as HTMLElement | null)?.closest?.("[data-pane-id]") as HTMLElement | null;
-    const pane = (el?.dataset.paneId ? tab.panes.get(el.dataset.paneId) : undefined) ?? tab.focused;
-    if (pane && pane.id !== tab.focusedId) {
+    if (paths.length === 0 || Date.now() - this.lastNativeDrop < 400) return;
+    void this.handleDrop(paths, e.clientX, e.clientY);
+  }
+
+  /** Paint what the drop under the cursor would do. */
+  private previewDrop(x: number, y: number) {
+    const hit = this.active ? boxAt(this.active.rects(), x, y) : undefined;
+    if (!hit) {
+      this.drops?.hide();
+      return;
+    }
+    const zone = dropZone(hit, x, y);
+    this.drops?.show(zoneRect(hit, zone), zone);
+  }
+
+  /**
+   * One entry for every drop, wherever it came from: dropped in the middle of a pane the paths are
+   * typed into it, dropped near an edge the pane splits towards that edge and the file opens there.
+   */
+  async handleDrop(paths: string[], x: number, y: number): Promise<void> {
+    this.drops?.hide();
+    const tab = this.active;
+    if (!tab || paths.length === 0) return;
+    const hit = boxAt<Box & { id: string }>(tab.rects(), x, y);
+    const zone = hit ? dropZone(hit, x, y) : "center";
+    this.lastDrop = { paths, x, y, pane: hit?.id ?? null, zone };
+    // Next to every pane (the tab bar, the sidebar): treat it as a drop into the focused pane
+    // rather than losing the files.
+    const pane = (hit ? tab.panes.get(hit.id) : undefined) ?? tab.focused;
+    if (!pane) return;
+    if (pane.id !== tab.focusedId) {
       tab.setFocus(pane.id);
       tab.focusPane();
     }
-    if (pane instanceof TerminalPane) pane.term.paste(dropText(paths));
-    else void this.openEditor(tab, paths[0]);
+    const split = hit ? zoneSplit(zone) : null;
+    if (!split) {
+      if (pane instanceof TerminalPane) pane.term.paste(dropText(paths));
+      else if (pane instanceof EditorPane) pane.insertText(dropText(paths).trimEnd());
+      pane.focus();
+      return;
+    }
+    await this.openBeside(tab, pane.id, split, paths);
+  }
+
+  /**
+   * The edge case: a new pane on the given side of `target`. A single text file opens in an editor,
+   * a single directory becomes a shell that starts there, and everything else — an image, a PDF,
+   * several files at once — becomes a shell with the paths already typed in.
+   */
+  private async openBeside(tab: Tab, target: string, split: { dir: Dir; before: boolean }, paths: string[]): Promise<void> {
+    const at = { target, before: split.before };
+    if (paths.length === 1) {
+      const [t] = (await OpenerService.Resolve("", paths).catch(() => [])) ?? [];
+      if (t?.kind === "dir") {
+        await this.addTerminal(tab, split.dir, { cwd: t.path }, at);
+        return;
+      }
+      if (t?.kind === "file" && t.text) {
+        await this.openEditor(tab, t.path, t.line, t.col, { dir: split.dir, ...at });
+        return;
+      }
+    }
+    const pane = await this.addTerminal(tab, split.dir, {}, at);
+    pane.pasteSoon(dropText(paths));
   }
 
   private onKey(e: KeyboardEvent) {
@@ -628,6 +708,10 @@ export class WateApp {
       keys.recording = !keys.recording;
       takeKeys();
       console.warn("[keys] recording", keys.recording);
+      return;
+    }
+    if (action.startsWith("__drop")) {
+      await this.debugDrop(action.slice("__drop".length).trim());
       return;
     }
     if (action === "__perf") {
@@ -721,6 +805,34 @@ export class WateApp {
     }
   }
 
+  /**
+   * Hidden: act out an OS file drop, so drag and drop can be exercised over the control socket
+   * without a mouse — `wate ctl action '__drop {"x":700,"y":420,"paths":["/etc/hosts"]}'`, or the
+   * short form `wate ctl action __drop 700 420 /etc/hosts`. With `"motion": true` it only paints
+   * the preview for two seconds.
+   */
+  private async debugDrop(arg: string) {
+    let spec: { x: number; y: number; paths?: string[]; motion?: boolean };
+    try {
+      if (arg.startsWith("{")) {
+        spec = JSON.parse(arg);
+      } else {
+        const [sx, sy, ...rest] = arg.split(/\s+/).filter(Boolean);
+        spec = { x: Number(sx), y: Number(sy), paths: rest.length ? [rest.join(" ")] : [] };
+      }
+    } catch (err) {
+      console.warn("[drop] bad argument", arg, err);
+      return;
+    }
+    if (spec.motion) {
+      this.previewDrop(spec.x, spec.y);
+      setTimeout(() => this.drops?.hide(), 2000);
+    } else {
+      await this.handleDrop(spec.paths ?? [], spec.x, spec.y);
+    }
+    console.warn("[drop]", this.lastDrop ?? spec);
+  }
+
   /** Rendering/state summary for `wate ctl debug`; ends up in the Go log. */
   private debugDump() {
     const cs = getComputedStyle(document.body);
@@ -751,6 +863,7 @@ export class WateApp {
       visibility: document.visibilityState,
       tabs: this.tabs.length,
       perf: takePerf(),
+      lastDrop: this.lastDrop,
       keys: keys.recording ? takeKeys() : undefined,
       panes,
     });

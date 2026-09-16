@@ -34,6 +34,7 @@ async function boot() {
     }
   });
   Events.On("ctl:action", (ev: { data: { name: string } }) => void app.run(ev.data.name));
+  Events.On("window:drop", (ev: { data: { paths: string[] | null; x: number; y: number } }) => app.onFilesDropped(ev.data));
   Events.On("ctl:new-tab", (ev: { data: { path: string } }) => {
     void app.newTab({ cwd: ev.data.path });
   });
