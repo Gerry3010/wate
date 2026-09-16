@@ -140,7 +140,6 @@ export class TerminalPane implements Pane {
     this.element.dataset.paneId = opts.paneId;
 
     const t = opts.terminal;
-    this.element.style.padding = `${t.padding}px`;
     const termOpts: ITerminalOptions = {
       fontFamily: t.font,
       fontSize: t.font_size + (opts.fontDelta ?? 0),
@@ -161,6 +160,7 @@ export class TerminalPane implements Pane {
     this.term.loadAddon(this.fit);
     this.term.loadAddon(this.serializer);
     this.term.open(this.element);
+    this.setPadding(t.padding);
     this.wantVisible = opts.visible !== false;
     if (this.wantVisible) this.enableWebgl();
     if (t.ligatures) this.enableLigatures();
@@ -434,10 +434,44 @@ export class TerminalPane implements Pane {
     this.term.options.scrollback = t.scrollback;
     this.term.options.cursorStyle = t.cursor_style as ITerminalOptions["cursorStyle"];
     this.term.options.cursorBlink = this.active && t.cursor_blink;
-    this.element.style.padding = `${t.padding}px`;
+    this.setPadding(t.padding);
     if (t.ligatures) this.enableLigatures();
     else this.disableLigatures();
     this.fitNow();
+  }
+
+  /**
+   * The gap around the grid lives on the *terminal* element, never on the pane.
+   *
+   * FitAddon divides the parent's `getComputedStyle().height` (minus the terminal element's own
+   * padding) by the cell height. WebKitGTK resolves that height to the padding box where Blink
+   * resolves it to the content box, so padding on the pane is counted as usable space: the grid
+   * gets up to a row too many and the pane, which clips, cuts the last one in half. Measured
+   * against the same terminal element the addon reads, both engines agree.
+   */
+  private setPadding(px: number) {
+    if (this.term.element) this.term.element.style.padding = `${px}px`;
+  }
+
+  /** What the grid measures against the space it has — for `wate ctl debug` (see the rounding
+   *  of cell heights: a grid taller than its pane clips the last row). */
+  geometry() {
+    const el = this.term.element ?? this.element;
+    const style = getComputedStyle(el);
+    const cell = (this.term as unknown as { _core?: { _renderService?: { dimensions?: { css?: { cell?: { width: number; height: number } } } } } })
+      ._core?._renderService?.dimensions?.css?.cell;
+    const screen = this.element.querySelector<HTMLElement>(".xterm-screen");
+    const round = (n: number | undefined) => (n === undefined ? undefined : Math.round(n * 100) / 100);
+    return {
+      // clientHeight is the padding box in every engine; getComputedStyle().height is not
+      // (WebKitGTK answers with the padding box, Blink with the content box), so measure it here.
+      contentHeight: round(el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)),
+      padding: style.padding,
+      cellHeight: round(cell?.height),
+      gridHeight: round(cell ? cell.height * this.term.rows : undefined),
+      screenHeight: round(screen?.getBoundingClientRect().height),
+      overflow: round(cell ? cell.height * this.term.rows - (el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) : undefined),
+    };
   }
 
   /** Scrollback + screen as ANSI text (for sessions); at most maxBytes, cut at a line boundary. */

@@ -36,6 +36,12 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   pane's process tree every two seconds.
 
 ### Fixed
+- The bottom row of a pane is no longer cut in half. The gap around the grid was padding on the
+  pane, while `FitAddon` divides the pane's `getComputedStyle().height` by the cell height —
+  and WebKitGTK resolves that to the padding box (Blink resolves it to the content box), so the
+  padding counted as usable space and the grid got a row too many. The padding now sits on the
+  terminal element, which is the one the addon subtracts. `wate ctl debug` reports the grid's
+  geometry (cell height, grid height, and how far it overflows its pane) so this stays visible.
 - Dragging a file into a pane no longer takes the app down: the WebView used to navigate to
   `file:///…`, so the image covered every pane with no way back and wate had to be killed. A drop
   now types the (shell-quoted) paths into the pane it was dropped on; in an editor pane the file

@@ -254,7 +254,9 @@ html, body {
 .pane.swap-source { opacity: 0.55; cursor: grabbing; }
 .pane.swap-target { outline: 2px solid var(--accent) !important; outline-offset: -2px; }
 
-.pane-terminal { overflow: hidden; }
+/* The gap around a terminal is padding on the .xterm element (see TerminalPane.setPadding), so
+   the pane itself must not add any: FitAddon measures the pane and would hand out a row too many. */
+.pane-terminal { overflow: hidden; padding: 0; }
 .pane-terminal .xterm {
   height: 100%;
 }

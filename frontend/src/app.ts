@@ -737,6 +737,7 @@ export class WateApp {
         rowOverflow: Math.max(0, ...Array.from(p.element.querySelectorAll(".xterm-rows > div")).map((d) => d.scrollWidth - d.clientWidth)),
         cols: term?.cols,
         rows: term?.rows,
+        geometry: p instanceof TerminalPane ? p.geometry() : undefined,
         buffer: term ? { type: term.buffer.active.type, baseY: term.buffer.active.baseY, cursorY: term.buffer.active.cursorY, length: term.buffer.active.length } : undefined,
         line0: term?.buffer.active.getLine(0)?.translateToString(true).slice(0, 60),
       };
