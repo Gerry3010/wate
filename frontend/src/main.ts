@@ -15,8 +15,10 @@ window.addEventListener("unhandledrejection", (e) => console.error("unhandled re
 
 async function boot() {
   const root = document.getElementById("app")!;
-  const { config, warning, path, initial_cwd, secondary } = await ConfigService.Get();
+  const { config, warning, path, initial_cwd, secondary, os } = await ConfigService.Get();
   if (warning) console.warn(warning);
+  // Lets the stylesheet dodge the macOS traffic lights (see .tabbar in base.css).
+  document.documentElement.dataset.platform = os;
 
   const app = new WateApp(root, config);
   app.secondary = !!secondary;
@@ -35,6 +37,9 @@ async function boot() {
   });
   Events.On("ctl:action", (ev: { data: { name: string } }) => void app.run(ev.data.name));
   Events.On("window:drop", (ev: { data: { paths: string[] | null; x: number; y: number } }) => app.onFilesDropped(ev.data));
+  Events.On("window:fullscreen", (ev: { data: { fullscreen: boolean } }) => {
+    document.documentElement.toggleAttribute("data-fullscreen", ev.data.fullscreen);
+  });
   Events.On("ctl:new-tab", (ev: { data: { path: string } }) => {
     void app.newTab({ cwd: ev.data.path });
   });

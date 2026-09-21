@@ -74,6 +74,10 @@ html, body {
   background: rgba(var(--bg-rgb), calc(var(--surface-alpha) * 0.55));
 }
 :root[data-bg-mode="solid"] .tabbar { background: var(--tabbar-bg); }
+/* The window uses MacTitleBarHiddenInset, so macOS draws the traffic lights over the top-left
+   of our own content — the first tab would sit underneath them. Their right edge is at 80px,
+   and in fullscreen they are gone, so the room would just be a gap (see window:fullscreen). */
+:root[data-platform="darwin"]:not([data-fullscreen]) .tabbar { padding-left: 88px; }
 .tabbar-tabs {
   display: flex;
   gap: 4px;

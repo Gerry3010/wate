@@ -56,6 +56,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   geometry (cell height, grid height, and how far it overflows its pane) so this stays visible.
 - Dragging a file into a pane no longer takes the app down: the WebView used to navigate to
   `file:///…`, so the image covered every pane with no way back and wate had to be killed.
+- On macOS the first tab no longer sits underneath the window's traffic lights. The window uses
+  `MacTitleBarHiddenInset`, so the system draws them over wate's own content, while the tab bar
+  started at 8px the way it does on Linux, where there is nothing to dodge. It now keeps their
+  80px clear, and hands the room back in fullscreen, where the buttons are gone — the backend
+  reports that transition as `window:fullscreen`, which the webview cannot observe by itself.
 
 ## [0.2.2] — 2026-09-10
 

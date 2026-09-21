@@ -96,6 +96,7 @@ func main() {
 	application.RegisterEvent[app.HookEvent]("agent:hook")
 	application.RegisterEvent[agent.Session]("agent:status")
 	application.RegisterEvent[app.DropRequest]("window:drop")
+	application.RegisterEvent[app.FullscreenState]("window:fullscreen")
 
 	wapp := application.New(application.Options{
 		Name:        "wate",
@@ -134,6 +135,7 @@ func main() {
 		app.TrackWindow(win)
 	}
 	app.ForwardFileDrops(win)
+	app.ForwardFullscreen(win)
 	wapp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		app.ApplyNativeTheme(themeSvc)
 		app.ApplyNativeBackground(cfgSvc.Current())
