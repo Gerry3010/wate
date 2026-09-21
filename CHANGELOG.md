@@ -61,6 +61,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   started at 8px the way it does on Linux, where there is nothing to dodge. It now keeps their
   80px clear, and hands the room back in fullscreen, where the buttons are gone — the backend
   reports that transition as `window:fullscreen`, which the webview cannot observe by itself.
+- The Dock shows wate's own icon instead of a white Wails "W". `build/appicon.icon` still held
+  the template's logo, and because `Info.plist` names `CFBundleIconName`, macOS preferred the
+  `Assets.car` compiled from it over the `.icns` generated from `build/appicon.png`. The icon
+  now carries wate's prompt chevron, cursor and split panes; `make icons` recompiles the
+  catalogue from those layers.
 
 ## [0.2.2] — 2026-09-10
 
