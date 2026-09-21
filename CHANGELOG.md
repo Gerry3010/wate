@@ -66,6 +66,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   `Assets.car` compiled from it over the `.icns` generated from `build/appicon.png`. The icon
   now carries wate's prompt chevron, cursor and split panes; `make icons` recompiles the
   catalogue from those layers.
+- The translucent background on macOS follows the theme instead of the system: AppKit draws the
+  frosted glass from the window's `NSAppearance`, so a dark wate theme on a light Mac came out
+  milky white however low the opacity went. `setPreferDark` now points AppKit at the
+  appearance the theme asks for, the same hook the GTK title bar already used on Linux.
 
 ## [0.2.2] — 2026-09-10
 
