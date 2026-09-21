@@ -70,6 +70,12 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   frosted glass from the window's `NSAppearance`, so a dark wate theme on a light Mac came out
   milky white however low the opacity went. `setPreferDark` now points AppKit at the
   appearance the theme asks for, the same hook the GTK title bar already used on Linux.
+- `[background] opacity = 0` is a fully see-through pane again instead of a fully opaque one.
+  The config read a zero as "not set" and replaced it with 1, which it never had to: the file
+  is decoded on top of the defaults, so an absent key already keeps 0.85. Values outside 0..1
+  are clamped now, and the settings slider goes down to 0.
+- The note that translucent mode needs a restart is readable: it was inside the mode dropdown,
+  where the select cut it off ("Translucent (OS"), and now sits in the hint below the field.
 
 ## [0.2.2] — 2026-09-10
 

@@ -50,6 +50,31 @@ opacity = 0.5
 	}
 }
 
+func TestBackgroundOpacity(t *testing.T) {
+	// An absent key keeps the default; an explicit 0 is a see-through pane and must survive the
+	// round trip (it used to be read as "unset" and turned into a fully opaque 1).
+	for _, tc := range []struct {
+		name string
+		toml string
+		want float64
+	}{
+		{"absent", "[background]\nmode = \"translucent\"\n", 0.85},
+		{"zero", "[background]\nopacity = 0.0\n", 0},
+		{"below range", "[background]\nopacity = -0.5\n", 0},
+		{"above range", "[background]\nopacity = 4\n", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := Parse([]byte(tc.toml), Defaults())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.Background.Opacity != tc.want {
+				t.Fatalf("opacity = %v, want %v", c.Background.Opacity, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseUnknownKeys(t *testing.T) {
 	c, err := Parse([]byte("[terminal]\nfont_size = 9\nbogus = 1\n"), Defaults())
 	var uk *UnknownKeysError

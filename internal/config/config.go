@@ -199,12 +199,23 @@ func (e *UnknownKeysError) Error() string {
 	return "config: unknown keys: " + strings.Join(e.Keys, ", ")
 }
 
+// clamp01 keeps a 0..1 setting inside its range.
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
 func finish(c Config) Config {
 	c.Keys = effectiveKeys(c.KeysRaw, runtime.GOOS)
 	c.Background.Wallpaper = ExpandHome(c.Background.Wallpaper)
-	if c.Background.Opacity <= 0 || c.Background.Opacity > 1 {
-		c.Background.Opacity = 1
-	}
+	// 0 is a valid opacity (a fully see-through pane), not a missing value: Load decodes the
+	// user's file on top of Defaults(), so an absent key keeps the default rather than the zero.
+	c.Background.Opacity = clamp01(c.Background.Opacity)
 	if c.Background.Dim < 0 || c.Background.Dim > 1 {
 		c.Background.Dim = 0
 	}

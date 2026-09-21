@@ -189,7 +189,7 @@ export class SettingsPane implements Pane {
       mode,
       [
         ["solid", "Solid"],
-        ["translucent", "Translucent (OS / compositor blur, restart needed)"],
+        ["translucent", "Translucent (OS / compositor blur)"],
         ["wallpaper", "Wallpaper (blurred image)"],
       ],
       async (v, sel) => {
@@ -206,14 +206,14 @@ export class SettingsPane implements Pane {
       this.range(bg, "Blur", "background.blur", c.background.blur, 0, 80, 1, "px");
       this.range(bg, "Dim", "background.dim", c.background.dim, 0, 1, 0.05);
     }
-    if (mode !== "solid") this.range(bg, "Opacity", "background.opacity", c.background.opacity, 0.2, 1, 0.05);
+    if (mode !== "solid") this.range(bg, "Opacity", "background.opacity", c.background.opacity, 0, 1, 0.05);
     const bgHint = document.createElement("p");
     bgHint.className = "settings-hint";
     bgHint.textContent =
       mode === "solid"
         ? "Blur, dim and opacity only apply to the wallpaper and translucent modes."
         : mode === "translucent"
-          ? "Opacity is how much of the blurred desktop shows through the panes. On GNOME, add wate to Blur my Shell's application list."
+          ? "Opacity is how much of the blurred desktop shows through the panes; at 0 they are fully see-through. The window has to be created transparent, so switching to this mode takes effect after a restart. On GNOME, add wate to Blur my Shell's application list."
           : "Blur and dim soften the image; opacity controls how much of it shows through the panes.";
     bg.appendChild(bgHint);
 
