@@ -7,6 +7,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- `[terminal] option_as_meta` decides what Option+key does on macOS. It is off by default, so
+  Option types the character the layout puts there — on a German Mac that is the at sign,
+  the euro sign, the pipe, the backslash and the braces, none of which reached the shell
+  before. Turn it on for Alt+b/Alt+f style Meta sequences; the word-wise keys are unaffected
+  either way, since they go through the arrows and Backspace.
 - `[terminal] word_keys` picks the modifier for word-wise jumping and deleting at the prompt —
   `"ctrl"` (default), `"alt"`, `"both"` or `"off"`. wate's shell integration binds the sequences
   in zsh, bash and fish, so `Ctrl+Backspace` deletes a word instead of a character.

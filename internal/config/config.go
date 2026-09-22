@@ -71,6 +71,12 @@ type Terminal struct {
 	// OSC52 lets programs put text on the clipboard with the OSC 52 escape (Claude Code,
 	// tmux, vim over ssh). Reading the clipboard is never allowed.
 	OSC52 bool `toml:"osc52" json:"osc52"`
+	// OptionAsMeta sends Option+key as a Meta (ESC-prefixed) sequence on macOS instead of the
+	// character the keyboard layout puts there. Off by default: outside the US layout Option
+	// is how the at sign, the euro sign, the pipe, the backslash and the braces are typed, and
+	// losing those costs more than Alt+b/Alt+f are worth — the word-wise keys go through the
+	// arrows and Backspace, which send their modifier either way.
+	OptionAsMeta bool `toml:"option_as_meta" json:"option_as_meta"`
 }
 
 type Background struct {

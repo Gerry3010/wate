@@ -233,6 +233,10 @@ export class SettingsPane implements Pane {
       ["off", "Off — whatever the shell binds"],
     ]);
     this.check(term, "Let programs set the clipboard (OSC 52)", "terminal.osc52", c.terminal.osc52);
+    // Only macOS has the Option-as-Meta question; elsewhere Alt never types a character.
+    if (document.documentElement.dataset.platform === "darwin") {
+      this.check(term, "Option sends Meta instead of typing @ € | {}", "terminal.option_as_meta", c.terminal.option_as_meta);
+    }
     const termHint = document.createElement("p");
     termHint.className = "settings-hint";
     termHint.textContent =

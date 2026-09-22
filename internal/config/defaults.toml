@@ -25,6 +25,7 @@ cursor_blink = true
 padding = 8                             # px around the terminal grid
 word_keys = "ctrl"                      # modifier for word-wise jump/delete: "ctrl" | "alt" | "both" | "off"
 osc52 = true                            # let programs copy to the clipboard (OSC 52); reading is never allowed
+option_as_meta = false                  # macOS: send Option+key as Meta instead of typing @, €, |, {} etc.
 
 [background]
 mode = "solid"                          # "wallpaper" | "translucent" | "solid"

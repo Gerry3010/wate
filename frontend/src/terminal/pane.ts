@@ -154,7 +154,7 @@ export class TerminalPane implements Pane {
       cursorInactiveStyle: "outline",
       allowProposedApi: true,
       allowTransparency: true,
-      macOptionIsMeta: true,
+      macOptionIsMeta: t.option_as_meta,
       // macOS has no Shift-drag override, so Option+drag is what selects text while a
       // program (Claude Code, vim, htop) has mouse reporting on.
       macOptionClickForcesSelection: true,
@@ -469,6 +469,7 @@ export class TerminalPane implements Pane {
     this.term.options.scrollback = t.scrollback;
     this.term.options.cursorStyle = t.cursor_style as ITerminalOptions["cursorStyle"];
     this.term.options.cursorBlink = this.active && t.cursor_blink;
+    this.term.options.macOptionIsMeta = t.option_as_meta;
     this.setPadding(t.padding);
     if (t.ligatures) this.enableLigatures();
     else this.disableLigatures();
