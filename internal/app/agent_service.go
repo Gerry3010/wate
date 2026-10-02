@@ -23,14 +23,25 @@ type AgentService struct {
 	cfg     func() config.Config
 	notify  *notifications.NotificationService
 
-	mu            sync.Mutex
-	focusedPane   string
-	windowFocused bool
-	stop          chan struct{}
+	windows *WindowService
+
+	mu sync.Mutex
+	// focus is per window: with two of them, a single pair would be last-writer-wins and the
+	// unfocused window's blur would silence notifications for the focused one.
+	focus map[WindowID]windowFocus
+	stop  chan struct{}
 }
 
-func NewAgentService(pty *PtyService, ctl *CtlService, cfg func() config.Config, notify *notifications.NotificationService) *AgentService {
-	a := &AgentService{tracker: agent.NewTracker(), pty: pty, ctl: ctl, cfg: cfg, notify: notify, windowFocused: true, stop: make(chan struct{})}
+type windowFocus struct {
+	pane    string
+	focused bool
+}
+
+func NewAgentService(pty *PtyService, ctl *CtlService, cfg func() config.Config, notify *notifications.NotificationService, windows *WindowService) *AgentService {
+	a := &AgentService{
+		tracker: agent.NewTracker(), pty: pty, ctl: ctl, cfg: cfg, notify: notify, windows: windows,
+		focus: map[WindowID]windowFocus{}, stop: make(chan struct{}),
+	}
 	a.tracker.OnChange = a.onChange
 	ctl.OnHook = func(ev HookEvent) { a.tracker.Hook(ev.Pane, ev.Tab, ev.Event, ev.Data) }
 	return a
@@ -88,12 +99,20 @@ func (a *AgentService) poll() {
 }
 
 func (a *AgentService) onChange(s agent.Session) {
-	application.Get().Event.Emit("agent:status", s)
+	// Stays a broadcast: the sidebar deliberately lists sessions from every window.
+	application.Get().Event.Emit("agent:status", a.stamp(s))
 	if s.Status != agent.StatusWaiting && s.Status != agent.StatusDone {
 		return
 	}
 	a.mu.Lock()
-	quiet := a.windowFocused && a.focusedPane == s.PaneID
+	// Quiet if any window has the focus and is showing this very pane.
+	quiet := false
+	for _, f := range a.focus {
+		if f.focused && f.pane == s.PaneID {
+			quiet = true
+			break
+		}
+	}
 	a.mu.Unlock()
 	if quiet {
 		// The user is looking at it; no need to shout.
@@ -138,14 +157,33 @@ func (a *AgentService) StopSessions(ctx context.Context) {
 	slog.Info("claude sessions stopped", "signalled", signalled, "still_running", left)
 }
 
-// List returns all known sessions (sidebar initial state).
-func (a *AgentService) List() []agent.Session { return a.tracker.List() }
+// List returns all known sessions, from every window (sidebar initial state).
+func (a *AgentService) List() []agent.Session {
+	list := a.tracker.List()
+	for i := range list {
+		list[i] = a.stamp(list[i])
+	}
+	return list
+}
+
+// stamp says which window a session is showing in right now. Looked up per hand-out rather
+// than stored, because a tab can change windows while its session runs.
+func (a *AgentService) stamp(s agent.Session) agent.Session {
+	if a.windows != nil {
+		s.WindowID = string(a.windows.windowForTab(s.TabID, s.PaneID))
+	}
+	return s
+}
 
 // SetFocus tells the backend which pane the user is looking at; waiting/done states are cleared.
-func (a *AgentService) SetFocus(paneID string, windowFocused bool) {
+// The window comes from the context, so each one reports only for itself.
+func (a *AgentService) SetFocus(ctx context.Context, paneID string, windowFocused bool) {
+	id := WindowID("")
+	if a.windows != nil {
+		id = WindowID(a.windows.Bootstrap(ctx).WindowID)
+	}
 	a.mu.Lock()
-	a.focusedPane = paneID
-	a.windowFocused = windowFocused
+	a.focus[id] = windowFocus{pane: paneID, focused: windowFocused}
 	a.mu.Unlock()
 	if windowFocused && paneID != "" {
 		a.tracker.Acknowledge(paneID)

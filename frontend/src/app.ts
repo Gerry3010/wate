@@ -85,6 +85,7 @@ export class WateApp {
       onVisibility: () => this.active?.render(),
       sendToPane: (paneId, text) => void PtyService.WriteToPane(paneId, text).catch((err) => console.warn("write to pane:", err)),
       resume: (sessionId, cwd) => void this.resumeClaude(sessionId, cwd),
+      windowId: () => this.windowId,
     });
     this.content.className = "content";
     this.main.className = "main";
@@ -383,7 +384,13 @@ export class WateApp {
 
   private jumpToSession(s: Session) {
     const tab = this.tabs.find((t) => t.id === s.tab_id) ?? this.tabs.find((t) => t.panes.has(s.pane_id));
-    if (!tab) return;
+    if (!tab) {
+      // The sidebar lists every window's sessions, so this one may well live elsewhere.
+      if (s.window_id && s.window_id !== this.windowId) {
+        void WindowService.FocusPane(s.window_id, s.tab_id, s.pane_id).catch((err) => console.warn("focus pane:", err));
+      }
+      return;
+    }
     this.activate(tab);
     if (tab.panes.has(s.pane_id)) {
       tab.setFocus(s.pane_id);

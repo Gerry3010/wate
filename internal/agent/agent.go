@@ -34,6 +34,9 @@ type Session struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	// Source is "hook" when hooks deliver precise events, "proc" when only process detection sees it.
 	Source string `json:"source"`
+	// WindowID is filled in when the session is handed to the frontend, not tracked here: a
+	// tab can move to another window while its session runs, so the tracker must not cache it.
+	WindowID string `json:"window_id"`
 	// TranscriptPath is Claude Code's session transcript (from hooks, or guessed from cwd).
 	TranscriptPath string `json:"transcript_path"`
 	// Context is the context-window usage read from the transcript (zero when unknown).

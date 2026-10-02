@@ -15,6 +15,8 @@ export interface SidebarHost {
   sendToPane(paneId: string, text: string): void;
   /** Open a pane running `claude --resume <id>` in `cwd`. */
   resume(sessionId: string, cwd: string): void;
+  /** This window's id, so rows belonging to another window can say so. */
+  windowId(): string;
 }
 
 export const STATUS_LABEL: Record<string, string> = { running: "working", waiting: "waiting for you", done: "finished" };
@@ -188,15 +190,19 @@ export class Sidebar {
     title.className = "sidebar-title";
     title.textContent = rowTitle(r, shortPath(cwd) || "Claude");
     title.title = [rowTitle(r, ""), cwd].filter(Boolean).join("\n");
+    // The panel lists every window's sessions; say so when one is not in this window.
+    const elsewhere = !!s?.window_id && !!this.host.windowId() && s.window_id !== this.host.windowId();
     const sub = document.createElement("div");
     sub.className = "sidebar-sub";
     sub.textContent = [
       r.saved?.label || !s ? shortPath(cwd) : "",
       r.ended ? "ended" : (STATUS_LABEL[status] ?? status),
       s ? elapsed(s.started_at) : "",
+      elsewhere ? "other window" : "",
     ]
       .filter(Boolean)
       .join(" · ");
+    if (elsewhere) row.classList.add("elsewhere");
     main.append(title, sub);
 
     if (r.ended) {

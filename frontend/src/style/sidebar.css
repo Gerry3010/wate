@@ -164,3 +164,6 @@
 .sidebar-row.ended .sidebar-title { color: var(--tab-inactive-fg); font-weight: 400; }
 .sidebar-row.ended .status-dot { background: none; border: 1.5px solid var(--tab-inactive-fg); }
 .sidebar-resume { display: inline-block; margin-top: 4px; font-size: 11px; }
+
+/* A session running in another window: still listed, clicking it raises that window. */
+.sidebar-row.elsewhere .status-dot { opacity: 0.6; }

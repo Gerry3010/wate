@@ -36,6 +36,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   clipboard is never answered.
 
 ### Changed
+- The Claude sidebar spans windows: a session running in another window is listed with
+  "other window", and clicking it raises that window and focuses the pane instead of doing
+  nothing. Notification suppression is now per window too — with two open, one window losing
+  focus used to silence the one that still had it.
 - The Claude badge's popup shows the session id in full and copies it on click, instead of
   cutting it to eight characters that were no use to anyone. The popup suppresses text
   selection, so a button is the only way to get the id out of it.

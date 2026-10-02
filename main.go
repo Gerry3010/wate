@@ -95,7 +95,7 @@ func main() {
 	ctlSvc := app.NewCtlService(ptySvc, cfgSvc, winSvc)
 	themeSvc := app.NewThemeService(cfgSvc.Current)
 	notifySvc := notifications.New()
-	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc)
+	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc, winSvc)
 	// Quitting: hand the primary role to whoever starts next, then let Claude Code shut down
 	// before the shells get their SIGHUP.
 	winSvc.OnClosed = func(key string) { stateSvc.Remove(key) }
