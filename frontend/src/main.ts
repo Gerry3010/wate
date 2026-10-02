@@ -29,6 +29,7 @@ async function boot() {
   const app = new WateApp(root, config);
   app.windowId = boot.window_id;
   app.restoreMode = boot.restore;
+  app.stateKey = boot.state_key;
   app.configPath = path;
   await app.loadTheme();
   Events.On("config:changed", (ev: { data: { config: typeof config; warning?: string } }) => {

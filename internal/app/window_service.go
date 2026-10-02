@@ -142,7 +142,7 @@ func (s *WindowService) Open(o OpenWindowOptions) (WindowID, error) {
 	s.mu.Unlock()
 	s.track(id, win)
 	if o.Track {
-		TrackWindow(win)
+		TrackWindow(win, key)
 	}
 	ForwardFileDrops(win)
 	ForwardFullscreen(win)

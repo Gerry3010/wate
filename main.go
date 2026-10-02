@@ -77,6 +77,7 @@ func main() {
 		cfgSvc.Secondary = true
 	}
 	winSvc := app.NewWindowService(cfgSvc)
+	stateSvc := app.NewStateService(winSvc)
 	ptySvc := app.NewPtyService(cfgSvc.Current, winSvc)
 	ctlSvc := app.NewCtlService(ptySvc, cfgSvc, winSvc)
 	themeSvc := app.NewThemeService(cfgSvc.Current)
@@ -112,7 +113,7 @@ func main() {
 			application.NewService(&app.LogService{}),
 			application.NewService(&app.OpenerService{}),
 			application.NewService(&app.FileService{}),
-			application.NewService(&app.StateService{}),
+			application.NewService(stateSvc),
 			application.NewService(&app.SessionService{}),
 			application.NewService(&app.AgentStateService{}),
 			application.NewService(winSvc),
@@ -127,20 +128,37 @@ func main() {
 		},
 	})
 
-	var saved *app.WindowState
-	if cfg := cfgSvc.Current(); cfg.Window.RememberSize && !cfgSvc.Secondary {
-		if st, ok := app.LoadWindowState(); ok {
-			saved = &st
+	// Reopen the windows of the last run. A window finds its tabs by state key, so the key has
+	// to come from the file rather than from the id minted this time round.
+	keys := []string{"w-1"}
+	if !cfgSvc.Secondary {
+		if blobs := stateSvc.LoadAll(); len(blobs) > 0 {
+			keys = keys[:0]
+			for _, b := range blobs {
+				keys = append(keys, b.Key)
+			}
 		}
 	}
 	restore := "session"
 	if cfgSvc.Secondary {
 		restore = "empty"
+		keys = []string{"w-1"}
 	}
-	if _, err := winSvc.Open(app.OpenWindowOptions{
-		Cwd: initialCwd, Geometry: saved, Restore: restore, Track: !cfgSvc.Secondary,
-	}); err != nil {
-		log.Fatalln("could not open a window:", err)
+	for i, key := range keys {
+		var saved *app.WindowState
+		if cfg := cfgSvc.Current(); cfg.Window.RememberSize && !cfgSvc.Secondary {
+			if st, ok := app.LoadWindowStateFor(key); ok {
+				saved = &st
+			}
+		}
+		o := app.OpenWindowOptions{Geometry: saved, Restore: restore, StateKey: key, Track: !cfgSvc.Secondary}
+		// The directory from the command line belongs to the first window only.
+		if i == 0 {
+			o.Cwd = initialCwd
+		}
+		if _, err := winSvc.Open(o); err != nil {
+			log.Fatalln("could not open a window:", err)
+		}
 	}
 	wapp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		winSvc.MarkStarted()

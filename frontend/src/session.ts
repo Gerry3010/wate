@@ -1,7 +1,28 @@
 import type { LayoutNode } from "./layout/tree";
 
-/** Serialized UI state (see StateService). Versioned so old files can be ignored safely. */
+/**
+ * Serialized UI state (see StateService). Versioned so old files can be ignored safely.
+ *
+ * v2 added the window layer. v1 files are migrated on read rather than discarded — they hold
+ * the user's tabs, and throwing them away on an upgrade is not an acceptable way to find out
+ * the format changed.
+ */
 export interface SavedSession {
+  version: 2;
+  windows: SavedWindow[];
+}
+
+/** One window's tabs. This is also what a named session stores, minus the key. */
+export interface SavedWindow {
+  /** Stable across runs; matches the window's record in window.json. */
+  key: string;
+  /** Index into tabs. */
+  active: number;
+  tabs: SavedTab[];
+}
+
+/** The v1 shape, kept as documentation of what parseSession still accepts on input. */
+export interface SavedSessionV1 {
   version: 1;
   active: number;
   tabs: SavedTab[];
@@ -40,15 +61,45 @@ export interface SavedClaude {
   contextPercent?: number;
 }
 
-export function parseSession(raw: string): SavedSession | null {
+/** One window's worth of saved tabs — what a window slot and a named session both hold. */
+export function parseWindow(raw: string): SavedWindow | null {
   if (!raw) return null;
   try {
-    const s = JSON.parse(raw) as SavedSession;
-    if (s.version !== 1 || !Array.isArray(s.tabs) || s.tabs.length === 0) return null;
-    return s;
+    return asWindow(JSON.parse(raw), "");
   } catch {
     return null;
   }
+}
+
+/** Accepts v1 and v2 on input; always answers in the v2 shape. */
+export function parseSession(raw: string): SavedSession | null {
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const s = parsed as { version?: number; windows?: unknown[] };
+  let windows: SavedWindow[] = [];
+  if (s.version === 2 && Array.isArray(s.windows)) {
+    windows = s.windows
+      .map((w, i) => asWindow(w, (w as SavedWindow | null)?.key || `w-${i + 1}`))
+      .filter((w): w is SavedWindow => w !== null);
+  } else if (s.version === 1) {
+    const one = asWindow(parsed, "w-1");
+    if (one) windows = [one];
+  } else {
+    return null;
+  }
+  return windows.length ? { version: 2, windows } : null;
+}
+
+/** A window is only worth restoring if it has tabs; an empty one would open a blank window. */
+function asWindow(v: unknown, key: string): SavedWindow | null {
+  const w = v as Partial<SavedWindow> | null;
+  if (!w || !Array.isArray(w.tabs) || w.tabs.length === 0) return null;
+  return { key: w.key || key, active: typeof w.active === "number" ? w.active : 0, tabs: w.tabs };
 }
 
 /** Rewrite leaf ids in a saved tree through `map` (old pane id → new pane id). */

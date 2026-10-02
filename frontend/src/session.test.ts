@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { leaf, leaves, splitLeaf } from "./layout/tree";
-import { parseSession, remapTree } from "./session";
+import { parseSession, parseWindow, remapTree } from "./session";
 
 describe("session", () => {
   it("rejects garbage and old versions", () => {
@@ -50,5 +50,46 @@ describe("fromImported", () => {
     expect(t1.focused).toBe(t1.panes[1].id);
     expect(t2.title).toBeUndefined();
     expect(t2.focused).toBe(t2.panes[0].id);
+  });
+});
+
+describe("parseSession across versions", () => {
+  const tab = { tree: { kind: "leaf", id: "p1" }, focused: "p1", panes: [{ id: "p1", kind: "terminal", cwd: "/w" }] };
+
+  it("migrates a v1 file into one window rather than discarding it", () => {
+    const got = parseSession(JSON.stringify({ version: 1, active: 0, tabs: [tab] }));
+    expect(got?.version).toBe(2);
+    expect(got?.windows).toHaveLength(1);
+    expect(got?.windows[0].tabs).toEqual([tab]);
+    expect(got?.windows[0].key).toBe("w-1");
+  });
+
+  it("keeps the active index when migrating", () => {
+    const got = parseSession(JSON.stringify({ version: 1, active: 2, tabs: [tab, tab, tab] }));
+    expect(got?.windows[0].active).toBe(2);
+  });
+
+  it("reads a v2 file with several windows", () => {
+    const raw = JSON.stringify({ version: 2, windows: [{ key: "a", active: 0, tabs: [tab] }, { key: "b", active: 0, tabs: [tab, tab] }] });
+    const got = parseSession(raw);
+    expect(got?.windows.map((w) => [w.key, w.tabs.length])).toEqual([["a", 1], ["b", 2]]);
+  });
+
+  it("drops windows with no tabs, and the whole thing when none are left", () => {
+    const raw = JSON.stringify({ version: 2, windows: [{ key: "a", active: 0, tabs: [] }, { key: "b", active: 0, tabs: [tab] }] });
+    expect(parseSession(raw)?.windows.map((w) => w.key)).toEqual(["b"]);
+    expect(parseSession(JSON.stringify({ version: 2, windows: [{ key: "a", active: 0, tabs: [] }] }))).toBeNull();
+  });
+
+  it("refuses a future version and junk, as before", () => {
+    expect(parseSession(JSON.stringify({ version: 3, windows: [] }))).toBeNull();
+    expect(parseSession("not json")).toBeNull();
+    expect(parseSession("")).toBeNull();
+  });
+
+  it("parseWindow reads a single window, keyed or not", () => {
+    expect(parseWindow(JSON.stringify({ active: 1, tabs: [tab, tab] }))?.active).toBe(1);
+    expect(parseWindow(JSON.stringify({ key: "k", active: 0, tabs: [tab] }))?.key).toBe("k");
+    expect(parseWindow(JSON.stringify({ active: 0, tabs: [] }))).toBeNull();
   });
 });

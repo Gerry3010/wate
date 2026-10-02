@@ -1,7 +1,7 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
 import { AgentService, OpenerService, PtyService, SessionService, StateService, ThemeService, WindowService, type Config, type Resolved, type Session, type Target } from "./api";
-import { fromImported, parseSession, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedSession, type SavedTab } from "./session";
+import { fromImported, parseWindow, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
 import { closeMenu } from "./ui/menu";
@@ -118,6 +118,8 @@ export class WateApp {
   windowId = "";
   /** "session" restores this window's saved tabs; "empty" starts clean and saves nothing. */
   restoreMode = "session";
+  /** This window's slot in session.json and window.json; stable across runs. */
+  stateKey = "w-1";
 
   private saveDeadline = 0;
 
@@ -150,9 +152,11 @@ export class WateApp {
     await StateService.Save(JSON.stringify(state)).catch((err) => console.warn("session save:", err));
   }
 
-  /** Serialise every tab (layout, cwds, open files, titles, colours, and — with scrollback — the terminal text). */
-  async snapshot(immediate = false, scrollback = 0): Promise<SavedSession> {
-    const tabs: SavedSession["tabs"] = [];
+  /** Serialise this window's tabs (layout, cwds, open files, titles, colours, and — with
+   *  scrollback — the terminal text). Each window saves only itself; the backend keeps the
+   *  slots apart. */
+  async snapshot(immediate = false, scrollback = 0): Promise<SavedWindow> {
+    const tabs: SavedTab[] = [];
     for (const t of this.tabs) {
       if (!t.tree) continue;
       const panes: SavedPane[] = [];
@@ -173,14 +177,15 @@ export class WateApp {
       if (panes.length === 0) continue;
       tabs.push({ tree: t.tree, focused: t.focusedId, panes, title: t.customTitle || undefined, color: t.color || undefined });
     }
-    return { version: 1, active: this.active ? this.tabs.indexOf(this.active) : 0, tabs };
+    return { key: this.stateKey, active: this.active ? this.tabs.indexOf(this.active) : 0, tabs };
   }
 
   /** Store the current tabs under a name (tab bar dropdown). */
   async saveNamedSession(name: string): Promise<void> {
     try {
-      const state = await this.snapshot(false, SESSION_SCROLLBACK);
-      await SessionService.Save(name, JSON.stringify(state));
+      const w = await this.snapshot(false, SESSION_SCROLLBACK);
+      // Named sessions stay on the v1 shape: Go counts .tabs[].panes to show "3 tabs, 5 panes".
+      await SessionService.Save(name, JSON.stringify({ version: 1, active: w.active, tabs: w.tabs }));
     } catch (err) {
       console.warn("save session:", err);
     }
@@ -189,7 +194,7 @@ export class WateApp {
   /** Open a named session: its tabs are added after the current ones. */
   async openNamedSession(id: string): Promise<void> {
     try {
-      const saved = parseSession(await SessionService.Load(id));
+      const saved = parseWindow(await SessionService.Load(id));
       if (!saved) throw new Error("session file is empty or invalid");
       const opened = await this.openTabs(saved.tabs);
       const active = opened[Math.min(saved.active, opened.length - 1)];
@@ -209,7 +214,7 @@ export class WateApp {
   /** Rebuild tabs from the saved state; returns false when nothing was restored. */
   async restoreSession(): Promise<boolean> {
     if (this.restoreMode !== "session" || !this.config.general.restore_session) return false;
-    const saved = parseSession(await StateService.Load().catch(() => ""));
+    const saved = parseWindow(await StateService.Load().catch(() => ""));
     if (!saved) return false;
     this.restoring = true;
     try {
