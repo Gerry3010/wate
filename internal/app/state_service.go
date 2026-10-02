@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -103,6 +104,11 @@ func (s *StateService) Save(ctx context.Context, data string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := stateKey(ctx, s.windows)
+	if key == "" {
+		// A window on its way out: the context no longer resolves to one, and a slot keyed ""
+		// would be a permanent empty entry.
+		return nil
+	}
 	f := readState()
 	for i := range f.Windows {
 		if f.Windows[i].Key == key {
@@ -112,6 +118,27 @@ func (s *StateService) Save(ctx context.Context, data string) error {
 	}
 	f.Windows = append(f.Windows, WindowBlob{Key: key, Data: data})
 	return writeState(f)
+}
+
+// Remove forgets one window's slot — it was closed, so it should not reopen next time.
+func (s *StateService) Remove(key string) {
+	if key == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f := readState()
+	out := f.Windows[:0]
+	for _, w := range f.Windows {
+		if w.Key != key {
+			out = append(out, w)
+		}
+	}
+	f.Windows = out
+	if err := writeState(f); err != nil {
+		slog.Debug("forget window slot", "key", key, "err", err)
+	}
+	geometry.remove(key)
 }
 
 // Prune drops the slots of windows that are no longer saved, so a file cannot grow for ever.

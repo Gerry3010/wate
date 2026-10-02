@@ -52,6 +52,7 @@ swap_down      = "ctrl+shift+down"
 close_pane     = "ctrl+w"
 close_tab      = "ctrl+shift+w"         # closes the whole tab, however many panes it holds
 new_tab        = "ctrl+shift+t"
+new_window     = "ctrl+shift+n"
 next_tab       = "ctrl+tab"
 prev_tab       = "ctrl+shift+tab"
 move_tab_left  = ""                     # reorder the active tab; drag a tab in the bar does the same

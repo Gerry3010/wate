@@ -38,6 +38,7 @@ const ACTIONS: [string, string][] = [
   ["close_pane", "Close pane"],
   ["close_tab", "Close tab"],
   ["new_tab", "New tab"],
+  ["new_window", "New window"],
   ["next_tab", "Next tab"],
   ["prev_tab", "Previous tab"],
   ["move_tab_left", "Move tab left"],

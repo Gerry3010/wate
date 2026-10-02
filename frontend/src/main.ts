@@ -30,6 +30,7 @@ async function boot() {
   app.windowId = boot.window_id;
   app.restoreMode = boot.restore;
   app.stateKey = boot.state_key;
+  app.persist = boot.persist;
   app.configPath = path;
   await app.loadTheme();
   Events.On("config:changed", (ev: { data: { config: typeof config; warning?: string } }) => {

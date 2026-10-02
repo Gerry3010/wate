@@ -2,10 +2,13 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -30,6 +33,9 @@ type Bootstrap struct {
 	// StateKey indexes this window's slot in the session and geometry files. It is stable
 	// across runs, unlike WindowID, which is minted per process.
 	StateKey string `json:"state_key"`
+	// Persist is whether this window writes its tabs back. Restoring and saving are separate:
+	// a window opened fresh has nothing to restore but must still come back next time.
+	Persist bool `json:"persist"`
 }
 
 // ActivateTab asks a window to bring a tab (and optionally a pane) to the front.
@@ -51,8 +57,9 @@ type OpenWindowOptions struct {
 	Geometry *WindowState
 	Restore  string
 	StateKey string
-	// Track remembers this window's geometry between runs.
-	Track bool
+	// Track remembers this window's geometry between runs; Persist, its tabs.
+	Track   bool
+	Persist bool
 }
 
 type winEntry struct {
@@ -72,6 +79,11 @@ type WindowService struct {
 	tabWindow  map[string]WindowID
 	paneWindow map[string]WindowID
 	focused    WindowID
+	// quitting is set while the app shuts down. Every window closes then, and a window that
+	// closes on the way out must keep its saved tabs — only one the user closed loses them.
+	quitting bool
+	// OnClosed is called with the state key of a window the user closed, so its slot can go.
+	OnClosed func(key string)
 	// started is false until the event loop runs. The first window is created on the main
 	// thread before Run(), where marshalling onto it would deadlock.
 	started bool
@@ -87,6 +99,13 @@ func NewWindowService(cfg *ConfigService) *WindowService {
 }
 
 func (*WindowService) ServiceName() string { return "WindowService" }
+
+// MarkQuitting says the app is shutting down, so closing windows keep their saved tabs.
+func (s *WindowService) MarkQuitting() {
+	s.mu.Lock()
+	s.quitting = true
+	s.mu.Unlock()
+}
 
 // MarkStarted says the event loop is up, so later windows must be created on the main thread.
 func (s *WindowService) MarkStarted() {
@@ -107,9 +126,10 @@ func (s *WindowService) Open(o OpenWindowOptions) (WindowID, error) {
 	id := WindowID("w" + strconv.Itoa(s.seq))
 	key := o.StateKey
 	if key == "" {
-		key = string(id)
+		// Not the window id: that is minted per run and would collide with an older slot.
+		key = "win-" + randomKey()
 	}
-	boot := Bootstrap{WindowID: string(id), InitialCwd: o.Cwd, Restore: o.Restore, StateKey: key}
+	boot := Bootstrap{WindowID: string(id), InitialCwd: o.Cwd, Restore: o.Restore, StateKey: key, Persist: o.Persist}
 	if boot.Restore == "" {
 		boot.Restore = "empty"
 	}
@@ -162,7 +182,12 @@ func (s *WindowService) track(id WindowID, win *application.WebviewWindow) {
 
 func (s *WindowService) forget(id WindowID) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	e, known := s.windows[id]
+	drop := ""
+	if known && !s.quitting && e.boot.Persist {
+		drop = e.boot.StateKey
+	}
+	onClosed := s.OnClosed
 	delete(s.windows, id)
 	for i, w := range s.order {
 		if w == id {
@@ -185,6 +210,11 @@ func (s *WindowService) forget(id WindowID) {
 		if len(s.order) > 0 {
 			s.focused = s.order[0]
 		}
+	}
+	s.mu.Unlock()
+	// A window the user closed should not come back on the next start.
+	if drop != "" && onClosed != nil {
+		onClosed(drop)
 	}
 }
 
@@ -268,7 +298,7 @@ func (s *WindowService) count() int {
 
 // NewWindow opens an empty window (the new_window action, and `wate --new-window`).
 func (s *WindowService) NewWindow(ctx context.Context, cwd string) (string, error) {
-	id, err := s.Open(OpenWindowOptions{Cwd: cwd, Restore: "empty"})
+	id, err := s.Open(OpenWindowOptions{Cwd: cwd, Restore: "empty", Track: true, Persist: true})
 	return string(id), err
 }
 
@@ -300,6 +330,15 @@ func (s *WindowService) idFromContext(ctx context.Context) WindowID {
 		return WindowID(w.Name())
 	}
 	return ""
+}
+
+// randomKey is a short, collision-resistant suffix for a new window's state key.
+func randomKey() string {
+	var b [6]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b[:])
 }
 
 func contains(list []string, want string) bool {

@@ -7,6 +7,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- wate can have more than one window. `[keys] new_window` (Ctrl+Shift+N) opens one where the
+  focused pane is looking, `wate --new-window [<dir>]` and `wate ctl new-window [<dir>]` do it
+  from a shell, and each window restores its own tabs on the next start. A window you close
+  stays closed; quitting keeps them all. `wate --standalone` starts a separate instance instead
+  of handing over to the running one.
 - The Claude sidebar groups sessions into Favourites and the rest, both foldable and both
   remembering whether they were folded. A favourite stays listed after its session ends, with
   `Resume →` to pick it up again (`claude --resume` in the directory it ran in).

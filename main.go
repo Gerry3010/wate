@@ -40,9 +40,14 @@ func main() {
 	}
 	cfgPath := config.Path()
 	initialCwd := ""
+	newWindow, standalone := false, false
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch {
+		case args[i] == "--new-window":
+			newWindow = true
+		case args[i] == "--standalone":
+			standalone = true
 		case args[i] == "--config" && i+1 < len(args):
 			cfgPath = args[i+1]
 			i++
@@ -61,9 +66,17 @@ func main() {
 		if st, err := os.Stat(initialCwd); err != nil || !st.IsDir() {
 			initialCwd = filepath.Dir(initialCwd)
 		}
-		// A running wate (same config) gets a new tab instead of a second window.
+	}
+
+	// A running wate (same config) takes this over: a new tab by default, a window on request.
+	// --standalone is the way out, for debugging and for a throwaway WATE_CONFIG_DIR.
+	if !standalone && (initialCwd != "" || newWindow) {
 		if sock, err := ctl.FindPrimary(config.StateDir()); err == nil {
-			if resp, err := ctl.Send(sock, ctl.Request{Cmd: "new-tab", Path: initialCwd}); err == nil && resp.OK {
+			cmd := ctl.Request{Cmd: "new-tab", Path: initialCwd}
+			if newWindow {
+				cmd = ctl.Request{Cmd: "new-window", Path: initialCwd}
+			}
+			if resp, err := ctl.Send(sock, cmd); err == nil && resp.OK {
 				return
 			}
 		}
@@ -85,7 +98,10 @@ func main() {
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc)
 	// Quitting: hand the primary role to whoever starts next, then let Claude Code shut down
 	// before the shells get their SIGHUP.
+	winSvc.OnClosed = func(key string) { stateSvc.Remove(key) }
 	ptySvc.BeforeKill = func(ctx context.Context) {
+		// Shutting down: every window is about to close, and they must keep their tabs.
+		winSvc.MarkQuitting()
 		ctlSvc.Resign()
 		agentSvc.StopSessions(ctx)
 	}
@@ -151,7 +167,11 @@ func main() {
 				saved = &st
 			}
 		}
-		o := app.OpenWindowOptions{Geometry: saved, Restore: restore, StateKey: key, Track: !cfgSvc.Secondary}
+		o := app.OpenWindowOptions{
+			Geometry: saved, Restore: restore, StateKey: key,
+			Track:   !cfgSvc.Secondary,
+			Persist: !cfgSvc.Secondary,
+		}
 		// The directory from the command line belongs to the first window only.
 		if i == 0 {
 			o.Cwd = initialCwd

@@ -116,8 +116,10 @@ export class WateApp {
   /** Set for windows opened while another wate runs: they neither restore nor save the session. */
   /** This window's name, as Wails and the backend know it. */
   windowId = "";
-  /** "session" restores this window's saved tabs; "empty" starts clean and saves nothing. */
+  /** "session" restores this window's saved tabs; "empty" starts clean. */
   restoreMode = "session";
+  /** Whether this window writes its tabs back — separate from whether it restored any. */
+  persist = true;
   /** This window's slot in session.json and window.json; stable across runs. */
   stateKey = "w-1";
 
@@ -133,7 +135,7 @@ export class WateApp {
   private lastDrop?: { paths: string[]; x: number; y: number; pane: string | null; zone: DropZone };
 
   scheduleSave() {
-    if (this.restoring || this.restoreMode !== "session" || !this.config.general.restore_session) return;
+    if (this.restoring || !this.persist || !this.config.general.restore_session) return;
     const now = Date.now();
     // Debounced, but with a ceiling: a busy pane would otherwise push the save out forever.
     if (this.saveTimer && now > this.saveDeadline) return;
@@ -146,7 +148,7 @@ export class WateApp {
   }
 
   async saveSession(immediate = false): Promise<void> {
-    if (this.restoring || this.restoreMode !== "session" || !this.config.general.restore_session) return;
+    if (this.restoring || !this.persist || !this.config.general.restore_session) return;
     perf.saves++;
     const state = await this.snapshot(immediate, RESTORE_SCROLLBACK);
     await StateService.Save(JSON.stringify(state)).catch((err) => console.warn("session save:", err));
@@ -510,6 +512,11 @@ export class WateApp {
     this.scheduleSave();
   }
 
+  /** The focused pane's directory, so a new window opens where this one is looking. */
+  private async activeCwd(): Promise<string> {
+    return (await this.active?.focused?.cwd().catch(() => "")) ?? "";
+  }
+
   /** Shift the active tab one place along the bar (move_tab_left / move_tab_right). */
   private nudgeTab(delta: number) {
     const tab = this.active;
@@ -854,6 +861,9 @@ export class WateApp {
         break;
       case "new_tab":
         await this.newTab();
+        break;
+      case "new_window":
+        await WindowService.NewWindow(await this.activeCwd());
         break;
       case "move_tab_left":
         this.nudgeTab(-1);

@@ -100,6 +100,20 @@ func (g *windowStore) put(key string, st WindowState) {
 	writeWindows(f)
 }
 
+func (g *windowStore) remove(key string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	f := readWindows()
+	out := f.Windows[:0]
+	for _, r := range f.Windows {
+		if r.Key != key {
+			out = append(out, r)
+		}
+	}
+	f.Windows = out
+	writeWindows(f)
+}
+
 func (g *windowStore) get(key string) (WindowState, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

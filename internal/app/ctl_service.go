@@ -128,6 +128,21 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		}
 		emitTo(c.target(r.Pane, r.Tab), "ctl:open", OpenRequest{Path: p, Line: r.Line, Col: r.Col, Pane: r.Pane, Tab: r.Tab})
 		return ctl.Response{OK: true}
+	case "new-window":
+		cwd := r.Path
+		if cwd != "" {
+			if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
+				return ctl.Response{Error: "not a directory: " + cwd}
+			}
+		}
+		if c.windows == nil {
+			return ctl.Response{Error: "no window service"}
+		}
+		id, err := c.windows.NewWindow(context.Background(), cwd)
+		if err != nil {
+			return ctl.Response{Error: err.Error()}
+		}
+		return ctl.Response{OK: true, Data: id}
 	case "new-tab":
 		p := r.Path
 		if st, err := os.Stat(p); err != nil || !st.IsDir() {

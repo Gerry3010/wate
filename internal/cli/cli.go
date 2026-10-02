@@ -18,9 +18,12 @@ const Usage = `wate — yet another terminal emulator
 
 usage:
   wate [--config <file>] [<dir>]  start the app (in <dir>); a running wate opens <dir> as a new tab
+  wate --new-window [<dir>]       open another window of the running wate (in <dir>)
+  wate --standalone [<dir>]       start a separate instance instead of talking to the running one
   wate open <file>[:line[:col]]   open a file in the editor of the running wate
   wate ctl input <text>           type text into the current pane ($WATE_PANE_ID)
   wate ctl action <name>          run a keybind action (split_right, new_tab, ...)
+  wate ctl new-window [<dir>]     open another window
   wate ctl ping                   check the control socket
   wate theme import <file>        import a Ghostty/Alacritty/wate theme and activate it
   wate hook <event>               Claude Code hook entry point (reads JSON on stdin)
@@ -70,6 +73,8 @@ func Run(args []string) int {
 			req.Text = rest
 		case "action":
 			req.Name = rest
+		case "new-window", "new-tab":
+			req.Path = rest
 		}
 		return send(req)
 	case "theme":
