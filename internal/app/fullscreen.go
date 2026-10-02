@@ -18,11 +18,8 @@ type FullscreenState struct {
 // ForwardFullscreen relays the window's fullscreen transitions to the frontend as
 // "window:fullscreen".
 func ForwardFullscreen(w *application.WebviewWindow) {
-	emit := func(on bool) {
-		if app := application.Get(); app != nil {
-			app.Event.Emit("window:fullscreen", FullscreenState{Fullscreen: on})
-		}
-	}
+	// Addressed to this window: another window's tab bar must not shift with it.
+	emit := func(on bool) { emitTo(w, "window:fullscreen", FullscreenState{Fullscreen: on}) }
 	w.OnWindowEvent(events.Common.WindowFullscreen, func(*application.WindowEvent) { emit(true) })
 	w.OnWindowEvent(events.Common.WindowUnFullscreen, func(*application.WindowEvent) { emit(false) })
 }

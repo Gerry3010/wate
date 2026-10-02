@@ -42,15 +42,25 @@ type HookEvent struct {
 
 // CtlService owns the control socket and exposes its path to the frontend/shell env.
 type CtlService struct {
-	pty    *PtyService
-	cfg    *ConfigService
-	server *ctl.Server
+	pty     *PtyService
+	cfg     *ConfigService
+	windows *WindowService
+	server  *ctl.Server
 	// OnHook is set by the agent service.
 	OnHook func(HookEvent)
 }
 
-func NewCtlService(pty *PtyService, cfg *ConfigService) *CtlService {
-	return &CtlService{pty: pty, cfg: cfg}
+func NewCtlService(pty *PtyService, cfg *ConfigService, windows *WindowService) *CtlService {
+	return &CtlService{pty: pty, cfg: cfg, windows: windows}
+}
+
+// target picks the window a request is about, from the pane or tab it names.
+func (c *CtlService) target(pane, tab string) *application.WebviewWindow {
+	if c.windows == nil {
+		return nil
+	}
+	w, _ := c.windows.windowFor(pane, tab)
+	return w
 }
 
 func (c *CtlService) ServiceName() string { return "CtlService" }
@@ -116,19 +126,22 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		if _, err := os.Stat(p); err != nil {
 			return ctl.Response{Error: err.Error()}
 		}
-		app.Event.Emit("ctl:open", OpenRequest{Path: p, Line: r.Line, Col: r.Col, Pane: r.Pane, Tab: r.Tab})
+		emitTo(c.target(r.Pane, r.Tab), "ctl:open", OpenRequest{Path: p, Line: r.Line, Col: r.Col, Pane: r.Pane, Tab: r.Tab})
 		return ctl.Response{OK: true}
 	case "new-tab":
 		p := r.Path
 		if st, err := os.Stat(p); err != nil || !st.IsDir() {
 			return ctl.Response{Error: "not a directory: " + p}
 		}
-		app.Event.Emit("ctl:new-tab", OpenRequest{Path: p})
-		if w, ok := app.Window.GetByName("main"); ok {
-			if w.IsMinimised() {
-				w.UnMinimise()
-			}
-			w.Focus()
+		w := c.target(r.Pane, r.Tab)
+		emitTo(w, "ctl:new-tab", OpenRequest{Path: p})
+		if w != nil {
+			application.InvokeSync(func() {
+				if w.IsMinimised() {
+					w.UnMinimise()
+				}
+				w.Focus()
+			})
 		}
 		return ctl.Response{OK: true}
 	case "input":
@@ -138,14 +151,14 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		}
 		return ctl.Response{OK: true}
 	case "debug":
-		// Asks the frontend to log a rendering/state summary (wate ctl debug → see stderr log).
+		// Deliberately a broadcast: `wate ctl debug` should dump every window, not just one.
 		app.Event.Emit("ctl:action", ActionRequest{Name: "__debug"})
 		return ctl.Response{OK: true}
 	case "action":
 		if strings.TrimSpace(r.Name) == "" {
 			return ctl.Response{Error: "action name required"}
 		}
-		app.Event.Emit("ctl:action", ActionRequest{Name: r.Name, Pane: r.Pane, Tab: r.Tab})
+		emitTo(c.target(r.Pane, r.Tab), "ctl:action", ActionRequest{Name: r.Name, Pane: r.Pane, Tab: r.Tab})
 		return ctl.Response{OK: true}
 	case "import-theme":
 		id, err := theme.ImportFile(r.Path, userThemesDir())
@@ -158,10 +171,9 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		return ctl.Response{OK: true, Data: id}
 	case "hook":
 		ev := HookEvent{Event: r.Event, Pane: r.Pane, Tab: r.Tab, Data: r.Data}
+		// OnHook is always wired (main.go); there is no frontend listener for this.
 		if c.OnHook != nil {
 			c.OnHook(ev)
-		} else {
-			app.Event.Emit("agent:hook", ev)
 		}
 		return ctl.Response{OK: true}
 	default:

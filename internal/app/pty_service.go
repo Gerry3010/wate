@@ -20,6 +20,8 @@ import (
 
 // PtyService spawns terminal sessions for the frontend.
 type PtyService struct {
+	// windows routes events to the window a pane lives in; nil before it is wired up.
+	windows  *WindowService
 	sessions *pty.Manager
 	bridge   *wsbridge.Server
 	cfg      func() config.Config
@@ -37,10 +39,11 @@ type PtyService struct {
 	tabOf  map[string]string
 }
 
-func NewPtyService(cfg func() config.Config) *PtyService {
+func NewPtyService(cfg func() config.Config, windows *WindowService) *PtyService {
 	return &PtyService{
 		sessions: pty.NewManager(),
 		cfg:      cfg,
+		windows:  windows,
 		byPane:   map[string]string{},
 		tabOf:    map[string]string{},
 		stop:     make(chan struct{}),
@@ -317,9 +320,7 @@ func (p *PtyService) watchForeground() {
 					continue
 				}
 				last[info.PaneID] = c
-				if app := application.Get(); app != nil {
-					app.Event.Emit("pty:command", c)
-				}
+				emitTo(p.windowFor(c.Pane), "pty:command", c)
 			}
 			for pane := range last {
 				if !seen[pane] {
@@ -328,4 +329,13 @@ func (p *PtyService) watchForeground() {
 			}
 		}
 	}
+}
+
+// windowFor is the window a pane lives in, or nil when that is not known yet.
+func (p *PtyService) windowFor(paneID string) *application.WebviewWindow {
+	if p.windows == nil {
+		return nil
+	}
+	w, _ := p.windows.windowFor(paneID, "")
+	return w
 }

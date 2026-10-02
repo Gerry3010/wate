@@ -40,8 +40,7 @@ func ForwardFileDrops(w *application.WebviewWindow) {
 		req := DropRequestFrom(paths, ctx.DropTargetDetails())
 		slog.Debug("file drop", "files", len(paths), "x", req.X, "y", req.Y)
 		// The listener runs on Wails' drop goroutine (a buffered channel): emit and get out.
-		if app := application.Get(); app != nil {
-			app.Event.Emit("window:drop", req)
-		}
+		// Addressed to this window — a drop on one window must not act in every other.
+		emitTo(w, "window:drop", req)
 	})
 }

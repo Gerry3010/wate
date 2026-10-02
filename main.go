@@ -76,8 +76,9 @@ func main() {
 	if _, err := ctl.FindPrimary(config.StateDir()); err == nil {
 		cfgSvc.Secondary = true
 	}
-	ptySvc := app.NewPtyService(cfgSvc.Current)
-	ctlSvc := app.NewCtlService(ptySvc, cfgSvc)
+	winSvc := app.NewWindowService(cfgSvc)
+	ptySvc := app.NewPtyService(cfgSvc.Current, winSvc)
+	ctlSvc := app.NewCtlService(ptySvc, cfgSvc, winSvc)
 	themeSvc := app.NewThemeService(cfgSvc.Current)
 	notifySvc := notifications.New()
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc)
@@ -93,8 +94,8 @@ func main() {
 	application.RegisterEvent[app.OpenRequest]("ctl:open")
 	application.RegisterEvent[app.ActionRequest]("ctl:action")
 	application.RegisterEvent[app.OpenRequest]("ctl:new-tab")
-	application.RegisterEvent[app.HookEvent]("agent:hook")
 	application.RegisterEvent[agent.Session]("agent:status")
+	application.RegisterEvent[app.ActivateTab]("window:activate-tab")
 	application.RegisterEvent[app.DropRequest]("window:drop")
 	application.RegisterEvent[app.FullscreenState]("window:fullscreen")
 
@@ -114,6 +115,7 @@ func main() {
 			application.NewService(&app.StateService{}),
 			application.NewService(&app.SessionService{}),
 			application.NewService(&app.AgentStateService{}),
+			application.NewService(winSvc),
 			application.NewService(app.NewImportService(cfgSvc)),
 			application.NewServiceWithOptions(wp, application.ServiceOptions{Name: "Wallpaper", Route: "/wallpaper"}),
 		},
@@ -131,13 +133,17 @@ func main() {
 			saved = &st
 		}
 	}
-	win := wapp.Window.NewWithOptions(app.WindowOptions(cfgSvc.Current(), saved))
-	if !cfgSvc.Secondary {
-		app.TrackWindow(win)
+	restore := "session"
+	if cfgSvc.Secondary {
+		restore = "empty"
 	}
-	app.ForwardFileDrops(win)
-	app.ForwardFullscreen(win)
+	if _, err := winSvc.Open(app.OpenWindowOptions{
+		Cwd: initialCwd, Geometry: saved, Restore: restore, Track: !cfgSvc.Secondary,
+	}); err != nil {
+		log.Fatalln("could not open a window:", err)
+	}
 	wapp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		winSvc.MarkStarted()
 		app.ApplyNativeTheme(themeSvc)
 		app.ApplyNativeBackground(cfgSvc.Current())
 	})

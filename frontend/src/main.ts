@@ -1,4 +1,5 @@
-import { ConfigService, Events, LogService } from "./api";
+import { ConfigService, Events, LogService, WindowService } from "./api";
+import { initWindowId, onMine } from "./api/events";
 import { WateApp } from "./app";
 
 // Mirror console errors/warnings into the Go log so packaged builds are debuggable.
@@ -14,38 +15,45 @@ window.addEventListener("error", (e) => console.error(e.message, e.filename, e.l
 window.addEventListener("unhandledrejection", (e) => console.error("unhandled rejection:", e.reason));
 
 async function boot() {
+  // Before any listener: a targeted event that arrives while this is unknown would be dropped.
+  await initWindowId();
   const root = document.getElementById("app")!;
-  const { config, warning, path, initial_cwd, secondary, os } = await ConfigService.Get();
+  const { config, warning, path, os } = await ConfigService.Get();
+  // Per-window facts come from WindowService, not ConfigService: the config payload is also
+  // broadcast as config:changed, where anything window-specific would be wrong somewhere.
+  const boot = await WindowService.Bootstrap();
   if (warning) console.warn(warning);
   // Lets the stylesheet dodge the macOS traffic lights (see .tabbar in base.css).
   document.documentElement.dataset.platform = os;
 
   const app = new WateApp(root, config);
-  app.secondary = !!secondary;
+  app.windowId = boot.window_id;
+  app.restoreMode = boot.restore;
   app.configPath = path;
   await app.loadTheme();
   Events.On("config:changed", (ev: { data: { config: typeof config; warning?: string } }) => {
     if (ev.data.warning) console.warn(ev.data.warning);
     void app.applyConfig(ev.data.config);
   });
-  Events.On("ctl:open", (ev: { data: { path: string; line: number; col: number; tab: string } }) => {
-    const tab = app.tabs.find((t) => t.id === ev.data.tab) ?? app.active;
+  onMine("ctl:open", (d: { path: string; line: number; col: number; tab: string }) => {
+    const tab = app.tabs.find((t) => t.id === d.tab) ?? app.active;
     if (tab) {
       app.activate(tab);
-      void app.openEditor(tab, ev.data.path, ev.data.line || undefined, ev.data.col || undefined);
+      void app.openEditor(tab, d.path, d.line || undefined, d.col || undefined);
     }
   });
-  Events.On("ctl:action", (ev: { data: { name: string } }) => void app.run(ev.data.name));
-  Events.On("window:drop", (ev: { data: { paths: string[] | null; x: number; y: number } }) => app.onFilesDropped(ev.data));
-  Events.On("window:fullscreen", (ev: { data: { fullscreen: boolean } }) => {
-    document.documentElement.toggleAttribute("data-fullscreen", ev.data.fullscreen);
+  onMine("ctl:action", (d: { name: string }) => void app.run(d.name));
+  onMine("window:drop", (d: { paths: string[] | null; x: number; y: number }) => app.onFilesDropped(d));
+  onMine("window:fullscreen", (d: { fullscreen: boolean }) => {
+    document.documentElement.toggleAttribute("data-fullscreen", d.fullscreen);
   });
-  Events.On("ctl:new-tab", (ev: { data: { path: string } }) => {
-    void app.newTab({ cwd: ev.data.path });
+  onMine("ctl:new-tab", (d: { path: string }) => {
+    void app.newTab({ cwd: d.path });
   });
   Events.On("agent:status", (ev: { data: Parameters<typeof app.onAgentStatus>[0] }) => app.onAgentStatus(ev.data));
-  const restored = await app.restoreSession();
-  if (initial_cwd || !restored) await app.newTab({ cwd: initial_cwd || undefined });
+  onMine("window:activate-tab", (d: { tab: string; pane: string }) => app.activateTab(d.tab, d.pane));
+  const restored = boot.restore === "session" ? await app.restoreSession() : false;
+  if (boot.initial_cwd || !restored) await app.newTab({ cwd: boot.initial_cwd || undefined });
 }
 
 boot().catch((err) => {

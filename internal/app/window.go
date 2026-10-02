@@ -6,11 +6,12 @@ import (
 	"github.com/Gerry3010/wate/internal/config"
 )
 
-// WindowOptions derives the main window options from the config; saved (when non-nil) is the
-// remembered geometry of the last run and wins over the configured default size.
-func WindowOptions(cfg config.Config, saved *WindowState) application.WebviewWindowOptions {
+// WindowOptions derives a window's options from the config; saved (when non-nil) is the
+// remembered geometry and wins over the configured default size. name must be unique: Wails
+// attributes bound calls by window name, so two windows sharing one would be indistinguishable.
+func WindowOptions(cfg config.Config, saved *WindowState, name string) application.WebviewWindowOptions {
 	opts := application.WebviewWindowOptions{
-		Name:      "main",
+		Name:      name,
 		Title:     "wate",
 		Width:     cfg.Window.Width,
 		Height:    cfg.Window.Height,

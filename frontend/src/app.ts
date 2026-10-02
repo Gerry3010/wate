@@ -1,6 +1,6 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { AgentService, OpenerService, PtyService, SessionService, StateService, ThemeService, type Config, type Resolved, type Session, type Target } from "./api";
+import { AgentService, OpenerService, PtyService, SessionService, StateService, ThemeService, WindowService, type Config, type Resolved, type Session, type Target } from "./api";
 import { fromImported, parseSession, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedSession, type SavedTab } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
@@ -114,7 +114,10 @@ export class WateApp {
 
   /** Debounced: called after every structural change. */
   /** Set for windows opened while another wate runs: they neither restore nor save the session. */
-  secondary = false;
+  /** This window's name, as Wails and the backend know it. */
+  windowId = "";
+  /** "session" restores this window's saved tabs; "empty" starts clean and saves nothing. */
+  restoreMode = "session";
 
   private saveDeadline = 0;
 
@@ -128,7 +131,7 @@ export class WateApp {
   private lastDrop?: { paths: string[]; x: number; y: number; pane: string | null; zone: DropZone };
 
   scheduleSave() {
-    if (this.restoring || this.secondary || !this.config.general.restore_session) return;
+    if (this.restoring || this.restoreMode !== "session" || !this.config.general.restore_session) return;
     const now = Date.now();
     // Debounced, but with a ceiling: a busy pane would otherwise push the save out forever.
     if (this.saveTimer && now > this.saveDeadline) return;
@@ -141,7 +144,7 @@ export class WateApp {
   }
 
   async saveSession(immediate = false): Promise<void> {
-    if (this.restoring || this.secondary || !this.config.general.restore_session) return;
+    if (this.restoring || this.restoreMode !== "session" || !this.config.general.restore_session) return;
     perf.saves++;
     const state = await this.snapshot(immediate, RESTORE_SCROLLBACK);
     await StateService.Save(JSON.stringify(state)).catch((err) => console.warn("session save:", err));
@@ -205,7 +208,7 @@ export class WateApp {
 
   /** Rebuild tabs from the saved state; returns false when nothing was restored. */
   async restoreSession(): Promise<boolean> {
-    if (this.secondary || !this.config.general.restore_session) return false;
+    if (this.restoreMode !== "session" || !this.config.general.restore_session) return false;
     const saved = parseSession(await StateService.Load().catch(() => ""));
     if (!saved) return false;
     this.restoring = true;
@@ -510,9 +513,35 @@ export class WateApp {
   }
 
   private lastWindowTitle = "";
+  private lastTabReport = "";
+
+  /**
+   * Tell the backend which tabs and panes this window holds. It is the only place that knows,
+   * and the backend needs it to route a ctl request or a hook to the right window.
+   */
+  private reportTabs() {
+    const tabs = this.tabs.map((t) => t.id);
+    const panes = this.tabs.flatMap((t) => [...t.panes.keys()]);
+    const sig = tabs.join(",") + "|" + panes.join(",");
+    if (sig === this.lastTabReport) return;
+    this.lastTabReport = sig;
+    void WindowService.SetTabs({ tabs, panes }).catch((err) => console.warn("report tabs:", err));
+  }
+
+  /** Bring a tab (and optionally one of its panes) to the front — see window:activate-tab. */
+  activateTab(tabId: string, paneId?: string) {
+    const tab = this.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    this.activate(tab);
+    if (paneId && tab.panes.has(paneId)) {
+      tab.setFocus(paneId);
+      tab.focusPane();
+    }
+  }
 
   private refreshChrome(tab?: Tab) {
     this.tabBar.render(this.tabs, this.active);
+    this.reportTabs();
     if (!this.active || (tab && tab !== this.active)) return;
     const title = `${this.active.title} — wate`;
     if (title === this.lastWindowTitle) return;
