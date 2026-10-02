@@ -70,6 +70,11 @@ export class WateApp {
         t.onChange?.();
       },
       moveTab: (t, to) => this.moveTab(t, to),
+      otherWindows: async () => {
+        const all = (await WindowService.Windows().catch(() => [])) ?? [];
+        return all.filter((w) => w.id !== this.windowId).map((w) => ({ id: w.id, index: w.index }));
+      },
+      moveTabToWindow: (t, to) => void this.moveTabToWindow(t, to),
       listSessions: async () => (await SessionService.List()) ?? [],
       saveSession: (name) => void this.saveNamedSession(name),
       openSession: (id) => void this.openNamedSession(id),
@@ -373,6 +378,87 @@ export class WateApp {
     const tab = this.active ?? (await this.newTab());
     const cmd = this.config.claude.command || "claude";
     await this.addTerminal(tab, "row", { command: cmd.split(/\s+/) });
+  }
+
+  // ---- moving a tab between windows -------------------------------------
+
+  /** Serialise one tab, keeping its pane ids: the receiving window re-attaches by them. */
+  private async snapshotTab(tab: Tab): Promise<SavedTab | null> {
+    const whole = await this.snapshot(false, SESSION_SCROLLBACK);
+    return whole.tabs.find((t) => t.panes.some((p) => tab.panes.has(p.id))) ?? null;
+  }
+
+  /**
+   * Hand a tab to another window (or to a new one, when `to` is empty). The tab is only let
+   * go once the other side confirms it has it — see window:release-tab.
+   */
+  async moveTabToWindow(tab: Tab, to: string, index = -1): Promise<void> {
+    const saved = await this.snapshotTab(tab);
+    if (!saved) return;
+    const live: Record<string, string> = {};
+    for (const p of tab.panes.values()) {
+      if (p instanceof TerminalPane && p.session) live[p.id] = p.session;
+    }
+    try {
+      await WindowService.TransferTab({ to, index, tab_id: tab.id, tab: saved as unknown as Record<string, unknown>, live });
+    } catch (err) {
+      console.warn("move tab:", err);
+    }
+  }
+
+  /** The other window has the tab now: drop ours without killing the shells. */
+  releaseTab(tabId: string) {
+    const i = this.tabs.findIndex((t) => t.id === tabId);
+    if (i < 0) return;
+    const tab = this.tabs[i];
+    this.tabs.splice(i, 1);
+    tab.detach();
+    if (this.active === tab) {
+      this.active = null;
+      const next = this.tabs[Math.min(i, this.tabs.length - 1)];
+      if (next) this.activate(next);
+      else void Window.Close();
+    }
+    this.refreshChrome();
+    this.scheduleSave();
+  }
+
+  /** Take in a tab handed over by another window, re-attaching to its running shells. */
+  async adoptTab(t: { tab: SavedTab; live: Record<string, string>; index: number; tab_id: string }): Promise<void> {
+    const st = t.tab;
+    const tab = new Tab();
+    tab.customTitle = st.title ?? "";
+    tab.color = st.color ?? "";
+    tab.onChange = () => {
+      this.refreshChrome(tab);
+      this.scheduleSave();
+    };
+    tab.onLayout = (focused) => this.sidebar.cutEdge(focused);
+    const panes = new Map<string, Pane>();
+    for (const sp of st.panes) {
+      if (sp.kind === "editor") {
+        const ed = this.makeEditor(tab, sp.path);
+        panes.set(sp.id, ed);
+        continue;
+      }
+      // Same pane id, adopt: the shell is still running and keeps its own WATE_PANE_ID.
+      // The replay carries the visible history across; the live shell then continues into it.
+      // A line or two can fall in the seam — what the old pane received between the snapshot
+      // and the handover — which is a far better trade than arriving with a blank screen.
+      const adopt = !!t.live[sp.id];
+      const pane = this.makeTerminal(tab, { id: sp.id, adopt, cwd: sp.cwd, replay: sp.replay, visible: true });
+      panes.set(sp.id, pane);
+    }
+    const at = t.index < 0 || t.index > this.tabs.length ? this.tabs.length : t.index;
+    this.tabs.splice(at, 0, tab);
+    this.content.appendChild(tab.element);
+    tab.restore(st.tree, [...panes.values()], st.focused);
+    await Promise.allSettled([...panes.values()].map((p) => ("start" in p ? (p as { start(): Promise<void> }).start() : Promise.resolve())));
+    for (const [id] of panes) PtyService.Retab(id, tab.id).catch(() => {});
+    this.activate(tab);
+    this.refreshChrome();
+    this.scheduleSave();
+    WindowService.TabAdopted(t.tab_id).catch((err) => console.warn("confirm adopt:", err));
   }
 
   /** Reopen an ended session where it left off: `claude --resume <id>` in its old directory. */
@@ -875,6 +961,9 @@ export class WateApp {
         break;
       case "new_tab":
         await this.newTab();
+        break;
+      case "move_tab_to_new_window":
+        if (this.active) await this.moveTabToWindow(this.active, "");
         break;
       case "new_window":
         await WindowService.NewWindow(await this.activeCwd());

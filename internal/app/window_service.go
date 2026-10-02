@@ -51,6 +51,18 @@ type WindowTabs struct {
 	Panes []string `json:"panes"`
 }
 
+// TabTransfer moves one tab to another window. Tab is the frontend's saved shape; Live maps
+// each pane id to the PTY session it already has, so the receiving window re-attaches instead
+// of spawning and the shells survive the move.
+type TabTransfer struct {
+	// To is the target window id; empty means "a window of its own".
+	To    string            `json:"to"`
+	Index int               `json:"index"`
+	TabID string            `json:"tab_id"`
+	Tab   map[string]any    `json:"tab"`
+	Live  map[string]string `json:"live"`
+}
+
 // OpenWindowOptions describes a window to create.
 type OpenWindowOptions struct {
 	Cwd      string
@@ -60,12 +72,16 @@ type OpenWindowOptions struct {
 	// Track remembers this window's geometry between runs; Persist, its tabs.
 	Track   bool
 	Persist bool
+	// Adopt is a tab arriving from another window, handed to the frontend on Bootstrap.
+	Adopt *TabTransfer
 }
 
 type winEntry struct {
 	id   WindowID
 	win  *application.WebviewWindow
 	boot Bootstrap
+	// adopt is the tab this window was opened to receive, consumed once by the frontend.
+	adopt *TabTransfer
 }
 
 // WindowService owns the set of open windows and the mapping from tabs and panes to them.
@@ -78,7 +94,10 @@ type WindowService struct {
 	order      []WindowID
 	tabWindow  map[string]WindowID
 	paneWindow map[string]WindowID
-	focused    WindowID
+	// moving maps a tab being handed over to the window still holding it, so the source can
+	// be told to let go — but only once the target says it has the tab.
+	moving  map[string]WindowID
+	focused WindowID
 	// quitting is set while the app shuts down. Every window closes then, and a window that
 	// closes on the way out must keep its saved tabs — only one the user closed loses them.
 	quitting bool
@@ -95,6 +114,7 @@ func NewWindowService(cfg *ConfigService) *WindowService {
 		windows:    map[WindowID]*winEntry{},
 		tabWindow:  map[string]WindowID{},
 		paneWindow: map[string]WindowID{},
+		moving:     map[string]WindowID{},
 	}
 }
 
@@ -133,7 +153,7 @@ func (s *WindowService) Open(o OpenWindowOptions) (WindowID, error) {
 	if boot.Restore == "" {
 		boot.Restore = "empty"
 	}
-	entry := &winEntry{id: id, boot: boot}
+	entry := &winEntry{id: id, boot: boot, adopt: o.Adopt}
 	s.windows[id] = entry
 	s.order = append(s.order, id)
 	if s.focused == "" {
@@ -325,6 +345,107 @@ func (s *WindowService) FocusPane(windowID, tabID, paneID string) error {
 // idFromContext reads the calling window off the context. Wails puts it there for any bound
 // method whose first parameter is a context.Context; the TypeScript generator strips that
 // parameter, so the frontend signature is unchanged and no window has to name itself.
+// TransferTab hands a tab to another window, or to a new one when To is empty.
+//
+// Nothing is destroyed here. The target is asked to adopt, and only when it confirms (see
+// TabAdopted) is the source told to let go — so a failure anywhere leaves the tab where it is.
+func (s *WindowService) TransferTab(ctx context.Context, t TabTransfer) error {
+	from := s.idFromContext(ctx)
+	if t.TabID == "" {
+		return fmt.Errorf("tab id required")
+	}
+	s.mu.Lock()
+	s.moving[t.TabID] = from
+	// Claim the tab for its new owner right away: between now and the source's next report
+	// it must not look unowned.
+	if t.To != "" {
+		s.tabWindow[t.TabID] = WindowID(t.To)
+	}
+	s.mu.Unlock()
+
+	if t.To == "" {
+		if _, err := s.Open(OpenWindowOptions{Restore: "adopt", Track: true, Persist: true, Adopt: &t}); err != nil {
+			s.cancelMove(t.TabID)
+			return err
+		}
+		return nil
+	}
+
+	s.mu.RLock()
+	e, ok := s.windows[WindowID(t.To)]
+	s.mu.RUnlock()
+	if !ok || e.win == nil {
+		s.cancelMove(t.TabID)
+		return fmt.Errorf("no window %s", t.To)
+	}
+	application.InvokeSync(func() { e.win.Focus() })
+	e.win.EmitEvent("window:adopt-tab", t)
+	return nil
+}
+
+// TabAdopted is the receiving window confirming it has the tab. Only now is the window that
+// had it told to let go.
+func (s *WindowService) TabAdopted(ctx context.Context, tabID string) {
+	to := s.idFromContext(ctx)
+	s.mu.Lock()
+	from, ok := s.moving[tabID]
+	delete(s.moving, tabID)
+	if ok {
+		s.tabWindow[tabID] = to
+	}
+	e, known := s.windows[from]
+	s.mu.Unlock()
+	if ok && known && e.win != nil && from != to {
+		e.win.EmitEvent("window:release-tab", ActivateTab{Tab: tabID})
+	}
+}
+
+// PendingTab is the tab a window was opened to receive; it is handed over once.
+func (s *WindowService) PendingTab(ctx context.Context) *TabTransfer {
+	id := s.idFromContext(ctx)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.windows[id]
+	if !ok || e.adopt == nil {
+		return nil
+	}
+	t := e.adopt
+	e.adopt = nil
+	return t
+}
+
+// Windows lists the open windows for a "move to window" menu, newest last.
+func (s *WindowService) Windows() []WindowInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]WindowInfo, 0, len(s.order))
+	for i, id := range s.order {
+		e, ok := s.windows[id]
+		if !ok {
+			continue
+		}
+		title := ""
+		if e.win != nil {
+			title = e.win.Name()
+		}
+		out = append(out, WindowInfo{ID: string(id), Title: title, Index: i + 1})
+	}
+	return out
+}
+
+// WindowInfo names a window for the UI.
+type WindowInfo struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Index int    `json:"index"`
+}
+
+func (s *WindowService) cancelMove(tabID string) {
+	s.mu.Lock()
+	delete(s.moving, tabID)
+	s.mu.Unlock()
+}
+
 func (s *WindowService) idFromContext(ctx context.Context) WindowID {
 	if w, ok := ctx.Value(application.WindowKey).(application.Window); ok && w != nil {
 		return WindowID(w.Name())

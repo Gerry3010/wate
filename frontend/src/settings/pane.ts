@@ -43,6 +43,7 @@ const ACTIONS: [string, string][] = [
   ["prev_tab", "Previous tab"],
   ["move_tab_left", "Move tab left"],
   ["move_tab_right", "Move tab right"],
+  ["move_tab_to_new_window", "Move tab to a new window"],
   ["copy", "Copy"],
   ["paste", "Paste"],
   ["search", "Search"],

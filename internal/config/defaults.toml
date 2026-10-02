@@ -57,6 +57,7 @@ next_tab       = "ctrl+tab"
 prev_tab       = "ctrl+shift+tab"
 move_tab_left  = ""                     # reorder the active tab; drag a tab in the bar does the same
 move_tab_right = ""
+move_tab_to_new_window = ""   # also in the tab's right-click menu
 tab_1 = "alt+1"
 tab_2 = "alt+2"
 tab_3 = "alt+3"

@@ -18,6 +18,10 @@ export interface TabBarHost {
   colorTab(tab: Tab, color: string): void;
   /** Reorder: put `tab` at index `to`. */
   moveTab(tab: Tab, to: number): void;
+  /** Windows this tab could be moved to (excluding the one it is in). */
+  otherWindows(): Promise<{ id: string; index: number }[]>;
+  /** Move `tab` to window `to`; an empty id means a window of its own. */
+  moveTabToWindow(tab: Tab, to: string): void;
   /** Saved sessions for the dropdown. */
   listSessions(): Promise<SessionInfo[]>;
   saveSession(name: string): void;
@@ -178,7 +182,7 @@ export class TabBar {
         });
         b.addEventListener("contextmenu", (e) => {
           e.preventDefault();
-          this.showTabMenu(tab, tabs, active, e.clientX, e.clientY);
+          void this.showTabMenu(tab, tabs, active, e.clientX, e.clientY);
         });
         return b;
       }),
@@ -314,7 +318,10 @@ export class TabBar {
     return i;
   }
 
-  private showTabMenu(tab: Tab, tabs: Tab[], active: Tab | null, x: number, y: number) {
+  private async showTabMenu(tab: Tab, tabs: Tab[], active: Tab | null, x: number, y: number) {
+    // Fetched before the menu is built so "move to window N" sits with its own kind rather
+    // than being appended after the destructive entry at the bottom.
+    const others = await this.host.otherWindows().catch(() => [] as { id: string; index: number }[]);
     const entries: MenuEntry[] = [
       { label: "Rename tab…", onSelect: () => this.startRename(tab, tabs, active) },
       { header: "Colour" },
@@ -325,6 +332,9 @@ export class TabBar {
         checked: tab.color === name,
         onSelect: () => this.host.colorTab(tab, name),
       })),
+      "separator",
+      ...others.map((w) => ({ label: `Move to window ${w.index}`, onSelect: () => this.host.moveTabToWindow(tab, w.id) })),
+      { label: "Move to new window", onSelect: () => this.host.moveTabToWindow(tab, "") },
       "separator",
       { label: "Close tab", danger: true, onSelect: () => this.host.close(tab) },
     ];

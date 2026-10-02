@@ -66,6 +66,10 @@ func (s *Server) Close() error {
 	return s.srv.Shutdown(ctx)
 }
 
+// TakenOver is the close reason sent to a socket whose session another window adopted. The
+// frontend matches on it to tell a handover apart from the shell exiting (terminal/pane.ts).
+const TakenOver = "taken over"
+
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("token") != s.token {
 		http.Error(w, "forbidden", http.StatusForbidden)
@@ -146,7 +150,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	select {
 	case <-out.Gone:
 		// Handed over to another window: the session lives on, so say nothing about exits.
-		_ = c.Close(websocket.StatusGoingAway, "taken over")
+		_ = c.Close(websocket.StatusGoingAway, TakenOver)
 	case <-ptyEOF:
 		// Let the child finish so the exit code is known, but don't hang on a stuck process.
 		select {

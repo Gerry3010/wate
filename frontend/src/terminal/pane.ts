@@ -64,6 +64,9 @@ const MODE_RESET =
   "\x1b[?9l\x1b[?1000l\x1b[?1001l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l" +
   "\x1b[?2004l\x1b[?1l\x1b>\x1b[?7h\x1b[?25h\x1b[0m\x1b(B\x1b[4l";
 
+/** The bridge's close reason when another window took the session over (internal/wsbridge). */
+const TAKEN_OVER = "taken over";
+
 /** Rough cost of a serialized line (text plus its colour escapes); see savedRange(). */
 const BYTES_PER_LINE = 24;
 
@@ -402,6 +405,10 @@ export class TerminalPane implements Pane {
       // Tearing the pane down closes this socket ourselves; reporting that as the shell
       // exiting would remove the pane, empty the tab and close the window.
       if (this.disposed) return;
+      // Another window adopted this session and the bridge handed the stream over (see
+      // wsbridge). The shell is fine — this pane is simply no longer the one showing it, and
+      // it will be detached as soon as the move is confirmed.
+      if (ev.reason === TAKEN_OVER) return;
       const m = /^exit:(-?\d+)$/.exec(ev.reason);
       this.opts.onExit?.(m ? Number(m[1]) : -1);
     };

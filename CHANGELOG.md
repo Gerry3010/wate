@@ -7,6 +7,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- A tab can be moved to another window, or out into a window of its own, from its right-click
+  menu or with `[keys] move_tab_to_new_window`. Its shells keep running: the receiving window
+  re-attaches to the very same sessions rather than starting new ones, so a build, an ssh
+  connection or a Claude Code session survives the move along with the visible history.
 - wate can have more than one window. `[keys] new_window` (Ctrl+Shift+N) opens one where the
   focused pane is looking, `wate --new-window [<dir>]` and `wate ctl new-window [<dir>]` do it
   from a shell, and each window restores its own tabs on the next start. A window you close

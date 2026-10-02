@@ -113,6 +113,8 @@ func main() {
 	application.RegisterEvent[app.OpenRequest]("ctl:new-tab")
 	application.RegisterEvent[agent.Session]("agent:status")
 	application.RegisterEvent[app.ActivateTab]("window:activate-tab")
+	application.RegisterEvent[app.ActivateTab]("window:release-tab")
+	application.RegisterEvent[app.TabTransfer]("window:adopt-tab")
 	application.RegisterEvent[app.DropRequest]("window:drop")
 	application.RegisterEvent[app.FullscreenState]("window:fullscreen")
 

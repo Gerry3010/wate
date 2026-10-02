@@ -54,6 +54,16 @@ async function boot() {
   });
   Events.On("agent:status", (ev: { data: Parameters<typeof app.onAgentStatus>[0] }) => app.onAgentStatus(ev.data));
   onMine("window:activate-tab", (d: { tab: string; pane: string }) => app.activateTab(d.tab, d.pane));
+  onMine("window:adopt-tab", (d: Parameters<typeof app.adoptTab>[0]) => void app.adoptTab(d));
+  onMine("window:release-tab", (d: { tab: string }) => app.releaseTab(d.tab));
+  if (boot.restore === "adopt") {
+    // Opened to receive a tab dragged out of another window.
+    const pending = await WindowService.PendingTab();
+    if (pending) {
+      await app.adoptTab(pending as unknown as Parameters<typeof app.adoptTab>[0]);
+      return;
+    }
+  }
   const restored = boot.restore === "session" ? await app.restoreSession() : false;
   if (boot.initial_cwd || !restored) await app.newTab({ cwd: boot.initial_cwd || undefined });
 }
