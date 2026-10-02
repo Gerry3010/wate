@@ -343,6 +343,24 @@ html, body {
 .agent-pop-facts dt { color: var(--tab-inactive-fg); }
 .agent-pop-facts dd { margin: 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent-pop-facts dd.mono { font-family: var(--font-mono); font-size: 11px; }
+/* A copyable value shows in full and wraps, rather than being cut off with an ellipsis. */
+.agent-pop-facts dd.copyable { display: flex; align-items: flex-start; gap: 6px; white-space: normal; overflow: visible; }
+.agent-pop-id { flex: 1 1 auto; min-width: 0; word-break: break-all; font-size: 10.5px; line-height: 1.35; }
+.agent-pop-copy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 1px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tab-inactive-fg);
+  opacity: 0.7;
+  cursor: default;
+}
+.agent-pop-copy:hover { background: rgba(255, 255, 255, 0.12); color: var(--fg); opacity: 1; }
+.agent-pop-copy.done { color: var(--green); opacity: 1; }
 .agent-pop-ctx { border-top: 1px solid var(--border); padding-top: 8px; margin-bottom: 6px; }
 .agent-pop-ctxlabel { display: flex; justify-content: space-between; margin-bottom: 4px; }
 .agent-pop-ctx .sidebar-ctx-bar { height: 6px; }

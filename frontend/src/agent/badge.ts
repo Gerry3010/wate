@@ -1,7 +1,16 @@
+import { Clipboard } from "@wailsio/runtime";
 import type { Session } from "../api";
 import { showMenuAbove } from "../ui/menu";
 import { STATUS_LABEL, elapsed, fmtTokens, shortPath } from "../sidebar/sidebar";
 import { CLAUDE_LOGO } from "../ui/icons";
+
+const COPY =
+  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>' +
+  "</svg>";
+
+const CHECK =
+  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>';
 
 export interface BadgeHost {
   /** Latest state of the pane's session (undefined once it ended). */
@@ -41,6 +50,36 @@ export function updateBadge(pane: HTMLElement, s: Session | undefined, host: Bad
   badge.title = `Claude Code: ${STATUS_LABEL[s.status] ?? s.status}${pct}`;
 }
 
+/**
+ * Copies `value` on click and says so for a moment. Goes through the Wails clipboard, not
+ * navigator.clipboard, which WebKitGTK gates on a transient activation the popup does not have.
+ */
+function copyButton(value: string): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.className = "agent-pop-copy";
+  btn.innerHTML = COPY;
+  btn.title = "Copy";
+  let revert = 0;
+  btn.addEventListener("mousedown", (e) => e.preventDefault());
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    Clipboard.SetText(value)
+      .then(() => {
+        btn.innerHTML = CHECK;
+        btn.classList.add("done");
+        btn.title = "Copied";
+        clearTimeout(revert);
+        revert = window.setTimeout(() => {
+          btn.innerHTML = COPY;
+          btn.classList.remove("done");
+          btn.title = "Copy";
+        }, 1200);
+      })
+      .catch((err) => console.warn("copy session id:", err));
+  });
+  return btn;
+}
+
 /** The popup behind the badge: what the session is, how it is doing, how full its context is. */
 export function showAgentPopover(s: Session, anchor: DOMRect, host: BadgeHost) {
   const box = document.createElement("div");
@@ -66,19 +105,28 @@ export function showAgentPopover(s: Session, anchor: DOMRect, host: BadgeHost) {
 
   const facts = document.createElement("dl");
   facts.className = "agent-pop-facts";
-  const fact = (k: string, v: string, mono = false) => {
+  const fact = (k: string, v: string, mono = false, copy = false) => {
     if (!v) return;
     const dt = document.createElement("dt");
     dt.textContent = k;
     const dd = document.createElement("dd");
-    dd.textContent = v;
-    dd.title = v;
     if (mono) dd.classList.add("mono");
+    if (copy) {
+      // The popup sets user-select: none, so the value cannot be dragged out — it needs a button.
+      dd.classList.add("copyable");
+      const text = document.createElement("span");
+      text.className = "agent-pop-id";
+      text.textContent = v;
+      dd.append(text, copyButton(v));
+    } else {
+      dd.textContent = v;
+      dd.title = v;
+    }
     facts.append(dt, dd);
   };
   fact("Directory", shortPath(s.cwd), true);
   fact("Model", s.context?.model ?? "", true);
-  fact("Session", s.session_id ? s.session_id.slice(0, 8) + "…" : "", true);
+  fact("Session", s.session_id, true, true);
   if (s.message) fact("Last", s.message);
   box.appendChild(facts);
 

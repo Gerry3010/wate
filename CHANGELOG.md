@@ -20,6 +20,9 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   clipboard is never answered.
 
 ### Changed
+- The Claude badge's popup shows the session id in full and copies it on click, instead of
+  cutting it to eight characters that were no use to anyone. The popup suppresses text
+  selection, so a button is the only way to get the id out of it.
 - Word-wise deleting works inside Claude Code too: it reads the `0x08` a terminal sends for
   `Ctrl+Backspace` as a plain backspace on Linux and macOS, so wate tells it otherwise
   (`CLAUDE_CODE_BS_AS_CTRL_BACKSPACE`) whenever `word_keys` includes Ctrl.
