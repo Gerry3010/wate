@@ -551,3 +551,5 @@ html, body {
   padding: 4px 10px;
   cursor: default;
 }
+/* Dragged past the window's edge: letting go here gives the tab a window of its own. */
+.tabbar-tab.tearing { opacity: 0.35; outline: 1px dashed var(--accent); outline-offset: -1px; }

@@ -7,6 +7,16 @@ import { dropIndex, insertionIndex } from "./order";
 /** How far the pointer travels before a press on a tab becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 4;
 
+/**
+ * How far below the bar a tab has to be dragged before letting go tears it into its own
+ * window — the same gesture browsers use.
+ *
+ * It is measured inside the window on purpose. Pointer capture does keep reporting once the
+ * cursor leaves a lone window, but as soon as a second one exists the coordinates are clamped
+ * at the edge, so "is the pointer outside the window" is not something the drag can know.
+ */
+const TEAR_OFF = 56;
+
 export interface TabBarHost {
   activate(tab: Tab): void;
   close(tab: Tab): void;
@@ -16,12 +26,16 @@ export interface TabBarHost {
   agentStatus(tab: Tab): string;
   renameTab(tab: Tab, title: string): void;
   colorTab(tab: Tab, color: string): void;
+  /** Repaint the bar from the app's current state (a drag held it back). */
+  requestRender(): void;
   /** Reorder: put `tab` at index `to`. */
   moveTab(tab: Tab, to: number): void;
   /** Windows this tab could be moved to (excluding the one it is in). */
   otherWindows(): Promise<{ id: string; index: number }[]>;
   /** Move `tab` to window `to`; an empty id means a window of its own. */
   moveTabToWindow(tab: Tab, to: string): void;
+  /** A tab was let go outside this window (point in this window's client coordinates). */
+  dropTabOutside(tab: Tab, x: number, y: number): void;
   /** Saved sessions for the dropdown. */
   listSessions(): Promise<SessionInfo[]>;
   saveSession(name: string): void;
@@ -197,18 +211,26 @@ export class TabBar {
    */
   private startDrag(tab: Tab, el: HTMLElement, down: PointerEvent, tabs: Tab[], active: Tab | null) {
     const from = tabs.indexOf(tab);
-    if (from < 0 || tabs.length < 2) return;
+    // A lone tab is still worth dragging: there is nowhere to reorder it to, but it can be
+    // torn out into a window of its own.
+    if (from < 0) return;
     const startX = down.clientX;
+    const startY = down.clientY;
+    // Held from the first press, not from the moment the drag passes its threshold: the
+    // mousedown that follows activates the tab, and the repaint that causes would replace
+    // the element this gesture is holding on to.
+    this.dragging = tab;
     let started = false;
     let frame = 0;
     let point = startX;
     let to = from;
+    let outside = false;
+    let lastPoint: [number, number] = [0, 0];
     let rects: DOMRect[] = [];
     let centers: number[] = [];
 
     const begin = () => {
       started = true;
-      this.dragging = tab;
       // Measured once: asking per event would force a layout right after the last one was written.
       rects = (Array.from(this.list.children) as HTMLElement[]).map((c) => c.getBoundingClientRect());
       centers = rects.map((r) => r.left + r.width / 2);
@@ -221,15 +243,25 @@ export class TabBar {
       // dragged tab has been lifted out of its own slot. The caret wants the former.
       const gap = insertionIndex(centers, point);
       to = dropIndex(from, gap);
-      el.style.transform = `translateX(${point - startX}px)`;
-      this.showCaret(rects, gap);
+      el.style.transform = outside ? `translate(${point - startX}px, ${lastPoint[1] - startY}px)` : `translateX(${point - startX}px)`;
+      if (!outside) this.showCaret(rects, gap);
     };
 
     const move = (e: PointerEvent) => {
       point = e.clientX;
+      // Client coordinates, not screenX/Y: the WebView reports those relative to the
+      // window, so the backend does the conversion where the window's position is known.
+      lastPoint = [e.clientX, e.clientY];
       if (!started) {
         if (Math.abs(point - startX) < DRAG_THRESHOLD) return;
         begin();
+      }
+      const barBottom = rects[0]?.bottom ?? 0;
+      const out = e.clientY > barBottom + TEAR_OFF || e.clientY < -TEAR_OFF;
+      if (out !== outside) {
+        outside = out;
+        el.classList.toggle("tearing", out);
+        if (out) this.hideCaret();
       }
       if (!frame) frame = requestAnimationFrame(apply);
     };
@@ -239,18 +271,23 @@ export class TabBar {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
       el.removeEventListener("pointercancel", cancel);
-      if (!started) return;
+      this.dragging = null;
+      if (!started) {
+        // A plain click: the activation that came with it still owes the bar a repaint.
+        this.host.requestRender();
+        return;
+      }
       if (frame) {
         cancelAnimationFrame(frame); // the last move may still be waiting for its frame
         if (commit) apply();
         frame = 0;
       }
-      el.classList.remove("dragging");
+      el.classList.remove("dragging", "tearing");
       el.style.transform = "";
       this.hideCaret();
-      this.dragging = null;
-      if (commit && to !== from) this.host.moveTab(tab, to);
-      else this.render(tabs, active);
+      if (commit && outside) this.host.dropTabOutside(tab, lastPoint[0], lastPoint[1]);
+      else if (commit && to !== from) this.host.moveTab(tab, to);
+      else this.host.requestRender();
     };
 
     const up = () => finish(true);

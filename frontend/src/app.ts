@@ -69,12 +69,14 @@ export class WateApp {
         t.color = color;
         t.onChange?.();
       },
+      requestRender: () => this.refreshChrome(),
       moveTab: (t, to) => this.moveTab(t, to),
       otherWindows: async () => {
         const all = (await WindowService.Windows().catch(() => [])) ?? [];
         return all.filter((w) => w.id !== this.windowId).map((w) => ({ id: w.id, index: w.index }));
       },
       moveTabToWindow: (t, to) => void this.moveTabToWindow(t, to),
+      dropTabOutside: (t, x, y) => void this.dropTabOutside(t, x, y),
       listSessions: async () => (await SessionService.List()) ?? [],
       saveSession: (name) => void this.saveNamedSession(name),
       openSession: (id) => void this.openNamedSession(id),
@@ -404,6 +406,23 @@ export class WateApp {
     } catch (err) {
       console.warn("move tab:", err);
     }
+  }
+
+  /**
+   * A tab let go outside this window: onto another window, or onto nothing — which is how a
+   * tab becomes its own window.
+   */
+  async dropTabOutside(tab: Tab, x: number, y: number): Promise<void> {
+    let target = "";
+    try {
+      target = (await WindowService.WindowAt(Math.round(x), Math.round(y))) ?? "";
+    } catch (err) {
+      console.warn("window at:", err);
+    }
+    // Over another window: it takes the tab. Anywhere else — the desktop, or still over this
+    // window, which is where the gesture ends when you simply pull a tab off the bar — the
+    // tab gets a window of its own.
+    await this.moveTabToWindow(tab, target === this.windowId ? "" : target);
   }
 
   /** The other window has the tab now: drop ours without killing the shells. */

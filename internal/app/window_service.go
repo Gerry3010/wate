@@ -414,6 +414,44 @@ func (s *WindowService) PendingTab(ctx context.Context) *TabTransfer {
 	return t
 }
 
+// WindowAt is the id of the window under a point given in the CALLING window's client
+// coordinates, "" when the point is over none of them — which is what makes dropping a tab on
+// the desktop mean "a new window". Later windows win, so the topmost of a stack is reported.
+//
+// The conversion to screen coordinates happens here because the WebView cannot do it: its
+// PointerEvent.screenX is relative to the window, not the screen.
+func (s *WindowService) WindowAt(ctx context.Context, x, y int) string {
+	from := s.idFromContext(ctx)
+	s.mu.RLock()
+	order := append([]WindowID(nil), s.order...)
+	wins := make(map[WindowID]*application.WebviewWindow, len(order))
+	for id, e := range s.windows {
+		wins[id] = e.win
+	}
+	s.mu.RUnlock()
+
+	hit := ""
+	application.InvokeSync(func() {
+		sx, sy := x, y
+		if src := wins[from]; src != nil {
+			ox, oy := src.Position()
+			sx, sy = ox+x, oy+y
+		}
+		for _, id := range order {
+			w := wins[id]
+			if w == nil {
+				continue
+			}
+			wx, wy := w.Position()
+			ww, wh := w.Size()
+			if sx >= wx && sx < wx+ww && sy >= wy && sy < wy+wh {
+				hit = string(id)
+			}
+		}
+	})
+	return hit
+}
+
 // Windows lists the open windows for a "move to window" menu, newest last.
 func (s *WindowService) Windows() []WindowInfo {
 	s.mu.RLock()

@@ -7,6 +7,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- Dragging a tab down off the bar tears it into a window of its own, the way a browser does.
+  The shell keeps running and the history comes with it. To put a tab into an *existing*
+  window, use "Move to window N" in its right-click menu: pointer capture reports coordinates
+  past the window's edge only while wate has a single window, so the gesture cannot tell which
+  other window it was let go over.
 - A tab can be moved to another window, or out into a window of its own, from its right-click
   menu or with `[keys] move_tab_to_new_window`. Its shells keep running: the receiving window
   re-attaches to the very same sessions rather than starting new ones, so a build, an ssh
