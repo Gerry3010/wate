@@ -570,9 +570,12 @@ export class WateApp {
 
   // ---- panes ------------------------------------------------------------
 
-  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean }): TerminalPane {
+  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean; id?: string; adopt?: boolean }): TerminalPane {
     const pane: TerminalPane = new TerminalPane({
-      paneId: nextId("pane"),
+      // An adopted pane keeps its id: that is how the backend finds the shell it already has,
+      // and it is what the shell's own WATE_PANE_ID says.
+      paneId: opts.id ?? nextId("pane"),
+      adopt: opts.adopt,
       tabId: tab.id,
       cwd: opts.cwd ?? "",
       command: opts.command,
@@ -804,6 +807,10 @@ export class WateApp {
       await this.debugDrop(action.slice("__drop".length).trim());
       return;
     }
+    if (action === "__reattach") {
+      await this.debugReattach();
+      return;
+    }
     if (action === "__perf") {
       // Timing costs a little on the hot path, so it is off until someone asks for it.
       perf.timing = !perf.timing;
@@ -933,6 +940,33 @@ export class WateApp {
   }
 
   /** Rendering/state summary for `wate ctl debug`; ends up in the Go log. */
+  /**
+   * Prove the re-attach path without involving a second window: drop the focused pane and
+   * build a new one over the very same shell. If the shell dies or output goes missing here,
+   * moving a tab between windows would do the same.
+   */
+  private async debugReattach() {
+    const tab = this.active;
+    const old = tab?.focused;
+    if (!tab || !(old instanceof TerminalPane)) {
+      console.warn("[reattach] no terminal pane focused");
+      return;
+    }
+    const paneId = old.id;
+    const replay = old.serialize(RESTORE_SCROLLBACK);
+    const where = tab.tree;
+    old.detach();
+    tab.panes.delete(paneId);
+    const pane = this.makeTerminal(tab, { id: paneId, adopt: true, replay, visible: true });
+    tab.panes.set(paneId, pane);
+    tab.tree = where; // the layout still names this pane; only the object behind it changed
+    tab.render();
+    await pane.start();
+    tab.setFocus(paneId);
+    tab.focusPane();
+    console.warn("[reattach] pane", paneId, "re-attached");
+  }
+
   private debugDump() {
     const cs = getComputedStyle(document.body);
     const root = document.documentElement;

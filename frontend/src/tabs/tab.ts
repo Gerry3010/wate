@@ -251,6 +251,21 @@ export class Tab {
     requestAnimationFrame(() => this.relayoutPanes());
   }
 
+  /**
+   * Hand this tab's panes over: drop the DOM and the sockets, leave the shells running. The
+   * window that adopts the tab re-attaches to the very same sessions, so detaching must not
+   * do what dispose() does — that kills them.
+   */
+  detach(): void {
+    for (const p of this.panes.values()) {
+      const t = p as { detach?: () => void };
+      if (typeof t.detach === "function") t.detach();
+      else p.dispose();
+    }
+    this.panes.clear();
+    this.element.remove();
+  }
+
   dispose(): void {
     for (const p of this.panes.values()) p.dispose();
     this.panes.clear();

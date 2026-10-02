@@ -90,18 +90,27 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	ptyEOF := make(chan struct{})
 
+	// Subscribe rather than read the master directly: a pane that moves to another window
+	// reconnects here, and two readers on one PTY would tear the stream in half.
+	out, unsubscribe := sess.Subscribe()
+	defer unsubscribe()
+
 	// PTY → socket
 	go func() {
 		defer close(ptyEOF)
-		buf := make([]byte, 32*1024)
 		for {
-			n, err := sess.File().Read(buf)
-			if n > 0 {
-				if werr := c.Write(ctx, websocket.MessageBinary, buf[:n]); werr != nil {
+			select {
+			case chunk, ok := <-out.C:
+				if !ok {
 					return
 				}
-			}
-			if err != nil {
+				if werr := c.Write(ctx, websocket.MessageBinary, chunk); werr != nil {
+					return
+				}
+			case <-out.Gone:
+				// Another window took this pane over; it owns the stream now.
+				return
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -135,6 +144,9 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	select {
+	case <-out.Gone:
+		// Handed over to another window: the session lives on, so say nothing about exits.
+		_ = c.Close(websocket.StatusGoingAway, "taken over")
 	case <-ptyEOF:
 		// Let the child finish so the exit code is known, but don't hang on a stuck process.
 		select {

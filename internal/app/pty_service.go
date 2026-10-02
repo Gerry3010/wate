@@ -177,6 +177,36 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 	}, nil
 }
 
+// Attach returns the connection details for a pane's existing session, without spawning
+// anything. A tab that moved to another window keeps its shell; only the socket is re-made.
+func (p *PtyService) Attach(paneID string) (SpawnResult, error) {
+	id, ok := p.SessionForPane(paneID)
+	if !ok {
+		return SpawnResult{}, fmt.Errorf("no such pane %q", paneID)
+	}
+	s, ok := p.sessions.Get(id)
+	if !ok {
+		return SpawnResult{}, fmt.Errorf("pane %q has no live session", paneID)
+	}
+	return SpawnResult{
+		ID:    s.ID,
+		Pid:   s.Pid(),
+		Port:  p.bridge.Port(),
+		Token: p.bridge.Token(),
+		URL:   fmt.Sprintf("ws://127.0.0.1:%d/pty/%s?token=%s", p.bridge.Port(), s.ID, p.bridge.Token()),
+	}, nil
+}
+
+// Retab records that a pane's tab changed (the tab moved to another window). The session and
+// the pane id stay as they are, which is why the shell's WATE_PANE_ID/WATE_TAB_ID keep working.
+func (p *PtyService) Retab(paneID, tabID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, ok := p.byPane[paneID]; ok {
+		p.tabOf[paneID] = tabID
+	}
+}
+
 // Cwd returns the session's current working directory (best effort).
 func (p *PtyService) Cwd(id string) (string, error) {
 	s, ok := p.sessions.Get(id)

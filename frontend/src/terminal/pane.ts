@@ -38,6 +38,8 @@ export interface TerminalPaneOptions {
   command?: string[];
   /** Terminal text (ANSI) written before the shell starts: restored scrollback / imported history. */
   replay?: string;
+  /** Re-attach to the pane's existing shell instead of spawning one (the tab moved windows). */
+  adopt?: boolean;
   /** false for panes created in a hidden tab: no GPU renderer until the tab is shown. */
   visible?: boolean;
   terminal: TerminalConfig;
@@ -336,22 +338,27 @@ export class TerminalPane implements Pane {
     // Everything above this line came out of the session file; saving it again would stack
     // one restored copy of the history on top of the next with every restart.
     this.replayEnd = this.term.registerMarker(0) ?? undefined;
-    const res = await spawnQueued(() =>
-      withRetry(
-        () =>
-          PtyService.Spawn({
-            paneId: this.opts.paneId,
-            tabId: this.opts.tabId,
-            cwd: this.opts.cwd ?? "",
-            command: this.opts.command ?? [],
-            cols: this.term.cols,
-            rows: this.term.rows,
-          }),
-        `spawn ${this.id}`,
-      ),
-    );
+    // A pane that moved windows re-attaches to its live shell instead of starting a new one:
+    // spawning would kill whatever was running in it, Claude Code included.
+    const res = this.opts.adopt
+      ? await withRetry(() => PtyService.Attach(this.opts.paneId), `attach ${this.id}`)
+      : await spawnQueued(() =>
+          withRetry(
+            () =>
+              PtyService.Spawn({
+                paneId: this.opts.paneId,
+                tabId: this.opts.tabId,
+                cwd: this.opts.cwd ?? "",
+                command: this.opts.command ?? [],
+                cols: this.term.cols,
+                rows: this.term.rows,
+              }),
+            `spawn ${this.id}`,
+          ),
+        );
     if (this.disposed) {
-      PtyService.Kill(res.id);
+      // An adopted session belongs to the tab, not to this short-lived pane object.
+      if (!this.opts.adopt) PtyService.Kill(res.id);
       return;
     }
     this.sessionId = res.id;
@@ -392,6 +399,9 @@ export class TerminalPane implements Pane {
     };
     ws.onopen = () => this.sendResize(this.term.cols, this.term.rows);
     ws.onclose = (ev) => {
+      // Tearing the pane down closes this socket ourselves; reporting that as the shell
+      // exiting would remove the pane, empty the tab and close the window.
+      if (this.disposed) return;
       const m = /^exit:(-?\d+)$/.exec(ev.reason);
       this.opts.onExit?.(m ? Number(m[1]) : -1);
     };
@@ -659,6 +669,19 @@ export class TerminalPane implements Pane {
   }
 
   dispose() {
+    this.teardown(true);
+  }
+
+  /**
+   * Let go of the pane without killing its shell — the tab is moving to another window, where
+   * a fresh pane will adopt the same session. The difference from dispose() is one line, and
+   * getting it wrong would close the user's shell.
+   */
+  detach() {
+    this.teardown(false);
+  }
+
+  private teardown(kill: boolean) {
     if (this.disposed) return;
     this.disposed = true;
     clearTimeout(this.pasteTimer);
@@ -666,7 +689,7 @@ export class TerminalPane implements Pane {
     this.resizeObserver.disconnect();
     this.clearNotice();
     this.ws?.close();
-    if (this.sessionId) PtyService.Kill(this.sessionId);
+    if (kill && this.sessionId) PtyService.Kill(this.sessionId);
     this.term.dispose();
     this.element.remove();
   }

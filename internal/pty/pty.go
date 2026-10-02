@@ -35,6 +35,12 @@ type Session struct {
 	done     chan struct{}
 	exitCode int
 	exitErr  error
+
+	// Output hub: one reader, one subscriber at a time (see "output hub" below).
+	hubMu   sync.Mutex
+	cur     *subscriber
+	backlog []byte
+	eof     bool
 }
 
 // File returns the PTY master; read from it for output, write to it for input.
@@ -99,6 +105,7 @@ func (m *Manager) Spawn(opts SpawnOptions) (*Session, error) {
 	}
 
 	s := &Session{ID: uuid.NewString(), cmd: cmd, file: f, done: make(chan struct{})}
+	s.startPump()
 	m.mu.Lock()
 	m.sessions[s.ID] = s
 	m.mu.Unlock()
@@ -158,4 +165,120 @@ func DefaultShell() string {
 		}
 	}
 	return "/bin/sh"
+}
+
+// ---- output hub ---------------------------------------------------------
+//
+// One goroutine reads the PTY master, and exactly one subscriber at a time receives what it
+// reads. This exists so a pane can move between windows: a second reader on the same master
+// would split the byte stream unpredictably, and a reader that is simply abandoned is still
+// blocked inside Read — it wakes on the next chunk, discovers its socket is gone, and returns
+// having already consumed that chunk. Swapping the subscriber under a single reader loses
+// nothing.
+
+// backlogMax is how much output is kept while nobody is listening (a tab in flight between
+// windows). Oldest goes first: a terminal cares about the end of the stream, not the start.
+const backlogMax = 256 * 1024
+
+type subscriber struct {
+	ch   chan []byte
+	gone chan struct{}
+}
+
+// Output is a subscription to a session's output.
+type Output struct {
+	// C carries the PTY's bytes and is closed when the child closes its side.
+	C <-chan []byte
+	// Gone is closed when another subscriber took over, so this one can stand down.
+	Gone <-chan struct{}
+}
+
+// startPump begins the session's single reader.
+func (s *Session) startPump() {
+	go func() {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := s.file.Read(buf)
+			if n > 0 {
+				chunk := make([]byte, n)
+				copy(chunk, buf[:n])
+				s.push(chunk)
+			}
+			if err != nil {
+				s.hubMu.Lock()
+				s.eof = true
+				if s.cur != nil {
+					close(s.cur.ch)
+					s.cur = nil
+				}
+				s.hubMu.Unlock()
+				return
+			}
+		}
+	}()
+}
+
+// push hands a chunk to the current subscriber, waiting for it the way the old direct write
+// to the socket did — the backpressure is deliberate. If the subscriber is replaced while we
+// wait, the chunk goes to whoever replaced it instead of being dropped.
+func (s *Session) push(chunk []byte) {
+	for {
+		s.hubMu.Lock()
+		cur := s.cur
+		if cur == nil {
+			s.backlog = append(s.backlog, chunk...)
+			if len(s.backlog) > backlogMax {
+				s.backlog = append([]byte(nil), s.backlog[len(s.backlog)-backlogMax:]...)
+			}
+			s.hubMu.Unlock()
+			return
+		}
+		s.hubMu.Unlock()
+		select {
+		case cur.ch <- chunk:
+			return
+		case <-cur.gone:
+			// Taken over mid-send: hand the chunk to the new subscriber.
+		}
+	}
+}
+
+// Subscribe starts receiving this session's output, replacing whoever was receiving it. What
+// arrived while nobody was listening is delivered first. The cancel function unsubscribes.
+func (s *Session) Subscribe() (*Output, func()) {
+	sub := &subscriber{ch: make(chan []byte, 64), gone: make(chan struct{})}
+	s.hubMu.Lock()
+	if s.cur != nil {
+		close(s.cur.gone)
+	}
+	s.cur = sub
+	backlog := s.backlog
+	s.backlog = nil
+	eof := s.eof
+	s.hubMu.Unlock()
+
+	if len(backlog) > 0 {
+		sub.ch <- backlog // the channel is buffered and brand new, so this cannot block
+	}
+	if eof {
+		s.hubMu.Lock()
+		if s.cur == sub {
+			close(sub.ch)
+			s.cur = nil
+		}
+		s.hubMu.Unlock()
+	}
+
+	var once sync.Once
+	cancel := func() {
+		once.Do(func() {
+			s.hubMu.Lock()
+			if s.cur == sub {
+				close(sub.gone)
+				s.cur = nil
+			}
+			s.hubMu.Unlock()
+		})
+	}
+	return &Output{C: sub.ch, Gone: sub.gone}, cancel
 }
