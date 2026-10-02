@@ -2,6 +2,10 @@ import type { Tab } from "./tab";
 import { showMenu, closeMenu, type MenuEntry } from "../ui/menu";
 import type { SessionInfo } from "../api";
 import { perf } from "../perf";
+import { dropIndex, insertionIndex } from "./order";
+
+/** How far the pointer travels before a press on a tab becomes a drag rather than a click. */
+const DRAG_THRESHOLD = 4;
 
 export interface TabBarHost {
   activate(tab: Tab): void;
@@ -12,6 +16,8 @@ export interface TabBarHost {
   agentStatus(tab: Tab): string;
   renameTab(tab: Tab, title: string): void;
   colorTab(tab: Tab, color: string): void;
+  /** Reorder: put `tab` at index `to`. */
+  moveTab(tab: Tab, to: number): void;
   /** Saved sessions for the dropdown. */
   listSessions(): Promise<SessionInfo[]>;
   saveSession(name: string): void;
@@ -55,12 +61,19 @@ export class TabBar {
   readonly element = document.createElement("div");
   private list = document.createElement("div");
   private renaming: Tab | null = null;
+  /** Set while a tab is being dragged, so a repaint cannot pull the DOM out from under it. */
+  private dragging: Tab | null = null;
+  private caret = document.createElement("div");
+  /** Last position painted for the caret; an unchanged one writes no style (see DropHighlight). */
+  private caretAt = "";
   /** Everything render() reads, as one string: unchanged means the DOM can stay as it is. */
   private sig = "";
 
   constructor(private host: TabBarHost) {
     this.element.className = "tabbar";
     this.list.className = "tabbar-tabs";
+    this.caret.className = "tabbar-caret";
+    document.body.appendChild(this.caret);
     const add = document.createElement("button");
     add.className = "tabbar-add";
     add.title = "New tab";
@@ -99,6 +112,9 @@ export class TabBar {
     const sig = tabs
       .map((t) => [t.id, t.title, t.detail, t.color, this.host.agentStatus(t), t === active].join("\u001f"))
       .join("\u001e");
+    // A drag holds references to the tab elements; replaceChildren would throw them away
+    // mid-gesture (a terminal title changing is enough to get here).
+    if (this.dragging) return;
     if (!this.renaming && sig === this.sig) return;
     this.sig = this.renaming ? "" : sig;
     perf.tabRenders++;
@@ -151,6 +167,11 @@ export class TabBar {
             this.host.close(tab);
           } else if (e.button === 0) this.host.activate(tab);
         });
+        b.addEventListener("pointerdown", (e) => {
+          if (e.button !== 0 || this.renaming) return;
+          if ((e.target as HTMLElement).closest(".tabbar-close")) return;
+          this.startDrag(tab, b, e, tabs, active);
+        });
         b.addEventListener("dblclick", (e) => {
           e.preventDefault();
           this.startRename(tab, tabs, active);
@@ -162,6 +183,104 @@ export class TabBar {
         return b;
       }),
     );
+  }
+
+  /**
+   * Drag a tab to a new place in the bar. Built like the pane divider (layout/view.ts): the
+   * geometry is measured once, the pointer is captured so the listeners can live on the tab
+   * itself, moves are coalesced into one frame, and the model is only written on release —
+   * everything before that is a preview the Escape key can throw away.
+   */
+  private startDrag(tab: Tab, el: HTMLElement, down: PointerEvent, tabs: Tab[], active: Tab | null) {
+    const from = tabs.indexOf(tab);
+    if (from < 0 || tabs.length < 2) return;
+    const startX = down.clientX;
+    let started = false;
+    let frame = 0;
+    let point = startX;
+    let to = from;
+    let rects: DOMRect[] = [];
+    let centers: number[] = [];
+
+    const begin = () => {
+      started = true;
+      this.dragging = tab;
+      // Measured once: asking per event would force a layout right after the last one was written.
+      rects = (Array.from(this.list.children) as HTMLElement[]).map((c) => c.getBoundingClientRect());
+      centers = rects.map((r) => r.left + r.width / 2);
+      el.classList.add("dragging");
+    };
+
+    const apply = () => {
+      frame = 0;
+      // The gap is an index into the layout as drawn; the landing index is that gap once the
+      // dragged tab has been lifted out of its own slot. The caret wants the former.
+      const gap = insertionIndex(centers, point);
+      to = dropIndex(from, gap);
+      el.style.transform = `translateX(${point - startX}px)`;
+      this.showCaret(rects, gap);
+    };
+
+    const move = (e: PointerEvent) => {
+      point = e.clientX;
+      if (!started) {
+        if (Math.abs(point - startX) < DRAG_THRESHOLD) return;
+        begin();
+      }
+      if (!frame) frame = requestAnimationFrame(apply);
+    };
+
+    const finish = (commit: boolean) => {
+      document.removeEventListener("keydown", onKey, true);
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", cancel);
+      if (!started) return;
+      if (frame) {
+        cancelAnimationFrame(frame); // the last move may still be waiting for its frame
+        if (commit) apply();
+        frame = 0;
+      }
+      el.classList.remove("dragging");
+      el.style.transform = "";
+      this.hideCaret();
+      this.dragging = null;
+      if (commit && to !== from) this.host.moveTab(tab, to);
+      else this.render(tabs, active);
+    };
+
+    const up = () => finish(true);
+    const cancel = () => finish(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      finish(false);
+    };
+
+    el.setPointerCapture(down.pointerId);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", cancel);
+    document.addEventListener("keydown", onKey, true);
+  }
+
+  /** Put the insertion caret in gap `gap` (0 = before the first tab, n = after the last). */
+  private showCaret(rects: DOMRect[], gap: number) {
+    const last = rects[rects.length - 1];
+    const x = gap <= 0 ? rects[0].left : gap >= rects.length ? last.right : (rects[gap - 1].right + rects[gap].left) / 2;
+    const key = `${x} ${rects[0].top} ${rects[0].height}`;
+    if (key === this.caretAt) return;
+    this.caretAt = key;
+    const s = this.caret.style;
+    s.transform = `translate(${Math.round(x) - 1}px, ${rects[0].top}px)`;
+    s.height = `${rects[0].height}px`;
+    this.caret.classList.add("visible");
+  }
+
+  private hideCaret() {
+    this.caretAt = "";
+    this.caret.classList.remove("visible");
   }
 
   private startRename(tab: Tab, tabs: Tab[], active: Tab | null) {

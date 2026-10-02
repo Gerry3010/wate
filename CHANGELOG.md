@@ -7,6 +7,9 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- Tabs can be reordered: drag one along the bar and a caret shows where it will land, or bind
+  `[keys] move_tab_left` / `move_tab_right` to shift the active tab without the mouse. The order
+  is part of the restored session, so it survives a restart.
 - `[terminal] option_as_meta` decides what Option+key does on macOS. It is off by default, so
   Option types the character the layout puts there — on a German Mac that is the at sign,
   the euro sign, the pipe, the backslash and the braces, none of which reached the shell

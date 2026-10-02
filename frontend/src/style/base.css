@@ -103,6 +103,23 @@ html, body {
   color: var(--fg);
 }
 :root[data-bg-mode="solid"] .tabbar-tab.active { background: var(--tab-active-bg); }
+/* Reordering: the dragged tab rides with the pointer, a caret shows where it would land.
+   Only transform animates, and the caret never takes a hit (elementFromPoint must see past it). */
+.tabbar-tab.dragging { opacity: 0.55; cursor: grabbing; z-index: 2; }
+.tabbar-caret {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 900;
+  will-change: transform;
+  transition: transform 110ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 90ms ease-out;
+}
+.tabbar-caret.visible { opacity: 1; }
 .tabbar-index {
   font-size: 10px;
   opacity: 0.6;

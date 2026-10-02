@@ -13,6 +13,7 @@ import { keys, logKey, takeKeys } from "./keys-debug";
 import { boxAt, dropText, dropZone, droppedPaths, zoneRect, zoneSplit, type Box, type DropZone } from "./drop";
 import { DropHighlight, installDragMotion } from "./drop-overlay";
 import { neighbor, type Dir, type Direction } from "./layout/tree";
+import { moveItem } from "./tabs/order";
 import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
 import { TabBar } from "./tabs/tabbar";
@@ -68,6 +69,7 @@ export class WateApp {
         t.color = color;
         t.onChange?.();
       },
+      moveTab: (t, to) => this.moveTab(t, to),
       listSessions: async () => (await SessionService.List()) ?? [],
       saveSession: (name) => void this.saveNamedSession(name),
       openSession: (id) => void this.openNamedSession(id),
@@ -477,6 +479,27 @@ export class WateApp {
     this.refreshChrome();
   }
 
+  /** Put `tab` at index `to`. The saved session stores tabs in bar order, so the reorder has
+   *  to land before the next snapshot — hence refresh first, save second. */
+  moveTab(tab: Tab, to: number) {
+    const from = this.tabs.indexOf(tab);
+    const next = moveItem(this.tabs, from, to);
+    if (next === this.tabs) {
+      this.refreshChrome();
+      return;
+    }
+    this.tabs.splice(0, this.tabs.length, ...next);
+    this.refreshChrome();
+    this.scheduleSave();
+  }
+
+  /** Shift the active tab one place along the bar (move_tab_left / move_tab_right). */
+  private nudgeTab(delta: number) {
+    const tab = this.active;
+    if (!tab) return;
+    this.moveTab(tab, this.tabs.indexOf(tab) + delta);
+  }
+
   private lastWindowTitle = "";
 
   private refreshChrome(tab?: Tab) {
@@ -788,6 +811,12 @@ export class WateApp {
         break;
       case "new_tab":
         await this.newTab();
+        break;
+      case "move_tab_left":
+        this.nudgeTab(-1);
+        break;
+      case "move_tab_right":
+        this.nudgeTab(1);
         break;
       case "next_tab":
         this.cycleTab(1);

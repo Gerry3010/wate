@@ -40,6 +40,8 @@ const ACTIONS: [string, string][] = [
   ["new_tab", "New tab"],
   ["next_tab", "Next tab"],
   ["prev_tab", "Previous tab"],
+  ["move_tab_left", "Move tab left"],
+  ["move_tab_right", "Move tab right"],
   ["copy", "Copy"],
   ["paste", "Paste"],
   ["search", "Search"],
