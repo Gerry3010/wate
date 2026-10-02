@@ -111,3 +111,56 @@
 /* pane frame while Claude waits */
 .pane.agent-waiting { outline-color: color-mix(in srgb, var(--yellow) 70%, transparent) !important; }
 .pane.agent-done { outline-color: color-mix(in srgb, var(--green) 60%, transparent) !important; }
+
+/* ---- sections: favourites above, the rest below ------------------------ */
+.sidebar-section + .sidebar-section { margin-top: 4px; }
+.sidebar-sectionhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 6px 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tab-inactive-fg);
+  cursor: default;
+}
+.sidebar-sectionhead:hover { color: var(--fg); }
+.sidebar-sectionname { flex: 1 1 auto; text-align: left; }
+.sidebar-sectioncount { flex: 0 0 auto; font-variant-numeric: tabular-nums; opacity: 0.7; }
+.sidebar-chevron { flex: 0 0 auto; display: inline-flex; transition: transform 120ms ease-out; }
+.sidebar-sectionhead.collapsed .sidebar-chevron { transform: rotate(-90deg); }
+.sidebar-sectionbody[hidden] { display: none; }
+.sidebar-sectionempty { padding: 4px 8px 8px; color: var(--tab-inactive-fg); font-size: 11px; }
+
+/* ---- per-row menu ------------------------------------------------------ */
+/* The button sits in the row's flow and only appears on hover, so showing it never reflows. */
+.sidebar-dots {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: -1px -2px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  background: transparent;
+  color: var(--tab-inactive-fg);
+  visibility: hidden;
+  cursor: default;
+}
+.sidebar-row:hover .sidebar-dots { visibility: visible; }
+.sidebar-dots:hover { background: rgba(255, 255, 255, 0.12); color: var(--fg); }
+
+/* ---- a favourite whose session has ended ------------------------------- */
+.sidebar-row.ended { cursor: default; }
+.sidebar-row.ended .sidebar-title { color: var(--tab-inactive-fg); font-weight: 400; }
+.sidebar-row.ended .status-dot { background: none; border: 1.5px solid var(--tab-inactive-fg); }
+.sidebar-resume { display: inline-block; margin-top: 4px; font-size: 11px; }

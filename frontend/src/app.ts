@@ -1,6 +1,6 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { AgentService, OpenerService, SessionService, StateService, ThemeService, type Config, type Resolved, type Session, type Target } from "./api";
+import { AgentService, OpenerService, PtyService, SessionService, StateService, ThemeService, type Config, type Resolved, type Session, type Target } from "./api";
 import { fromImported, parseSession, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedSession, type SavedTab } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
@@ -83,6 +83,8 @@ export class WateApp {
       launchLabel: this.keymap.label("launch_claude") || "Launch",
       toggleLabel: this.keymap.label("toggle_sidebar"),
       onVisibility: () => this.active?.render(),
+      sendToPane: (paneId, text) => void PtyService.WriteToPane(paneId, text).catch((err) => console.warn("write to pane:", err)),
+      resume: (sessionId, cwd) => void this.resumeClaude(sessionId, cwd),
     });
     this.content.className = "content";
     this.main.className = "main";
@@ -360,6 +362,13 @@ export class WateApp {
     const tab = this.active ?? (await this.newTab());
     const cmd = this.config.claude.command || "claude";
     await this.addTerminal(tab, "row", { command: cmd.split(/\s+/) });
+  }
+
+  /** Reopen an ended session where it left off: `claude --resume <id>` in its old directory. */
+  async resumeClaude(sessionId: string, cwd: string): Promise<void> {
+    const tab = this.active ?? (await this.newTab());
+    const cmd = this.config.claude.command || "claude";
+    await this.addTerminal(tab, "row", { cwd: cwd || undefined, command: [...cmd.split(/\s+/), "--resume", sessionId] });
   }
 
   private jumpToSession(s: Session) {

@@ -7,6 +7,14 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- The Claude sidebar groups sessions into Favourites and the rest, both foldable and both
+  remembering whether they were folded. A favourite stays listed after its session ends, with
+  `Resume →` to pick it up again (`claude --resume` in the directory it ran in).
+- Each session row has a menu: favourite it, give it a name of your own (which is also sent to
+  Claude as `/rename`, so both agree), open `/remote-control`, end it with two Ctrl-Cs — the
+  pane stays, you land back at the shell — or delete it, which asks first and then removes its
+  transcript. Favourites and names are keyed on the session id, so they need wate's hooks
+  installed; without them the menu says so rather than pretending.
 - Tabs can be reordered: drag one along the bar and a caret shows where it will land, or bind
   `[keys] move_tab_left` / `move_tab_right` to shift the active tab without the mouse. The order
   is part of the restored session, so it survives a restart.

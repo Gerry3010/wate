@@ -113,6 +113,7 @@ func main() {
 			application.NewService(&app.FileService{}),
 			application.NewService(&app.StateService{}),
 			application.NewService(&app.SessionService{}),
+			application.NewService(&app.AgentStateService{}),
 			application.NewService(app.NewImportService(cfgSvc)),
 			application.NewServiceWithOptions(wp, application.ServiceOptions{Name: "Wallpaper", Route: "/wallpaper"}),
 		},
