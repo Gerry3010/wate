@@ -13,5 +13,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // Without this vitest hands every CSS import back as an empty string, and the test that
+    // holds the stylesheets to stepped animations would pass by reading nothing.
+    css: true,
   },
 });
