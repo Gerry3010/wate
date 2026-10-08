@@ -99,7 +99,11 @@
   border-radius: 50%;
   background: var(--tab-inactive-fg);
 }
-.status-running .status-dot { background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+/* Stepped, not smooth: a smooth opacity ramp keeps the compositor drawing 60 frames a
+   second for as long as any session runs, which costs a whole core and makes the
+   WebKit dma-buf path leak about half a kilobyte per frame. Two steps blink just as
+   clearly and only repaint when the value actually changes. */
+.status-running .status-dot { background: var(--accent); animation: pulse 1.6s steps(2, jump-none) infinite; }
 .status-waiting .status-dot { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
 .status-done .status-dot { background: var(--green); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }

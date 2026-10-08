@@ -80,6 +80,13 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- The status dot blinks in steps instead of fading smoothly, which stops wate from redrawing
+  itself sixty times a second for as long as any Claude session is running. The smooth pulse
+  kept the compositor busy whether or not anything else changed: measured against an idle
+  window, it cost a full CPU core, and on the Wayland/dma-buf path the main process leaked
+  about half a kilobyte per frame — two megabytes a minute, eleven gigabytes over twelve days,
+  which is what pushed this machine into swap. The leak itself is in the platform's frame
+  path, not in wate; this takes away the thing that kept feeding it.
 - Dragging feels lighter: the drop highlight is moved with a transform (the browser composites
   that, where animating its position and size re-painted the whole translucent rectangle every
   frame), and both it and a divider drag do their work once per frame instead of once per

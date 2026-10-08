@@ -331,7 +331,8 @@ html, body {
 .pane-claude svg { width: 13px; height: 13px; }
 .pane.focused > .pane-claude { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .pane-claude:hover { background: color-mix(in srgb, #d97757 26%, rgba(var(--bg-rgb), 0.9)); }
-.pane-claude.status-waiting { color: var(--accent); animation: badge-pulse 1.6s ease-in-out infinite; }
+/* Stepped for the same reason as the sidebar dot (see sidebar.css). */
+.pane-claude.status-waiting { color: var(--accent); animation: badge-pulse 1.6s steps(2, jump-none) infinite; }
 .pane-claude.status-done { color: #a6e3a1; }
 @keyframes badge-pulse {
   50% { background: color-mix(in srgb, var(--accent) 28%, rgba(var(--bg-rgb), 0.9)); }
