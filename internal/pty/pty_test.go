@@ -1,7 +1,6 @@
 package pty
 
 import (
-	"bufio"
 	"context"
 	"os"
 	"strings"
@@ -18,10 +17,22 @@ func TestSpawnEchoAndExit(t *testing.T) {
 	if _, ok := m.Get(s.ID); !ok {
 		t.Fatal("session not registered")
 	}
-	r := bufio.NewReader(s.File())
-	line, _ := r.ReadString('\n')
-	if !strings.Contains(line, "hello-ok") {
-		t.Fatalf("unexpected output %q", line)
+	// Read through the hub, not off s.File(): Spawn already has a reader on the master, and a
+	// second one takes an unpredictable share of the bytes — which is the very thing the hub
+	// exists to prevent.
+	out, unsubscribe := s.Subscribe()
+	defer unsubscribe()
+	var seen strings.Builder
+	for !strings.Contains(seen.String(), "hello-ok") {
+		select {
+		case chunk, ok := <-out.C:
+			if !ok {
+				t.Fatalf("stream ended, output so far %q", seen.String())
+			}
+			seen.Write(chunk)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("unexpected output %q", seen.String())
+		}
 	}
 	select {
 	case <-s.Done():
