@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/Gerry3010/wate/internal/config"
 	"log/slog"
 	"os"
@@ -45,13 +46,14 @@ type CtlService struct {
 	pty     *PtyService
 	cfg     *ConfigService
 	windows *WindowService
+	bridge  *PaneBridge
 	server  *ctl.Server
 	// OnHook is set by the agent service.
 	OnHook func(HookEvent)
 }
 
-func NewCtlService(pty *PtyService, cfg *ConfigService, windows *WindowService) *CtlService {
-	return &CtlService{pty: pty, cfg: cfg, windows: windows}
+func NewCtlService(pty *PtyService, cfg *ConfigService, windows *WindowService, bridge *PaneBridge) *CtlService {
+	return &CtlService{pty: pty, cfg: cfg, windows: windows, bridge: bridge}
 }
 
 // target picks the window a request is about, from the pane or tab it names.
@@ -165,6 +167,12 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 			return ctl.Response{Error: err.Error()}
 		}
 		return ctl.Response{OK: true}
+	case "pane-read":
+		text, err := c.readPane(r.Pane, r.Lines)
+		if err != nil {
+			return ctl.Response{Error: err.Error()}
+		}
+		return ctl.Response{OK: true, Data: text}
 	case "debug":
 		// Deliberately a broadcast: `wate ctl debug` should dump every window, not just one.
 		app.Event.Emit("ctl:action", ActionRequest{Name: "__debug"})
@@ -198,3 +206,27 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 }
 
 var errNoPane = errors.New("no such pane")
+
+// readPane answers with what is on a pane's screen.
+//
+// The text lives in xterm.js, not in Go: the PTY's bytes have already been parsed into a grid
+// by the time anything could be read back, and a raw byte log would have no reflow, no alt
+// screen and no cursor. So this asks the window that owns the pane and waits for it.
+func (c *CtlService) readPane(pane string, lines int) (string, error) {
+	if pane == "" {
+		return "", errors.New("pane-read needs a pane")
+	}
+	if _, ok := c.pty.SessionForPane(pane); !ok {
+		return "", fmt.Errorf("no such pane %q", pane)
+	}
+	if c.bridge == nil {
+		return "", errors.New("no pane bridge")
+	}
+	args, err := json.Marshal(struct {
+		Lines int `json:"lines"`
+	}{Lines: lines})
+	if err != nil {
+		return "", err
+	}
+	return c.bridge.ask(c.target(pane, ""), "read", pane, string(args))
+}

@@ -23,6 +23,7 @@ usage:
   wate open <file>[:line[:col]]   open a file in the editor of the running wate
   wate ctl input <text>           type text into the current pane ($WATE_PANE_ID)
   wate ctl action <name>          run a keybind action (split_right, new_tab, ...)
+  wate ctl pane-read [<lines>]    print what is on the pane's screen (default 200 lines)
   wate ctl new-window [<dir>]     open another window
   wate ctl ping                   check the control socket
   wate theme import <file>        import a Ghostty/Alacritty/wate theme and activate it
@@ -75,6 +76,15 @@ func Run(args []string) int {
 			req.Name = rest
 		case "new-window", "new-tab":
 			req.Path = rest
+		case "pane-read":
+			if rest != "" {
+				n, err := strconv.Atoi(rest)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "wate: pane-read takes a line count")
+					return 2
+				}
+				req.Lines = n
+			}
 		}
 		return send(req)
 	case "theme":

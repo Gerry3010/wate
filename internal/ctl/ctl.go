@@ -25,11 +25,13 @@ type Request struct {
 	Pane string `json:"pane,omitempty"`
 	Tab  string `json:"tab,omitempty"`
 	// Text for "input"; Path/Line/Col for "open"; Name for "action"; Event/Data for "hook".
-	Text  string          `json:"text,omitempty"`
-	Path  string          `json:"path,omitempty"`
-	Line  int             `json:"line,omitempty"`
-	Col   int             `json:"col,omitempty"`
-	Name  string          `json:"name,omitempty"`
+	Text string `json:"text,omitempty"`
+	Path string `json:"path,omitempty"`
+	Line int    `json:"line,omitempty"`
+	Col  int    `json:"col,omitempty"`
+	Name string `json:"name,omitempty"`
+	// Lines is how many lines of a pane to read back ("pane-read"); 0 means the default.
+	Lines int             `json:"lines,omitempty"`
 	Event string          `json:"event,omitempty"`
 	Data  json.RawMessage `json:"data,omitempty"`
 }

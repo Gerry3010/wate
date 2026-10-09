@@ -17,6 +17,7 @@ import { perf, sample } from "../perf";
 import { logData } from "../keys-debug";
 import { ligatureJoiner } from "./ligatures";
 import { CLAUDE_LOGO, PLAY } from "../ui/icons";
+import { SNAPSHOT_LINES, clampTail, snapshotRange, trimTrailingBlanks } from "./snapshot";
 
 /** A call-to-action block drawn across the pane between the restored history and the prompt. */
 export interface PaneNotice {
@@ -545,6 +546,22 @@ export class TerminalPane implements Pane {
       text = text.slice(cut >= 0 ? cut + 1 : text.length - maxBytes);
     }
     return text.replace(/\r?\n/g, "\r\n") + "\r\n\x1b[0m\x1b[2m── restored ──\x1b[0m\r\n";
+  }
+
+  /**
+   * What is on this pane's screen right now, as plain text.
+   *
+   * Deliberately not serialize(): that one is cut for session restore — it starts after the
+   * replay marker, skips the alternate screen and signs off with a banner. A reader wants the
+   * opposite. It wants what the user would see, a full-screen program's screen included, and
+   * without escape sequences to wade through. Hence buffer.active and translateToString.
+   */
+  snapshot(lines = SNAPSHOT_LINES): string {
+    const buf = this.term.buffer.active;
+    const { start, end } = snapshotRange(buf.length, lines, buf.baseY + buf.cursorY);
+    const out: string[] = [];
+    for (let i = start; i <= end; i++) out.push(buf.getLine(i)?.translateToString(true) ?? "");
+    return clampTail(trimTrailingBlanks(out).join("\n"));
   }
 
   /**

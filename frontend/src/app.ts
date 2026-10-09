@@ -1,6 +1,6 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { AgentService, OpenerService, PtyService, SessionService, StateService, ThemeService, WindowService, type Config, type Resolved, type Session, type Target } from "./api";
+import { AgentService, OpenerService, PaneBridge, PtyService, SessionService, StateService, ThemeService, WindowService, type Config, type Resolved, type Session, type Target } from "./api";
 import { fromImported, parseWindow, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
@@ -608,6 +608,52 @@ export class WateApp {
       else void Window.Close();
     }
     this.refreshChrome();
+  }
+
+  /**
+   * Answer a question the backend asked about one pane.
+   *
+   * Everything else the backend sends is a command and needs no reply; these are the few
+   * things only the frontend knows, because the terminal's screen lives in xterm.js. The id
+   * goes back with the answer so the waiting caller can be matched up again.
+   */
+  async handlePaneRequest(req: { id: string; kind: string; pane: string; data: string }): Promise<void> {
+    let data = "";
+    let err = "";
+    try {
+      data = this.answerPaneRequest(req);
+    } catch (e) {
+      err = e instanceof Error ? e.message : String(e);
+    }
+    try {
+      await PaneBridge.Reply(req.id, data, err);
+    } catch (e) {
+      // Nothing left to do: whoever asked is waiting on a timeout that will fire shortly.
+      console.warn("pane reply:", e);
+    }
+  }
+
+  private answerPaneRequest(req: { kind: string; pane: string; data: string }): string {
+    const pane = this.paneById(req.pane);
+    if (!pane) throw new Error(`no such pane ${req.pane}`);
+    switch (req.kind) {
+      case "read": {
+        if (!(pane instanceof TerminalPane)) throw new Error(`pane ${req.pane} is not a terminal`);
+        const { lines } = JSON.parse(req.data || "{}") as { lines?: number };
+        return pane.snapshot(lines || undefined);
+      }
+      default:
+        throw new Error(`unknown pane request ${req.kind}`);
+    }
+  }
+
+  /** The pane with this id, in whichever tab of this window holds it. */
+  private paneById(id: string): Pane | undefined {
+    for (const t of this.tabs) {
+      const p = t.panes.get(id);
+      if (p) return p;
+    }
+    return undefined;
   }
 
   /** Put `tab` at index `to`. The saved session stores tabs in bar order, so the reorder has

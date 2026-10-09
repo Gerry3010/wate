@@ -7,6 +7,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- `wate ctl pane-read [<lines>]` prints what is on a pane's screen as plain text. The terminal's
+  text lives in the web view, not in the backend — the bytes from the shell have long since been
+  parsed into a grid — so this is the first thing wate asks its own window and waits for an
+  answer to. It reads the live screen, a full-screen program's included, counting back from the
+  cursor rather than from the bottom of the grid, where a terminal keeps its blank padding.
 - Dragging a tab down off the bar tears it into a window of its own, the way a browser does.
   The shell keeps running and the history comes with it. To put a tab into an *existing*
   window, use "Move to window N" in its right-click menu: pointer capture reports coordinates

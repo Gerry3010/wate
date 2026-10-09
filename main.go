@@ -92,7 +92,8 @@ func main() {
 	winSvc := app.NewWindowService(cfgSvc)
 	stateSvc := app.NewStateService(winSvc)
 	ptySvc := app.NewPtyService(cfgSvc.Current, winSvc)
-	ctlSvc := app.NewCtlService(ptySvc, cfgSvc, winSvc)
+	paneBridge := app.NewPaneBridge()
+	ctlSvc := app.NewCtlService(ptySvc, cfgSvc, winSvc, paneBridge)
 	themeSvc := app.NewThemeService(cfgSvc.Current)
 	notifySvc := notifications.New()
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc, winSvc)
@@ -120,6 +121,7 @@ func main() {
 	application.RegisterEvent[app.TabTransfer]("window:adopt-tab")
 	application.RegisterEvent[app.DropRequest]("window:drop")
 	application.RegisterEvent[app.FullscreenState]("window:fullscreen")
+	application.RegisterEvent[app.PaneRequest]("pane:request")
 
 	wapp := application.New(application.Options{
 		Name:        "wate",
@@ -138,6 +140,7 @@ func main() {
 			application.NewService(&app.SessionService{}),
 			application.NewService(&app.AgentStateService{}),
 			application.NewService(winSvc),
+			application.NewService(paneBridge),
 			application.NewService(app.NewImportService(cfgSvc)),
 			application.NewServiceWithOptions(wp, application.ServiceOptions{Name: "Wallpaper", Route: "/wallpaper"}),
 		},

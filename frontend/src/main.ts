@@ -45,6 +45,7 @@ async function boot() {
     }
   });
   onMine("ctl:action", (d: { name: string }) => void app.run(d.name));
+  onMine("pane:request", (d: Parameters<typeof app.handlePaneRequest>[0]) => void app.handlePaneRequest(d));
   onMine("window:drop", (d: { paths: string[] | null; x: number; y: number }) => app.onFilesDropped(d));
   onMine("window:fullscreen", (d: { fullscreen: boolean }) => {
     document.documentElement.toggleAttribute("data-fullscreen", d.fullscreen);
