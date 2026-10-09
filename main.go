@@ -107,6 +107,9 @@ func main() {
 	}
 	wp := &wallpaper.Handler{Path: func() string { return cfgSvc.Current().Background.Wallpaper }}
 
+	// Before the toolkit draws anything: GSK reads its renderer from the environment.
+	app.PreferStableRenderer()
+
 	application.RegisterEvent[app.ConfigResponse]("config:changed")
 	application.RegisterEvent[app.OpenRequest]("ctl:open")
 	application.RegisterEvent[app.ActionRequest]("ctl:action")

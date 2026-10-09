@@ -80,6 +80,14 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- wate asks GTK for its OpenGL renderer on Linux rather than taking the default. GTK 4.22
+  picks Vulkan, and two of the three paths that import WebKit's frames into GDK lose a little
+  memory per frame and never give it back. Under the same load, measured on a window drawing
+  continuously: Vulkan grew the main process by 76 kB/s and Cairo by 113 kB/s, OpenGL by
+  nothing at all — and OpenGL did it on 6% of a CPU core where the others needed 27%. Left
+  running, that was gigabytes of swap over a few days. Setting `GSK_RENDERER` yourself still
+  wins, and the variable is kept out of the shells, so programs you start in a pane are
+  unaffected.
 - The status dot blinks in steps instead of fading smoothly, which stops wate from redrawing
   itself sixty times a second for as long as any Claude session is running. The smooth pulse
   kept the compositor busy whether or not anything else changed: measured against an idle

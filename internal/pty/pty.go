@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -81,6 +83,32 @@ func NewManager() *Manager {
 	return &Manager{sessions: map[string]*Session{}}
 }
 
+var hiddenFromShells []string
+
+// HideFromShells keeps these variables out of the environment a shell inherits. wate sets
+// GSK_RENDERER for its own window (see app.PreferStableRenderer); a shell running in a pane
+// should not quietly impose that choice on every GUI program started from it.
+func HideFromShells(keys ...string) {
+	hiddenFromShells = append(hiddenFromShells, keys...)
+}
+
+// shellEnvironment is this process' environment minus what HideFromShells named.
+func shellEnvironment() []string {
+	env := os.Environ()
+	if len(hiddenFromShells) == 0 {
+		return env
+	}
+	kept := env[:0]
+	for _, entry := range env {
+		name, _, _ := strings.Cut(entry, "=")
+		if slices.Contains(hiddenFromShells, name) {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	return kept
+}
+
 // Spawn starts a new session.
 func (m *Manager) Spawn(opts SpawnOptions) (*Session, error) {
 	argv := opts.Command
@@ -89,7 +117,7 @@ func (m *Manager) Spawn(opts SpawnOptions) (*Session, error) {
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = opts.Cwd
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=wate")
+	cmd.Env = append(shellEnvironment(), "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=wate")
 	cmd.Env = append(cmd.Env, opts.Env...)
 
 	cols, rows := opts.Cols, opts.Rows
