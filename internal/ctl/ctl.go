@@ -31,9 +31,18 @@ type Request struct {
 	Col  int    `json:"col,omitempty"`
 	Name string `json:"name,omitempty"`
 	// Lines is how many lines of a pane to read back ("pane-read"); 0 means the default.
-	Lines int             `json:"lines,omitempty"`
-	Event string          `json:"event,omitempty"`
-	Data  json.RawMessage `json:"data,omitempty"`
+	Lines int `json:"lines,omitempty"`
+	// Dir is "row" (side by side) or "col" (stacked), for splitting and resizing.
+	Dir string `json:"dir,omitempty"`
+	// Ratio is the share of its divider a pane should get, 0..1; 0 means leave it alone.
+	Ratio float64 `json:"ratio,omitempty"`
+	// Token is $WATE_PANE_TOKEN: which pane the caller is actually sitting in.
+	Token string `json:"token,omitempty"`
+	// Target is the pane to act on, when that is not the caller's own. Keeping the two apart
+	// is what makes the rights checks mean anything: Pane says who is asking.
+	Target string          `json:"target,omitempty"`
+	Event  string          `json:"event,omitempty"`
+	Data   json.RawMessage `json:"data,omitempty"`
 }
 
 // Response is the reply line.

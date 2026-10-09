@@ -93,7 +93,8 @@ func main() {
 	stateSvc := app.NewStateService(winSvc)
 	ptySvc := app.NewPtyService(cfgSvc.Current, winSvc)
 	paneBridge := app.NewPaneBridge()
-	ctlSvc := app.NewCtlService(ptySvc, cfgSvc, winSvc, paneBridge)
+	accessSvc := app.NewAccessService(ptySvc)
+	ctlSvc := app.NewCtlService(ptySvc, cfgSvc, winSvc, paneBridge, accessSvc)
 	themeSvc := app.NewThemeService(cfgSvc.Current)
 	notifySvc := notifications.New()
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc, winSvc)
@@ -141,6 +142,7 @@ func main() {
 			application.NewService(&app.AgentStateService{}),
 			application.NewService(winSvc),
 			application.NewService(paneBridge),
+			application.NewService(accessSvc),
 			application.NewService(app.NewImportService(cfgSvc)),
 			application.NewServiceWithOptions(wp, application.ServiceOptions{Name: "Wallpaper", Route: "/wallpaper"}),
 		},

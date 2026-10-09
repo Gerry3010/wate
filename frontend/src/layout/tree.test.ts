@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { focusAfterClose, leaf, leaves, nearestSplit, neighbor, ratioOf, removeLeaf, resizeTowards, setRatio, snapRatio, splitLeaf, type Rect, swapLeaves } from "./tree";
+import { focusAfterClose, leaf, leaves, nearestSplit, neighbor, ratioForShare, ratioOf, removeLeaf, resizeTowards, setRatio, shareOf, snapRatio, splitLeaf, type LayoutNode, type Rect, swapLeaves } from "./tree";
 
 describe("split tree", () => {
   it("splits and lists leaves in order", () => {
@@ -93,5 +93,46 @@ describe("swapLeaves", () => {
     expect(swapped.kind).toBe("split");
     expect(swapLeaves(tree, "a", "zzz")).toEqual(tree);
     expect(swapLeaves(tree, "a", "a")).toBe(tree);
+  });
+});
+
+describe("shareOf", () => {
+  // a | (b / c)  — "a" is the first child of a row split, "b" and "c" live in a column below.
+  const tree: LayoutNode = {
+    kind: "split",
+    id: "s1",
+    dir: "row",
+    ratio: 0.5,
+    a: { kind: "leaf", id: "a" },
+    b: { kind: "split", id: "s2", dir: "col", ratio: 0.5, a: { kind: "leaf", id: "b" }, b: { kind: "leaf", id: "c" } },
+  };
+
+  it("sees a first child as a first child", () => {
+    expect(shareOf(tree, "a", "row")).toEqual({ splitId: "s1", isFirst: true });
+  });
+
+  it("sees a second child through a nested split", () => {
+    expect(shareOf(tree, "b", "row")).toEqual({ splitId: "s1", isFirst: false });
+  });
+
+  it("picks the nearest split of the asked-for orientation", () => {
+    expect(shareOf(tree, "b", "col")).toEqual({ splitId: "s2", isFirst: true });
+    expect(shareOf(tree, "c", "col")).toEqual({ splitId: "s2", isFirst: false });
+  });
+
+  it("answers nothing when there is no such divider", () => {
+    expect(shareOf(tree, "a", "col")).toBeNull();
+    expect(shareOf(tree, "nope", "row")).toBeNull();
+    expect(shareOf({ kind: "leaf", id: "only" }, "only", "row")).toBeNull();
+  });
+});
+
+describe("ratioForShare", () => {
+  it("stores the share itself for a first child", () => {
+    expect(ratioForShare(1 / 3, true)).toBeCloseTo(1 / 3);
+  });
+
+  it("stores the complement for a second child", () => {
+    expect(ratioForShare(1 / 3, false)).toBeCloseTo(2 / 3);
   });
 });

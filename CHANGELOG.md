@@ -7,6 +7,17 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- Panes can be opened, resized, read, written, closed and focused from the control socket:
+  `wate ctl pane-split [row|col] [third|half|two-thirds|<fraction>]`, `split-ratio`,
+  `pane-write`, `pane-read`, `pane-close`, `pane-focus` and `pane-list`. `--pane` says who is
+  asking and `--target` says which pane to act on, because the two being the same thing is what
+  makes every permission check pass.
+- A pane may always act on itself and on panes it opened; reaching any other pane needs the
+  user to allow it, and never reaches outside the tab. Writing into a pane that was allowed
+  rather than opened is text only — no Enter — so an agent can put a command on your prompt but
+  not run it in your shell, where none of Claude Code's own permission machinery would apply.
+  None of this is written to disk: the session a grant was made for does not survive a restart,
+  and its successor inheriting the rights would be an escalation nobody asked for.
 - `wate ctl pane-read [<lines>]` prints what is on a pane's screen as plain text. The terminal's
   text lives in the web view, not in the backend — the bytes from the shell have long since been
   parsed into a grid — so this is the first thing wate asks its own window and waits for an
@@ -85,6 +96,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- A control-socket action now lands in the tab it was sent from. `wate ctl action split_right`
+  from a pane in a background tab used to split whichever tab happened to be in front, because
+  the pane the request named was thrown away on the way to the frontend. The new split also
+  starts in the directory of the pane that asked for it, not of whatever was last focused over
+  there.
 - wate asks GTK for its OpenGL renderer on Linux rather than taking the default. GTK 4.22
   picks Vulkan, and two of the three paths that import WebKit's frames into GDK lose a little
   memory per frame and never give it back. Under the same load, measured on a window drawing

@@ -4,10 +4,12 @@ import {
   focusAfterClose,
   leaves,
   nearestSplit,
+  ratioForShare,
   ratioOf,
   removeLeaf,
   resizeTowards,
   setRatio,
+  shareOf,
   splitLeaf,
   swapLeaves,
   neighbor,
@@ -62,6 +64,23 @@ export class Tab {
     this.tree = resizeTowards(this.tree, this.focusedId, direction);
     this.view.setRatio(id, ratioOf(this.tree, id)!);
     this.relayoutPanes();
+  }
+
+  /**
+   * Give `paneId` exactly `share` (0..1) of the divider nearest to it along `dir`.
+   *
+   * The keyboard's resize() nudges by a step; this sets a value outright, which is what a
+   * request for "a third of the width" means. `setRatio` keeps it inside 0.1..0.9, and
+   * `shareOf` works out whether the pane is the half the ratio describes.
+   */
+  setSplitRatio(paneId: string, dir: Dir, share: number): boolean {
+    if (!this.tree) return false;
+    const s = shareOf(this.tree, paneId, dir);
+    if (!s) return false;
+    this.tree = setRatio(this.tree, s.splitId, ratioForShare(share, s.isFirst));
+    this.view.setRatio(s.splitId, ratioOf(this.tree, s.splitId)!);
+    this.relayoutPanes();
+    return true;
   }
 
   private relayoutPanes(): void {

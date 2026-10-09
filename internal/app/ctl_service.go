@@ -47,13 +47,14 @@ type CtlService struct {
 	cfg     *ConfigService
 	windows *WindowService
 	bridge  *PaneBridge
+	access  *AccessService
 	server  *ctl.Server
 	// OnHook is set by the agent service.
 	OnHook func(HookEvent)
 }
 
-func NewCtlService(pty *PtyService, cfg *ConfigService, windows *WindowService, bridge *PaneBridge) *CtlService {
-	return &CtlService{pty: pty, cfg: cfg, windows: windows, bridge: bridge}
+func NewCtlService(pty *PtyService, cfg *ConfigService, windows *WindowService, bridge *PaneBridge, access *AccessService) *CtlService {
+	return &CtlService{pty: pty, cfg: cfg, windows: windows, bridge: bridge, access: access}
 }
 
 // target picks the window a request is about, from the pane or tab it names.
@@ -167,12 +168,12 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 			return ctl.Response{Error: err.Error()}
 		}
 		return ctl.Response{OK: true}
-	case "pane-read":
-		text, err := c.readPane(r.Pane, r.Lines)
+	case "pane-read", "pane-split", "pane-close", "pane-focus", "pane-list", "split-ratio", "pane-write":
+		data, err := c.pane(r)
 		if err != nil {
 			return ctl.Response{Error: err.Error()}
 		}
-		return ctl.Response{OK: true, Data: text}
+		return ctl.Response{OK: true, Data: data}
 	case "debug":
 		// Deliberately a broadcast: `wate ctl debug` should dump every window, not just one.
 		app.Event.Emit("ctl:action", ActionRequest{Name: "__debug"})
@@ -207,26 +208,120 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 
 var errNoPane = errors.New("no such pane")
 
-// readPane answers with what is on a pane's screen.
+// caller is the pane a request came from: its token if it sent one, else what it claims.
 //
-// The text lives in xterm.js, not in Go: the PTY's bytes have already been parsed into a grid
-// by the time anything could be read back, and a raw byte log would have no reflow, no alt
-// screen and no cursor. So this asks the window that owns the pane and waits for it.
-func (c *CtlService) readPane(pane string, lines int) (string, error) {
-	if pane == "" {
-		return "", errors.New("pane-read needs a pane")
+// The token is minted per pane and handed to the shell, so a program in a pane proves where it
+// is sitting rather than being taken at its word. Falling back to the claim keeps `wate ctl`
+// usable from a script that only has a pane id — the point of the token is not to lock the
+// socket down (it is 0600 on one user's machine) but to make naming somebody else's pane a
+// deliberate act instead of the default.
+func (c *CtlService) caller(r ctl.Request) string {
+	if pane, ok := c.pty.PaneForToken(r.Token); ok {
+		return pane
+	}
+	return r.Pane
+}
+
+// targetOf is the pane a request acts on: the one it names, else the caller's own.
+//
+// Who is asking and what is being acted on are two different things, and they have to stay
+// that way — fold them together and every rights check passes, because the caller is always
+// allowed to act on itself.
+func targetOf(r ctl.Request, caller string) string {
+	if r.Target != "" {
+		return r.Target
+	}
+	return caller
+}
+
+// pane handles everything that acts on one pane, with the rights checked first.
+func (c *CtlService) pane(r ctl.Request) (any, error) {
+	from := c.caller(r)
+	if from == "" {
+		return nil, errors.New("no pane: run this from inside a wate pane, or pass --pane")
+	}
+	if _, ok := c.pty.SessionForPane(from); !ok {
+		return nil, fmt.Errorf("no such pane %q", from)
+	}
+	target := targetOf(r, from)
+
+	switch r.Cmd {
+	case "pane-split":
+		dir := r.Dir
+		if dir == "" {
+			dir = "row"
+		}
+		if dir != "row" && dir != "col" {
+			return nil, fmt.Errorf("dir must be row or col, not %q", dir)
+		}
+		id, err := c.askPane(from, "split", map[string]any{"dir": dir, "ratio": r.Ratio})
+		if err != nil {
+			return nil, err
+		}
+		// Whoever asked for the pane owns it, and may read and write it without being granted
+		// anything: it is the agent's own workspace, not the user's.
+		c.access.Opened(from, id)
+		return id, nil
+
+	case "pane-list":
+		return c.askPane(from, "list", map[string]any{})
+
+	case "split-ratio":
+		if err := c.access.Allow(from, target, RightManage); err != nil {
+			return nil, err
+		}
+		dir := r.Dir
+		if dir == "" {
+			dir = "row"
+		}
+		return c.askPane(target, "ratio", map[string]any{"dir": dir, "ratio": r.Ratio})
+
+	case "pane-close":
+		if err := c.access.Allow(from, target, RightManage); err != nil {
+			return nil, err
+		}
+		return c.askPane(target, "close", map[string]any{})
+
+	case "pane-focus":
+		if err := c.access.Allow(from, target, RightManage); err != nil {
+			return nil, err
+		}
+		return c.askPane(target, "focus", map[string]any{})
+
+	case "pane-read":
+		if err := c.access.Allow(from, target, RightRead); err != nil {
+			return nil, err
+		}
+		return c.askPane(target, "read", map[string]any{"lines": r.Lines})
+
+	case "pane-write":
+		if err := c.access.Allow(from, target, RightWrite); err != nil {
+			return nil, err
+		}
+		text := r.Text
+		if !c.access.Owns(from, target) {
+			// Somebody else's pane: put the text on the prompt, let the user press Enter.
+			text = typable(text)
+		}
+		if err := c.pty.WriteToPane(target, text); err != nil {
+			return nil, err
+		}
+		return "", nil
+	}
+	return nil, fmt.Errorf("unknown command %q", r.Cmd)
+}
+
+// askPane puts a question to the window that owns `pane` and returns its answer.
+func (c *CtlService) askPane(pane, kind string, args map[string]any) (string, error) {
+	if c.bridge == nil {
+		return "", errors.New("no pane bridge")
 	}
 	if _, ok := c.pty.SessionForPane(pane); !ok {
 		return "", fmt.Errorf("no such pane %q", pane)
 	}
-	if c.bridge == nil {
-		return "", errors.New("no pane bridge")
-	}
-	args, err := json.Marshal(struct {
-		Lines int `json:"lines"`
-	}{Lines: lines})
+	payload, err := json.Marshal(args)
 	if err != nil {
 		return "", err
 	}
-	return c.bridge.ask(c.target(pane, ""), "read", pane, string(args))
+	return c.bridge.ask(c.target(pane, ""), kind, pane, string(payload))
 }

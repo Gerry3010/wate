@@ -24,11 +24,24 @@ usage:
   wate ctl input <text>           type text into the current pane ($WATE_PANE_ID)
   wate ctl action <name>          run a keybind action (split_right, new_tab, ...)
   wate ctl pane-read [<lines>]    print what is on the pane's screen (default 200 lines)
+  wate ctl pane-split [row|col] [<size>]
+                                  open a split beside this pane (size: a fraction, or
+                                  third/half/two-thirds)
+  wate ctl split-ratio [row|col] <size>
+                                  resize this pane's share of its divider
+  wate ctl pane-write <text>      type text into a pane (--target <id> for another one)
+  wate ctl pane-close             close a pane
+  wate ctl pane-focus             focus a pane
+  wate ctl pane-list              list the panes of this tab, as JSON
   wate ctl new-window [<dir>]     open another window
   wate ctl ping                   check the control socket
   wate theme import <file>        import a Ghostty/Alacritty/wate theme and activate it
   wate hook <event>               Claude Code hook entry point (reads JSON on stdin)
   wate install-hooks              register wate's hooks in ~/.claude/settings.json
+
+--pane <id> says who is asking (normally $WATE_PANE_ID); --target <id> says which pane to act
+on. A pane may always act on itself and on panes it opened; anything else has to be allowed in
+that pane's own menu.
 
 The running instance is found via $WATE_SOCKET (set in every wate shell).
 `
@@ -58,11 +71,21 @@ func Run(args []string) int {
 			fmt.Fprint(os.Stderr, Usage)
 			return 2
 		}
-		req := ctl.Request{Cmd: args[1], Pane: os.Getenv("WATE_PANE_ID"), Tab: os.Getenv("WATE_TAB_ID")}
+		req := ctl.Request{
+			Cmd:   args[1],
+			Pane:  os.Getenv("WATE_PANE_ID"),
+			Tab:   os.Getenv("WATE_TAB_ID"),
+			Token: os.Getenv("WATE_PANE_TOKEN"),
+		}
 		var words []string
 		for i := 2; i < len(args); i++ {
 			if args[i] == "--pane" && i+1 < len(args) {
 				req.Pane = args[i+1]
+				i++
+				continue
+			}
+			if args[i] == "--target" && i+1 < len(args) {
+				req.Target = args[i+1]
 				i++
 				continue
 			}
@@ -84,6 +107,24 @@ func Run(args []string) int {
 					return 2
 				}
 				req.Lines = n
+			}
+		case "pane-write":
+			req.Text = rest
+		case "pane-split", "split-ratio":
+			for _, w := range words {
+				switch {
+				case w == "row" || w == "right" || w == "horizontal":
+					req.Dir = "row"
+				case w == "col" || w == "down" || w == "vertical":
+					req.Dir = "col"
+				default:
+					r, ok := parseRatio(w)
+					if !ok {
+						fmt.Fprintf(os.Stderr, "wate: %s does not understand %q\n", args[1], w)
+						return 2
+					}
+					req.Ratio = r
+				}
 			}
 		}
 		return send(req)
@@ -160,4 +201,21 @@ func runHook(event string) int {
 func claudeSettingsPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".claude", "settings.json")
+}
+
+// parseRatio reads how big a pane should be: a fraction, or one of the three sizes worth a name.
+func parseRatio(w string) (float64, bool) {
+	switch w {
+	case "third", "1/3":
+		return 1.0 / 3.0, true
+	case "half", "1/2":
+		return 0.5, true
+	case "two-thirds", "2/3":
+		return 2.0 / 3.0, true
+	}
+	f, err := strconv.ParseFloat(w, 64)
+	if err != nil || f <= 0 || f >= 1 {
+		return 0, false
+	}
+	return f, true
 }

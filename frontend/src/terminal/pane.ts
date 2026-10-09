@@ -114,6 +114,11 @@ export class TerminalPane implements Pane {
   oscTitle = "";
   /** What the pane runs right now; the backend polls it (see PtyService.watchForeground). */
   private cmd?: PaneCommand;
+
+  /** What this pane is running right now ("zsh", "claude", "ssh"), as the poller last saw it. */
+  get running(): string {
+    return this.cmd?.name ?? "";
+  }
   private unsubscribe?: () => void;
   private fit = new FitAddon();
   private serializer = new SerializeAddon();

@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"log/slog"
 	"os"
@@ -37,16 +38,22 @@ type PtyService struct {
 	// byPane maps WATE_PANE_ID → session id so the control socket can address panes.
 	byPane map[string]string
 	tabOf  map[string]string
+	// paneOfToken maps WATE_PANE_TOKEN → pane id. A program in a pane proves which pane it is
+	// sitting in by sending its token, instead of naming a pane and being believed.
+	paneOfToken map[string]string
+	tokenOfPane map[string]string
 }
 
 func NewPtyService(cfg func() config.Config, windows *WindowService) *PtyService {
 	return &PtyService{
-		sessions: pty.NewManager(),
-		cfg:      cfg,
-		windows:  windows,
-		byPane:   map[string]string{},
-		tabOf:    map[string]string{},
-		stop:     make(chan struct{}),
+		sessions:    pty.NewManager(),
+		cfg:         cfg,
+		windows:     windows,
+		byPane:      map[string]string{},
+		tabOf:       map[string]string{},
+		paneOfToken: map[string]string{},
+		tokenOfPane: map[string]string{},
+		stop:        make(chan struct{}),
 	}
 }
 
@@ -122,10 +129,16 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 	p.mu.RLock()
 	socket := p.socket
 	p.mu.RUnlock()
+	token := paneToken()
 	env := []string{
 		"WATE_PANE_ID=" + req.PaneID,
+		// Frozen at spawn, and a pane can be moved to another tab afterwards (see Retab), so
+		// this goes stale. Scripts may read it; nothing that decides anything may — the backend
+		// resolves the tab from tabOf instead.
 		"WATE_TAB_ID=" + req.TabID,
 		"WATE_SOCKET=" + socket,
+		// Which pane the caller is in, for requests where being believed is not good enough.
+		"WATE_PANE_TOKEN=" + token,
 		// The shell integration binds the word-wise keys according to this.
 		"WATE_WORD_KEYS=" + cfg.Terminal.WordKeys,
 	}
@@ -156,8 +169,13 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 			prev.Kill()
 		}
 	}
+	if prev, ok := p.tokenOfPane[req.PaneID]; ok {
+		delete(p.paneOfToken, prev)
+	}
 	p.byPane[req.PaneID] = s.ID
 	p.tabOf[req.PaneID] = req.TabID
+	p.paneOfToken[token] = req.PaneID
+	p.tokenOfPane[req.PaneID] = token
 	p.mu.Unlock()
 	go func() {
 		<-s.Done()
@@ -165,6 +183,8 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 		if p.byPane[req.PaneID] == s.ID {
 			delete(p.byPane, req.PaneID)
 			delete(p.tabOf, req.PaneID)
+			delete(p.paneOfToken, p.tokenOfPane[req.PaneID])
+			delete(p.tokenOfPane, req.PaneID)
 		}
 		p.mu.Unlock()
 	}()
@@ -368,4 +388,31 @@ func (p *PtyService) windowFor(paneID string) *application.WebviewWindow {
 	}
 	w, _ := p.windows.windowFor(paneID, "")
 	return w
+}
+
+// paneToken mints the value of $WATE_PANE_TOKEN for one pane.
+func paneToken() string { return rand.Text() }
+
+// PaneForToken is the pane a $WATE_PANE_TOKEN belongs to.
+//
+// This is identity, not authentication: the socket is 0600 and anything running as this user
+// can read another process' environment out of /proc. What it buys is that a caller naming
+// someone else's pane has to do so deliberately, which makes the distinction worth drawing
+// and the logs worth reading.
+func (p *PtyService) PaneForToken(token string) (string, bool) {
+	if token == "" {
+		return "", false
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	pane, ok := p.paneOfToken[token]
+	return pane, ok
+}
+
+// TabForPane is the tab a pane is in *now* — not the one it was spawned in.
+func (p *PtyService) TabForPane(paneID string) (string, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	tab, ok := p.tabOf[paneID]
+	return tab, ok
 }

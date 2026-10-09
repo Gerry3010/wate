@@ -1,6 +1,6 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { AgentService, OpenerService, PaneBridge, PtyService, SessionService, StateService, ThemeService, WindowService, type Config, type Resolved, type Session, type Target } from "./api";
+import { AccessService, AgentService, OpenerService, PaneBridge, PtyService, SessionService, StateService, ThemeService, WindowService, type Config, type Resolved, type Session, type Target } from "./api";
 import { fromImported, parseWindow, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
@@ -31,6 +31,8 @@ export interface SplitAt {
   dir?: Dir;
   target?: string | null;
   before?: boolean;
+  /** Share of the divider the *new* pane should get (0..1); the default is an even split. */
+  ratio?: number;
 }
 
 /** Top-level UI state: tabs, panes, keybindings and the actions they trigger. */
@@ -621,7 +623,7 @@ export class WateApp {
     let data = "";
     let err = "";
     try {
-      data = this.answerPaneRequest(req);
+      data = await this.answerPaneRequest(req);
     } catch (e) {
       err = e instanceof Error ? e.message : String(e);
     }
@@ -633,18 +635,54 @@ export class WateApp {
     }
   }
 
-  private answerPaneRequest(req: { kind: string; pane: string; data: string }): string {
+  private async answerPaneRequest(req: { kind: string; pane: string; data: string }): Promise<string> {
     const pane = this.paneById(req.pane);
-    if (!pane) throw new Error(`no such pane ${req.pane}`);
+    const tab = this.tabOfPane(req.pane);
+    if (!pane || !tab) throw new Error(`no such pane ${req.pane}`);
+    const args = JSON.parse(req.data || "{}") as { lines?: number; dir?: Dir; ratio?: number };
     switch (req.kind) {
       case "read": {
         if (!(pane instanceof TerminalPane)) throw new Error(`pane ${req.pane} is not a terminal`);
-        const { lines } = JSON.parse(req.data || "{}") as { lines?: number };
-        return pane.snapshot(lines || undefined);
+        return pane.snapshot(args.lines || undefined);
+      }
+      case "split": {
+        const dir: Dir = args.dir === "col" ? "col" : "row";
+        const made = await this.addTerminal(tab, dir, {}, { target: req.pane, ratio: args.ratio || undefined });
+        return made.id;
+      }
+      case "ratio": {
+        const dir: Dir = args.dir === "col" ? "col" : "row";
+        if (!args.ratio) throw new Error("ratio must say how much");
+        if (!tab.setSplitRatio(req.pane, dir, args.ratio)) throw new Error(`pane ${req.pane} has no ${dir} divider next to it`);
+        return "";
+      }
+      case "close":
+        this.closePane(tab, pane);
+        return "";
+      case "focus":
+        this.activate(tab);
+        tab.setFocus(req.pane);
+        return "";
+      case "list": {
+        const rows = await Promise.all(
+          [...tab.panes.values()].map(async (p) => ({
+            id: p.id,
+            kind: p.kind,
+            focused: p.id === tab.focusedId,
+            cwd: await p.cwd().catch(() => ""),
+            command: p instanceof TerminalPane ? p.running : "",
+          })),
+        );
+        return JSON.stringify(rows);
       }
       default:
         throw new Error(`unknown pane request ${req.kind}`);
     }
+  }
+
+  /** The tab of this window that holds this pane, if any. */
+  private tabOfPane(id: string): Tab | undefined {
+    return this.tabs.find((t) => t.panes.has(id));
   }
 
   /** The pane with this id, in whichever tab of this window holds it. */
@@ -744,9 +782,14 @@ export class WateApp {
   }
 
   private async addTerminal(tab: Tab, dir: Dir, opts: { cwd?: string; command?: string[] } = {}, at?: SplitAt): Promise<TerminalPane> {
-    const cwd = opts.cwd ?? (await tab.focused?.cwd().catch(() => "")) ?? "";
+    // A new split starts where the pane it was asked for is looking — which is the focused one
+    // from the keyboard, but the *asking* one when a request named it.
+    const beside = (at?.target && tab.panes.get(at.target)) || tab.focused;
+    const cwd = opts.cwd ?? (await beside?.cwd().catch(() => "")) ?? "";
     const pane = this.makeTerminal(tab, { ...opts, cwd });
     tab.add(pane, dir, at?.target ?? tab.focusedId, at?.before ?? false);
+    // splitLeaf always halves; a requested size is applied to the pane that was just added.
+    if (at?.ratio !== undefined) tab.setSplitRatio(pane.id, dir, at.ratio);
     this.scheduleSave();
     await pane.start();
     pane.focus();
@@ -820,6 +863,7 @@ export class WateApp {
 
   private removePane(tab: Tab, pane: Pane) {
     AgentService.Forget(pane.id).catch(() => {});
+    AccessService.Forget(pane.id).catch(() => {});
     this.paneStatus.delete(pane.id);
     tab.remove(pane.id);
     if (tab.isEmpty) this.closeTab(tab);
@@ -942,8 +986,19 @@ export class WateApp {
     void this.run(action);
   }
 
-  async run(action: string): Promise<void> {
-    const tab = this.active;
+  /**
+   * Run a keybind action. `from` is the pane a control-socket request came from.
+   *
+   * Without it, an action sent by something sitting in a background tab would land on whichever
+   * tab happens to be in front — so `wate ctl action split_right` from a pane the user is not
+   * looking at used to split the wrong tab. A keystroke has no origin pane and keeps using the
+   * active tab, which is the same thing from the keyboard's point of view.
+   */
+  async run(action: string, from?: string): Promise<void> {
+    const origin = from ? this.tabOfPane(from) : undefined;
+    const tab = origin ?? this.active;
+    // Split beside the pane that asked, not beside whatever was last focused over there.
+    const at = origin ? { target: from } : undefined;
     if (action === "__debug") {
       this.debugDump();
       return;
@@ -977,10 +1032,10 @@ export class WateApp {
     }
     switch (action) {
       case "split_right":
-        if (tab) await this.addTerminal(tab, "row");
+        if (tab) await this.addTerminal(tab, "row", {}, at);
         break;
       case "split_down":
-        if (tab) await this.addTerminal(tab, "col");
+        if (tab) await this.addTerminal(tab, "col", {}, at);
         break;
       case "focus_left":
       case "focus_right":

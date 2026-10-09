@@ -151,6 +151,31 @@ export function resizeTowards(root: LayoutNode, leafId: string, direction: Direc
   return setRatio(root, id, r + delta);
 }
 
+/**
+ * Which divider decides how much room `leafId` gets along `dir`, and which side of it the leaf
+ * is on.
+ *
+ * A split's `ratio` is the share of its *first* child, so "give my pane a third of the width"
+ * is `ratio = 1/3` when the pane is that first child and `ratio = 2/3` when it is the second.
+ * Getting this backwards is silent — the layout simply comes out mirrored — which is why it
+ * lives here, next to the tree, with tests, instead of being worked out at each call site.
+ */
+export function shareOf(root: LayoutNode, leafId: string, dir: Dir): { splitId: string; isFirst: boolean } | null {
+  const splitId = nearestSplit(root, leafId, dir);
+  if (!splitId) return null;
+  const path = pathTo(root, leafId);
+  if (!path) return null;
+  const i = path.findIndex((n) => n.kind === "split" && n.id === splitId);
+  const split = path[i] as Split;
+  const next = path[i + 1];
+  return { splitId, isFirst: next === split.a };
+}
+
+/** The ratio to store on `splitId` so that the leaf gets `share` of it. */
+export function ratioForShare(share: number, isFirst: boolean): number {
+  return isFirst ? share : 1 - share;
+}
+
 /** Preferred divider positions for snapping. */
 export const SNAP_POINTS = [0.25, 1 / 3, 0.5, 2 / 3, 0.75];
 

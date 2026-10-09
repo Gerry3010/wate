@@ -44,7 +44,7 @@ async function boot() {
       void app.openEditor(tab, d.path, d.line || undefined, d.col || undefined);
     }
   });
-  onMine("ctl:action", (d: { name: string }) => void app.run(d.name));
+  onMine("ctl:action", (d: { name: string; pane: string }) => void app.run(d.name, d.pane || undefined));
   onMine("pane:request", (d: Parameters<typeof app.handlePaneRequest>[0]) => void app.handlePaneRequest(d));
   onMine("window:drop", (d: { paths: string[] | null; x: number; y: number }) => app.onFilesDropped(d));
   onMine("window:fullscreen", (d: { fullscreen: boolean }) => {
