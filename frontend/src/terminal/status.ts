@@ -58,7 +58,10 @@ export function statusView(in_: StatusInput): StatusView {
 
 /** What the bar needs from the app to do its job. */
 export interface StatusHost {
+  /** What the user ticked — what a tick has to toggle back. */
   access(paneId: string): Access;
+  /** What that actually permits: Manage carries Read and Write with it. */
+  allows(paneId: string): Access;
   setAccess(paneId: string, access: Access): void;
   closePane(paneId: string): void;
   /** Extra entries above the agent section (moving the pane about). Empty is fine. */
@@ -149,14 +152,17 @@ export class PaneStatusBar {
     const host = this.host;
     if (!host) return;
     const access = host.access(this.paneId);
+    const allows = host.allows(this.paneId);
     const toggle = (key: keyof Access) => () => host.setAccess(this.paneId, { ...access, [key]: !access[key] });
+    // Read and Write are shown as granted and fixed while Manage is on: it includes them, and
+    // a tick that looks switchable but changes nothing is worse than one that says why not.
     const entries: MenuEntry[] = [
       ...host.paneEntries(this.paneId),
       "separator",
       { header: "Agent access" },
-      { label: "Read", hint: "see the screen", checked: access.read, onSelect: toggle("read") },
-      { label: "Write", hint: "type, no Enter", checked: access.write, onSelect: toggle("write") },
-      { label: "Manage", hint: "resize and close", checked: access.manage, onSelect: toggle("manage") },
+      { label: "Read", hint: access.manage ? "via Manage" : "see the screen", checked: allows.read, disabled: access.manage, onSelect: toggle("read") },
+      { label: "Write", hint: access.manage ? "via Manage" : "type, no Enter", checked: allows.write, disabled: access.manage, onSelect: toggle("write") },
+      { label: "Manage", hint: "everything, incl. resize and close", checked: access.manage, onSelect: toggle("manage") },
     ];
     if (access.read || access.write || access.manage) {
       entries.push({

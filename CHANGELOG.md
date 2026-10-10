@@ -50,8 +50,12 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   orange mark if an agent opened it, letters for anything the user has opened it up to, and a
   menu. A pane on its own keeps the uncluttered look — it is the tab, so there is nothing to
   tell apart. The bar's menu is where an agent is let into a pane that is not its own: Read,
-  Write, Manage, each a tick, with "Revoke all" once something is on. The letters are there so
-  that a pane which has been opened up says so without anyone opening the menu.
+  Write, Manage, each a tick, with "Revoke all" once something is on. Manage carries the other
+  two with it — resizing and closing a pane you may neither look at nor type into is not a
+  halfway house anybody asked for — and the menu then shows them as granted and fixed rather
+  than as ticks that change nothing. Write never implies Read: reading is the one that costs
+  privacy, so nothing grants it by the back door. The letters are there so that a pane which
+  has been opened up says so without anyone opening the menu.
   The grid moved into a box of its own underneath the bar, because FitAddon measures the
   terminal's parent and would otherwise have counted the bar's height as usable rows and let
   the pane clip the last one.

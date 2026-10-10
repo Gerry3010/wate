@@ -146,3 +146,33 @@ func TestWhoIsAskingIsNotWhatIsBeingActedOn(t *testing.T) {
 		t.Errorf("target = %q, want the named pane", got)
 	}
 }
+
+func TestManagingAPaneCarriesSeeingAndTypingWithIt(t *testing.T) {
+	// Resizing and closing a pane you may neither look at nor type into is not a halfway
+	// house anybody asked for.
+	a := NewAccessService(panesIn(t, map[string]string{"agent": "t1", "mine": "t1"}))
+	a.Grant("mine", Access{Manage: true})
+	for _, want := range []Right{RightRead, RightWrite, RightManage} {
+		if err := a.Allow("agent", "mine", want); err != nil {
+			t.Errorf("manage did not carry %s: %v", want, err)
+		}
+	}
+	st := a.State("mine")
+	// What the user ticked stays what they ticked, so unticking it takes the lot away again.
+	if st.Access != (Access{Manage: true}) {
+		t.Errorf("stored grant = %+v, want manage alone", st.Access)
+	}
+	if st.Allows != (Access{Read: true, Write: true, Manage: true}) {
+		t.Errorf("allows = %+v, want all three", st.Allows)
+	}
+}
+
+func TestWritingDoesNotQuietlyGrantReading(t *testing.T) {
+	// Reading is the one that carries a privacy cost, so it is never implied by anything
+	// but Manage, which is explicit about being the whole lot.
+	a := NewAccessService(panesIn(t, map[string]string{"agent": "t1", "mine": "t1"}))
+	a.Grant("mine", Access{Write: true})
+	if err := a.Allow("agent", "mine", RightRead); err == nil {
+		t.Error("granting write also allowed reading the screen")
+	}
+}

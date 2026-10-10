@@ -50,9 +50,24 @@ func (a *AccessService) ServiceStartup(context.Context, application.ServiceOptio
 // AccessState is what the pane's own status bar shows: who opened it, and what has been
 // opened up to the agents in its tab.
 type AccessState struct {
-	Pane   string `json:"pane"`
-	Owner  string `json:"owner"`
+	Pane  string `json:"pane"`
+	Owner string `json:"owner"`
+	// Access is what the user ticked, which is what a tick has to toggle back.
 	Access Access `json:"access"`
+	// Allows is what that actually permits once Manage is taken into account.
+	Allows Access `json:"allows"`
+}
+
+// effective spells out what a grant really permits.
+//
+// Managing a pane means it is the agent's to handle — resize it, close it, move it. Being
+// able to do that without being able to see it or type in it is not a sensible halfway
+// house, so Manage carries the other two with it.
+func effective(a Access) Access {
+	if a.Manage {
+		return Access{Read: true, Write: true, Manage: true}
+	}
+	return a
 }
 
 // Opened records that `owner` asked for `pane`, which makes it the owner.
@@ -70,7 +85,8 @@ func (a *AccessService) Opened(owner, pane string) {
 func (a *AccessService) State(pane string) AccessState {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return AccessState{Pane: pane, Owner: a.openedBy[pane], Access: a.granted[pane]}
+	g := a.granted[pane]
+	return AccessState{Pane: pane, Owner: a.openedBy[pane], Access: g, Allows: effective(g)}
 }
 
 // announce tells the windows that a pane's standing changed, so the bar repaints without
@@ -155,7 +171,7 @@ func (a *AccessService) Allow(caller, target string, want Right) error {
 	if a.Owner(target) == caller {
 		return nil
 	}
-	g := a.Of(target)
+	g := effective(a.Of(target))
 	switch want {
 	case RightRead:
 		if g.Read {
