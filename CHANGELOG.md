@@ -7,6 +7,12 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- Claude Code sessions wate starts can drive their own tab through an MCP server built into the
+  binary (`wate mcp`, stdio). Seven tools: open a pane beside or below, give it a third, a half
+  or two thirds of the space, type into it, read it back, close it, focus it. wate hands the
+  server to the sessions it launches and to nobody else — your `~/.claude/settings.json` is not
+  touched, your own MCP servers stay switched on alongside it, and a Claude started by hand in
+  a pane does not get the tools. Turn it off with `[claude] mcp = false`.
 - Panes can be opened, resized, read, written, closed and focused from the control socket:
   `wate ctl pane-split [row|col] [third|half|two-thirds|<fraction>]`, `split-ratio`,
   `pane-write`, `pane-read`, `pane-close`, `pane-focus` and `pane-list`. `--pane` says who is

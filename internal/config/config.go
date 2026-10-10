@@ -93,6 +93,8 @@ type Claude struct {
 	Notify  bool   `toml:"notify" json:"notify"`
 	// ContextWindow overrides the assumed context size in tokens (0 = guess from the model).
 	ContextWindow int `toml:"context_window" json:"context_window"`
+	// MCP hands sessions wate starts the pane tools (splits, reading, writing).
+	MCP bool `toml:"mcp" json:"mcp"`
 }
 
 // Editor is the appearance and behaviour of editor panes.

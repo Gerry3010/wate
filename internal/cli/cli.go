@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Gerry3010/wate/internal/ctl"
+	"github.com/Gerry3010/wate/internal/mcp"
 )
 
 const Usage = `wate — yet another terminal emulator
@@ -38,6 +39,7 @@ usage:
   wate theme import <file>        import a Ghostty/Alacritty/wate theme and activate it
   wate hook <event>               Claude Code hook entry point (reads JSON on stdin)
   wate install-hooks              register wate's hooks in ~/.claude/settings.json
+  wate mcp                        Model Context Protocol server (stdio), for Claude Code
 
 --pane <id> says who is asking (normally $WATE_PANE_ID); --target <id> says which pane to act
 on. A pane may always act on itself and on panes it opened; anything else has to be allowed in
@@ -144,6 +146,13 @@ func Run(args []string) int {
 			return 2
 		}
 		return runHook(args[1])
+	case "mcp":
+		// Model Context Protocol over stdin/stdout, for a Claude Code session in a wate pane.
+		if err := mcp.Run("dev"); err != nil {
+			fmt.Fprintln(os.Stderr, "mcp:", err)
+			return 1
+		}
+		return 0
 	case "install-hooks":
 		if err := InstallHooks(claudeSettingsPath()); err != nil {
 			fmt.Fprintln(os.Stderr, "install-hooks:", err)

@@ -1,0 +1,155 @@
+package mcp
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/Gerry3010/wate/internal/ctl"
+)
+
+func TestSizeUnderstandsNamesAndFractions(t *testing.T) {
+	cases := []struct {
+		in   string
+		want float64
+		bad  bool
+	}{
+		{in: "", want: 0.5},
+		{in: "half", want: 0.5},
+		{in: "Half", want: 0.5},
+		{in: "1/2", want: 0.5},
+		{in: "third", want: 1.0 / 3.0},
+		{in: "two-thirds", want: 2.0 / 3.0},
+		{in: " 0.4 ", want: 0.4},
+		{in: "0", bad: true},
+		{in: "1", bad: true},
+		{in: "120%", bad: true},
+		{in: "wide", bad: true},
+	}
+	for _, c := range cases {
+		got, err := size(c.in)
+		if c.bad {
+			if err == nil {
+				t.Errorf("size(%q) = %v, want a refusal", c.in, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("size(%q): %v", c.in, err)
+			continue
+		}
+		if diff := got - c.want; diff > 0.001 || diff < -0.001 {
+			t.Errorf("size(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+func TestDirTakesTheWordsAModelWouldUse(t *testing.T) {
+	for _, w := range []string{"beside", "right", "row", "width", "HORIZONTAL"} {
+		if got := dirOf(w, "col"); got != "row" {
+			t.Errorf("dirOf(%q) = %q, want row", w, got)
+		}
+	}
+	for _, w := range []string{"below", "down", "col", "column", "height", "vertical"} {
+		if got := dirOf(w, "row"); got != "col" {
+			t.Errorf("dirOf(%q) = %q, want col", w, got)
+		}
+	}
+	if got := dirOf("sideways-ish", "row"); got != "row" {
+		t.Errorf("an unknown word changed the default: %q", got)
+	}
+}
+
+// fakeWate stands in for a running wate on a socket of its own.
+func fakeWate(t *testing.T) (sock string, seen *[]ctl.Request) {
+	t.Helper()
+	got := make([]ctl.Request, 0, 4)
+	sock = filepath.Join(t.TempDir(), "w.sock")
+	srv, err := ctl.Listen(sock, func(r ctl.Request) ctl.Response {
+		if r.Cmd == "ping" {
+			return ctl.Response{OK: true, Data: "pong"}
+		}
+		got = append(got, r)
+		return ctl.Response{OK: true, Data: "pane-new"}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	return sock, &got
+}
+
+func TestEveryRequestSaysWhoIsAsking(t *testing.T) {
+	sock, seen := fakeWate(t)
+	t.Setenv("WATE_SOCKET", sock)
+	t.Setenv("WATE_PANE_ID", "pane-7")
+	t.Setenv("WATE_PANE_TOKEN", "tok-7")
+
+	out, err := send(ctl.Request{Cmd: "pane-split", Dir: "col", Ratio: 0.25})
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if out != "pane-new" {
+		t.Errorf("answer = %q", out)
+	}
+	if len(*seen) != 1 {
+		t.Fatalf("%d requests reached wate", len(*seen))
+	}
+	r := (*seen)[0]
+	// The pane and the token are filled in from the environment, never by the caller: a tool
+	// argument naming a pane is the *target*, and must not be able to pose as the asker.
+	if r.Pane != "pane-7" || r.Token != "tok-7" {
+		t.Errorf("pane/token = %q/%q, want pane-7/tok-7", r.Pane, r.Token)
+	}
+	if r.Dir != "col" || r.Ratio != 0.25 {
+		t.Errorf("dir/ratio = %q/%v", r.Dir, r.Ratio)
+	}
+}
+
+func TestTheTargetStaysTheTarget(t *testing.T) {
+	sock, seen := fakeWate(t)
+	t.Setenv("WATE_SOCKET", sock)
+	t.Setenv("WATE_PANE_ID", "pane-7")
+	t.Setenv("WATE_PANE_TOKEN", "tok-7")
+
+	if _, err := send(ctl.Request{Cmd: "pane-read", Target: "pane-9", Lines: 5}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	r := (*seen)[0]
+	if r.Target != "pane-9" {
+		t.Errorf("target = %q, want pane-9", r.Target)
+	}
+	if r.Pane != "pane-7" {
+		t.Errorf("the target overwrote the asker: pane = %q", r.Pane)
+	}
+}
+
+func TestOutsideAPaneItSaysSoInsteadOfGuessing(t *testing.T) {
+	t.Setenv("WATE_PANE_ID", "")
+	t.Setenv("WATE_SOCKET", "")
+	t.Setenv("WATE_PANE_TOKEN", "")
+	if _, err := send(ctl.Request{Cmd: "pane-list"}); err == nil {
+		t.Fatal("a server outside a pane pretended it could work")
+	}
+}
+
+func TestAnErrorFromWateComesBackAsOne(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "w.sock")
+	srv, err := ctl.Listen(sock, func(r ctl.Request) ctl.Response {
+		if r.Cmd == "ping" {
+			return ctl.Response{OK: true, Data: "pong"}
+		}
+		return ctl.Response{Error: "pane \"x\" has not been opened up for read"}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	t.Setenv("WATE_SOCKET", sock)
+	t.Setenv("WATE_PANE_ID", "pane-7")
+	t.Setenv("WATE_PANE_TOKEN", "")
+
+	_, err = send(ctl.Request{Cmd: "pane-read", Target: "x"})
+	if err == nil || err.Error() != "pane \"x\" has not been opened up for read" {
+		t.Fatalf("err = %v, want wate's own words", err)
+	}
+}

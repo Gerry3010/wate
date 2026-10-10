@@ -34,7 +34,7 @@ func main() {
 		case "-h", "--help", "help":
 			fmt.Print(cli.Usage)
 			return
-		case "open", "ctl", "hook", "install-hooks", "theme":
+		case "open", "ctl", "hook", "install-hooks", "theme", "mcp":
 			os.Exit(cli.Run(os.Args[1:]))
 		}
 	}

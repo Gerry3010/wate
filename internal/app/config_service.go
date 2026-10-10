@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"os"
+	"strings"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -94,4 +97,34 @@ func (c *ConfigService) Set(values map[string]any) (ConfigResponse, error) {
 		return c.Get(), err
 	}
 	return c.Reload(), nil
+}
+
+// ClaudeArgs is the command line for starting Claude Code in a pane.
+//
+// Composed here rather than in the frontend because of the --mcp-config part: it needs this
+// binary's own path. The server is handed to the sessions wate starts and to nobody else, so
+// the user's ~/.claude/settings.json stays as they left it and a Claude running outside a pane
+// is not offered tools that would fail. Note the absence of --strict-mcp-config: that would
+// switch off the user's own MCP servers for the session, which is not wate's call to make.
+func (c *ConfigService) ClaudeArgs(resume string) []string {
+	cfg := c.Current()
+	cmd := cfg.Claude.Command
+	if cmd == "" {
+		cmd = "claude"
+	}
+	args := strings.Fields(cmd)
+	if resume != "" {
+		args = append(args, "--resume", resume)
+	}
+	if cfg.Claude.MCP {
+		if exe, err := os.Executable(); err == nil {
+			spec := map[string]any{"mcpServers": map[string]any{
+				"wate": map[string]any{"command": exe, "args": []string{"mcp"}},
+			}}
+			if blob, err := json.Marshal(spec); err == nil {
+				args = append(args, "--mcp-config", string(blob))
+			}
+		}
+	}
+	return args
 }
