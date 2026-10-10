@@ -179,7 +179,7 @@ export class Sidebar {
     const why = document.createElement("div");
     why.className = "sidebar-restart-why";
     const until = st.deadline ? new Date(st.deadline).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-    why.textContent = (st.reason || "No reason given") + (until ? ` · until ${until}` : "");
+    why.textContent = [st.reason, until && `waiting until ${until}`].filter(Boolean).join(" · ");
     body.appendChild(why);
 
     for (const r of st.rows ?? []) {
@@ -188,16 +188,19 @@ export class Sidebar {
       const title = document.createElement("div");
       title.className = "sidebar-title";
       title.textContent = r.title || r.pane;
+      title.title = r.title || r.pane;
       const said = document.createElement("div");
-      said.className = "sidebar-meta";
+      said.className = "sidebar-sub";
       said.textContent =
         r.verdict === "go"
           ? "ready"
           : r.verdict === "wait"
             ? `needs ${r.minutes || "a few"} more min${r.note ? ` · ${r.note}` : ""}`
             : "no answer yet";
+      // .sidebar-main is what gives the title somewhere to be cut off: without its
+      // min-width:0 the flex row grows to fit the whole session name and runs off the panel.
       const text = document.createElement("div");
-      text.className = "sidebar-rowtext";
+      text.className = "sidebar-main";
       text.append(title, said);
       row.append(text);
       body.appendChild(row);

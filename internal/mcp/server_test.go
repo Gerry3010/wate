@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Gerry3010/wate/internal/ctl"
@@ -151,5 +152,47 @@ func TestAnErrorFromWateComesBackAsOne(t *testing.T) {
 	_, err = send(ctl.Request{Cmd: "pane-read", Target: "x"})
 	if err == nil || err.Error() != "pane \"x\" has not been opened up for read" {
 		t.Fatalf("err = %v, want wate's own words", err)
+	}
+}
+
+func TestWaitingForUserSpotsWhatOnlyTheUserCanAnswer(t *testing.T) {
+	yes := []string{
+		"[sudo] password for gerry: ",
+		"gerry@host's password:",
+		"Enter passphrase for key '/home/gerry/.ssh/id_ed25519':",
+		"Verification code:",
+		// ssh states the authenticity line and then asks on the next one; it is the asking
+		// line that is left hanging, and the only one worth matching.
+		"The authenticity of host 'srv (1.2.3.4)' can't be established.\nAre you sure you want to continue connecting (yes/no/[fingerprint])?",
+	}
+	for _, s := range yes {
+		if !waitingForUser(s) {
+			t.Errorf("missed a prompt that needs the user: %q", s)
+		}
+	}
+	no := []string{
+		"",
+		"$ ls -la",
+		"total 48\ndrwxr-xr-x 1 gerry gerry 4096 Oct 10 03:00 .",
+		"Compiling wate v0.1.0",
+		// The command that was typed is not the prompt it will produce.
+		"$ grep -n password config.yml",
+		"$ sudo systemctl restart nginx",
+		// Nor is output that merely mentions one.
+		"config.yml:12:  password: hunter2",
+	}
+	for _, s := range no {
+		if waitingForUser(s) {
+			t.Errorf("saw a prompt in ordinary output: %q", s)
+		}
+	}
+}
+
+func TestOnlyTheEndOfTheScreenCounts(t *testing.T) {
+	// A password prompt answered ten minutes ago is still somewhere in the scrollback, and
+	// mistaking it for a live one would stop every command after it.
+	old := "[sudo] password for gerry:\n" + strings.Repeat("output line\n", 20)
+	if waitingForUser(old) {
+		t.Error("an old prompt far up the screen was taken for a live one")
 	}
 }

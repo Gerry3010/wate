@@ -7,6 +7,13 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- `wate_pane_run` runs a command in a pane beside the agent and waits for it to finish. Its
+  reason for existing is the command that needs *you*: sudo, an ssh passphrase, a host key, a
+  second factor. The command runs where you can see it, and the moment it asks for something
+  only you can type, the tool returns, brings that pane to the front and tells the agent to
+  wait — so you type the password and nothing else. It watches the pane's foreground process
+  to know when the command is done, and only treats the last line as a prompt, so a command
+  that merely mentions a password does not stop everything.
 - Closing a window with agents still working in it asks first: "N agents are still running",
   with Quit, Wait and Cancel. Wait hands over to the restart round below — the same question,
   put to the agents instead of to you. The close is genuinely called off rather than undone

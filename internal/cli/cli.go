@@ -35,6 +35,7 @@ usage:
   wate ctl pane-close             close a pane
   wate ctl pane-focus             focus a pane
   wate ctl pane-list              list the panes of this tab, as JSON
+  wate ctl pane-status            what a pane is running right now, as JSON
   wate ctl restart [<min>] [<why>]
                                   ask the running agents whether wate may restart
   wate ctl restart-status         how the answers are coming in, as JSON

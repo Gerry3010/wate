@@ -198,7 +198,7 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 			return ctl.Response{Error: err.Error()}
 		}
 		return ctl.Response{OK: true}
-	case "pane-read", "pane-split", "pane-close", "pane-focus", "pane-list", "split-ratio", "pane-write", "pane-move":
+	case "pane-read", "pane-split", "pane-close", "pane-focus", "pane-list", "pane-status", "split-ratio", "pane-write", "pane-move":
 		data, err := c.pane(r)
 		if err != nil {
 			return ctl.Response{Error: err.Error()}
@@ -303,6 +303,24 @@ func (c *CtlService) pane(r ctl.Request) (any, error) {
 
 	case "pane-list":
 		return c.askPane(from, "list", map[string]any{})
+
+	case "pane-status":
+		// Answered from the backend, not the window: this is what a poll hits over and over
+		// while it waits for a command to finish, and it has to be cheap and current rather
+		// than a round trip through a web view that is busy drawing the output.
+		if _, ok := c.pty.TabForPane(target); !ok {
+			return nil, fmt.Errorf("no such pane %q", target)
+		}
+		if ct, _ := c.pty.TabForPane(from); ct != "" {
+			if tt, _ := c.pty.TabForPane(target); tt != ct {
+				return nil, fmt.Errorf("pane %q is in another tab", target)
+			}
+		}
+		cmd, err := c.pty.Command(target)
+		if err != nil {
+			return nil, err
+		}
+		return cmd, nil
 
 	case "split-ratio":
 		if err := c.access.Allow(from, target, RightManage); err != nil {

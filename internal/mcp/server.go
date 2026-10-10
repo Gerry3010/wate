@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -26,6 +27,7 @@ import (
 func Run(version string) error {
 	s := mcp.NewServer(&mcp.Implementation{Name: "wate", Version: version}, nil)
 	register(s)
+	registerRun(s)
 	err := s.Run(context.Background(), &mcp.StdioTransport{})
 	// The client closing its end is how this ends normally, not something to report.
 	if err != nil && (errors.Is(err, io.EOF) || strings.Contains(err.Error(), "EOF")) {
@@ -126,6 +128,12 @@ type respondIn struct {
 	Verdict string `json:"verdict" jsonschema:"go if stopping now costs nothing, wait if you need longer"`
 	Minutes int    `json:"minutes,omitempty" jsonschema:"roughly how many more minutes you need, when the verdict is wait"`
 	Note    string `json:"note,omitempty" jsonschema:"one short line on what you are in the middle of"`
+}
+
+type runIn struct {
+	Command string `json:"command" jsonschema:"the shell command to run"`
+	Pane    string `json:"pane,omitempty" jsonschema:"the pane to run it in; leave empty to use (or open) your work pane"`
+	Seconds int    `json:"seconds,omitempty" jsonschema:"how long to wait for it to finish before reporting back, default 60"`
 }
 
 type emptyIn struct{}
@@ -254,5 +262,132 @@ func register(s *mcp.Server) {
 			return nil, nil, err
 		}
 		return text("Focused."), nil, nil
+	})
+}
+
+// workPane is the pane this server opened for running things in, reused across calls so a
+// session does not end up with a row of abandoned terminals.
+var workPane string
+
+// needsYou spots the prompts that cannot be answered from here — a password, a passphrase, a
+// host key, a second factor. They all mean the same thing: the pane is waiting for the user.
+var needsYou = []string{
+	"password", "passphrase", "verification code", "(yes/no", "fingerprint",
+}
+
+// waitingForUser looks at the last line only, and only when it reads like a question left
+// hanging: something that asks and then stops, with the cursor after it.
+//
+// Looking at the whole screen catches the command that was typed as readily as the prompt it
+// produced — `grep password config.yml` would stop every run — and a password asked for ten
+// minutes ago is still up there in the scrollback.
+func waitingForUser(screen string) bool {
+	lines := strings.Split(strings.TrimRight(screen, " \t\r\n"), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	last := strings.ToLower(strings.TrimRight(lines[len(lines)-1], " \t"))
+	if last == "" {
+		return false
+	}
+	// A prompt ends where the answer would go.
+	if !strings.HasSuffix(last, ":") && !strings.HasSuffix(last, "?") && !strings.HasSuffix(last, "]") {
+		return false
+	}
+	for _, p := range needsYou {
+		if strings.Contains(last, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// paneIsBusy reports the name of what a pane is running, "" for the shell itself.
+func paneIsBusy(pane string) (string, error) {
+	out, err := send(ctl.Request{Cmd: "pane-status", Target: pane})
+	if err != nil {
+		return "", err
+	}
+	var st struct {
+		Name string `json:"name"`
+	}
+	if json.Unmarshal([]byte(out), &st) != nil {
+		return "", nil
+	}
+	return st.Name, nil
+}
+
+func registerRun(s *mcp.Server) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "wate_pane_run",
+		Description: "Run a shell command in a pane beside you and wait for it to finish, then " +
+			"return what it printed. Use this for anything that needs the user — sudo, an ssh " +
+			"passphrase, a host key, a second factor: the command runs where they can see it, " +
+			"and when it asks for something only they can type, this returns straight away, " +
+			"brings the pane to the front and tells you so. Call it again afterwards with an " +
+			"empty command to pick the output back up. Without a pane it uses (and if need be " +
+			"opens) one work pane, which it then keeps using." + scope,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in runIn) (*mcp.CallToolResult, any, error) {
+		pane := in.Pane
+		if pane == "" {
+			pane = workPane
+		}
+		if pane == "" {
+			id, err := send(ctl.Request{Cmd: "pane-split", Dir: "col", Ratio: 1.0 / 3.0})
+			if err != nil {
+				return nil, nil, err
+			}
+			workPane, pane = id, id
+		}
+		if in.Command != "" {
+			if _, err := send(ctl.Request{Cmd: "pane-write", Target: pane, Text: in.Command + "\n"}); err != nil {
+				return nil, nil, err
+			}
+		}
+
+		seconds := in.Seconds
+		if seconds <= 0 {
+			seconds = 60
+		}
+		begin := time.Now()
+		deadline := begin.Add(time.Duration(seconds) * time.Second)
+		started := false
+		for time.Now().Before(deadline) {
+			select {
+			case <-ctx.Done():
+				return nil, nil, ctx.Err()
+			case <-time.After(400 * time.Millisecond):
+			}
+			screen, err := send(ctl.Request{Cmd: "pane-read", Target: pane, Lines: 40})
+			if err != nil {
+				return nil, nil, err
+			}
+			if waitingForUser(screen) {
+				// Put it in front of them; this is the whole point of running it in a pane.
+				_, _ = send(ctl.Request{Cmd: "pane-focus", Target: pane})
+				return text("Pane " + pane + " is waiting for you to type something (a password, " +
+					"a passphrase or a confirmation). It is in front of you now. The last lines:\n\n" +
+					screen), nil, nil
+			}
+			busy, err := paneIsBusy(pane)
+			if err != nil {
+				return nil, nil, err
+			}
+			if busy != "" {
+				started = true
+				continue
+			}
+			// Back at the shell. A command that has not got going yet gets a couple of
+			// seconds to appear, so something short-lived is not mistaken for nothing at all.
+			if started || time.Since(begin) > 2*time.Second {
+				out, err := send(ctl.Request{Cmd: "pane-read", Target: pane, Lines: 60})
+				if err != nil {
+					return nil, nil, err
+				}
+				return text(out), nil, nil
+			}
+		}
+		out, _ := send(ctl.Request{Cmd: "pane-read", Target: pane, Lines: 40})
+		return text("Still running after the time allowed. The last lines:\n\n" + out), nil, nil
 	})
 }
