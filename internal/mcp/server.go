@@ -122,6 +122,12 @@ type ratioIn struct {
 	Pane      string `json:"pane,omitempty" jsonschema:"the pane to resize; leave empty for your own"`
 }
 
+type respondIn struct {
+	Verdict string `json:"verdict" jsonschema:"go if stopping now costs nothing, wait if you need longer"`
+	Minutes int    `json:"minutes,omitempty" jsonschema:"roughly how many more minutes you need, when the verdict is wait"`
+	Note    string `json:"note,omitempty" jsonschema:"one short line on what you are in the middle of"`
+}
+
 type emptyIn struct{}
 
 // dirOf maps the words a model reaches for onto the layout's two directions.
@@ -219,6 +225,24 @@ func register(s *mcp.Server) {
 			return nil, nil, err
 		}
 		return text("Closed."), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "wate_restart_respond",
+		Description: "Answer the user's question about restarting wate, which would end this " +
+			"session. Say \"go\" when you are at a point where stopping costs nothing, or " +
+			"\"wait\" with a rough number of minutes when you are in the middle of something. " +
+			"Nothing is ended without the user pressing the button, so an honest estimate is " +
+			"worth more than a quick yes. Answer once and carry on working.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in respondIn) (*mcp.CallToolResult, any, error) {
+		v := strings.TrimSpace(strings.ToLower(in.Verdict))
+		if v != "go" && v != "wait" {
+			return nil, nil, fmt.Errorf("verdict must be go or wait, not %q", in.Verdict)
+		}
+		if _, err := send(ctl.Request{Cmd: "restart-respond", Name: v, Lines: in.Minutes, Text: in.Note}); err != nil {
+			return nil, nil, err
+		}
+		return text("Answered: " + v), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

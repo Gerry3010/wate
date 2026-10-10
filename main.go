@@ -5,7 +5,9 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -98,6 +100,8 @@ func main() {
 	themeSvc := app.NewThemeService(cfgSvc.Current)
 	notifySvc := notifications.New()
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc, winSvc)
+	restartSvc := app.NewRestartService(agentSvc, winSvc)
+	ctlSvc.Restart = restartSvc
 	// Quitting: hand the primary role to whoever starts next, then let Claude Code shut down
 	// before the shells get their SIGHUP.
 	winSvc.OnClosed = func(key string) { stateSvc.Remove(key) }
@@ -105,6 +109,7 @@ func main() {
 		// Shutting down: every window is about to close, and they must keep their tabs.
 		winSvc.MarkQuitting()
 		ctlSvc.Resign()
+		restartSvc.Forget()
 		agentSvc.StopSessions(ctx)
 	}
 	wp := &wallpaper.Handler{Path: func() string { return cfgSvc.Current().Background.Wallpaper }}
@@ -124,10 +129,14 @@ func main() {
 	application.RegisterEvent[app.FullscreenState]("window:fullscreen")
 	application.RegisterEvent[app.PaneRequest]("pane:request")
 	application.RegisterEvent[app.AccessState]("access:changed")
+	application.RegisterEvent[app.RestartStatus]("restart:changed")
 
 	wapp := application.New(application.Options{
 		Name:        "wate",
 		Description: "yet another terminal emulator",
+		// Only ever says no while a restart the user started is still being arranged; the
+		// ordinary ways of closing wate are untouched.
+		ShouldQuit: restartSvc.MayQuit,
 		Services: []application.Service{
 			application.NewService(cfgSvc),
 			application.NewService(ctlSvc),
@@ -144,6 +153,7 @@ func main() {
 			application.NewService(winSvc),
 			application.NewService(paneBridge),
 			application.NewService(accessSvc),
+			application.NewService(restartSvc),
 			application.NewService(app.NewImportService(cfgSvc)),
 			application.NewServiceWithOptions(wp, application.ServiceOptions{Name: "Wallpaper", Route: "/wallpaper"}),
 		},
@@ -211,10 +221,49 @@ func main() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 		<-sig
+		// A signal is an order. Whatever is being arranged, it does not outrank this.
+		restartSvc.Allow()
 		wapp.Quit()
 	}()
 
 	if err := wapp.Run(); err != nil {
 		log.Fatal(err)
 	}
+
+	// A restart is "quit, then start again". Doing it here, after everything has shut down
+	// and the session has been written, means the new wate finds a tidy house: the socket is
+	// gone, the shells are gone, and the saved tabs are the ones that were on screen.
+	//
+	// A new process rather than syscall.Exec, which looks tidier but is not: exec keeps the
+	// calling thread's signal mask, and the Go runtime has most signals blocked on the thread
+	// it happens to run on — the replacement came up ignoring SIGTERM, which is a terminal
+	// that cannot be closed from a script. Starting a child in its own session has none of
+	// that, and --standalone keeps it from trying to hand itself back to the instance that
+	// is on its way out.
+	if restartSvc.Relaunch() {
+		if err := relaunch(); err != nil {
+			log.Println("restart:", err)
+		}
+	}
+}
+
+// relaunch starts a fresh wate and lets this one finish.
+func relaunch() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	args := []string{}
+	for _, a := range os.Args[1:] {
+		if a != "--standalone" && a != "--new-window" {
+			args = append(args, a)
+		}
+	}
+	args = append(args, "--standalone")
+	cmd := exec.Command(exe, args...)
+	cmd.Env = os.Environ()
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	slog.Info("restarting", "args", args)
+	return cmd.Start()
 }

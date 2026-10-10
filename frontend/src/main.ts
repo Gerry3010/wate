@@ -53,6 +53,7 @@ async function boot() {
   onMine("ctl:new-tab", (d: { path: string }) => {
     void app.newTab({ cwd: d.path });
   });
+  Events.On("restart:changed", (ev: { data: Parameters<typeof app.onRestartChanged>[0] }) => app.onRestartChanged(ev.data));
   Events.On("access:changed", (ev: { data: Parameters<typeof app.onAccessChanged>[0] }) => app.onAccessChanged(ev.data));
   Events.On("agent:status", (ev: { data: Parameters<typeof app.onAgentStatus>[0] }) => app.onAgentStatus(ev.data));
   onMine("window:activate-tab", (d: { tab: string; pane: string }) => app.activateTab(d.tab, d.pane));

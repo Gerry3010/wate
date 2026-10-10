@@ -171,3 +171,25 @@
 
 /* A session running in another window: still listed, clicking it raises that window. */
 .sidebar-row.elsewhere .status-dot { opacity: 0.6; }
+
+/* ---- the restart round, while one is open ------------------------------ */
+.sidebar-restart .sidebar-sectionname { color: var(--yellow); }
+.sidebar-restart-why {
+  padding: 2px 10px 6px;
+  font-size: 11px;
+  color: var(--tab-inactive-fg);
+}
+.sidebar-restart-actions { display: flex; gap: 6px; padding: 6px 10px 2px; }
+.sidebar-restart-actions button {
+  flex: 1 1 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.sidebar-restart-actions button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.sidebar-restart-go { border-color: color-mix(in srgb, var(--yellow) 55%, transparent) !important; color: var(--yellow) !important; }

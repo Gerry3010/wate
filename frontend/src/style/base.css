@@ -562,6 +562,9 @@ html, body {
 .pane-terminal { display: flex; flex-direction: column; }
 .pane-term-body { flex: 1 1 0; min-height: 0; min-width: 0; overflow: hidden; position: relative; }
 .pane-terminal .pane-term-body .xterm { height: 100%; }
+/* The class sets display, which beats the browser's own rule for [hidden] — without this the
+   bar would show on a pane that is alone in its tab, which is the one case it is not for. */
+.pane-bar[hidden] { display: none; }
 .pane-bar {
   flex: 0 0 auto;
   display: flex;
@@ -575,6 +578,7 @@ html, body {
   user-select: none;
 }
 .pane.focused > .pane-bar { color: var(--fg); }
+.pane-bar-origin[hidden], .pane-bar-chips[hidden], .pane-bar .status-dot[hidden] { display: none; }
 .pane-bar-origin {
   flex: 0 0 auto;
   padding: 0 4px;

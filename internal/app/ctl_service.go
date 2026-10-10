@@ -48,6 +48,9 @@ type CtlService struct {
 	windows *WindowService
 	bridge  *PaneBridge
 	access  *AccessService
+	// Restart is set after construction: the restart service needs the agent service, which
+	// needs this one.
+	Restart *RestartService
 	server  *ctl.Server
 	// OnHook is set by the agent service.
 	OnHook func(HookEvent)
@@ -168,6 +171,33 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 			return ctl.Response{Error: err.Error()}
 		}
 		return ctl.Response{OK: true}
+	case "restart":
+		if c.Restart == nil {
+			return ctl.Response{Error: "restarts are not set up"}
+		}
+		return ctl.Response{OK: true, Data: c.Restart.Announce(r.Text, r.Lines)}
+	case "restart-status":
+		if c.Restart == nil {
+			return ctl.Response{Error: "restarts are not set up"}
+		}
+		return ctl.Response{OK: true, Data: c.Restart.Status()}
+	case "restart-now":
+		// Deliberately not an MCP tool: ending the user's terminal is the user's decision, and
+		// an agent that wanted to do it anyway could already run pkill. What this is for is
+		// scripting and the dialog's own button.
+		if c.Restart == nil {
+			return ctl.Response{Error: "restarts are not set up"}
+		}
+		go c.Restart.Proceed(r.Name != "quit")
+		return ctl.Response{OK: true}
+	case "restart-respond":
+		if c.Restart == nil {
+			return ctl.Response{Error: "restarts are not set up"}
+		}
+		if err := c.Restart.Respond(c.caller(r), r.Name, r.Lines, r.Text); err != nil {
+			return ctl.Response{Error: err.Error()}
+		}
+		return ctl.Response{OK: true}
 	case "pane-read", "pane-split", "pane-close", "pane-focus", "pane-list", "split-ratio", "pane-write", "pane-move":
 		data, err := c.pane(r)
 		if err != nil {
@@ -198,6 +228,14 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		// OnHook is always wired (main.go); there is no frontend listener for this.
 		if c.OnHook != nil {
 			c.OnHook(ev)
+		}
+		// The hook is wate's only way into a running session that does not type into its
+		// terminal, so anything wate needs to tell the agent rides back on this reply and the
+		// hook prints it as context. Usually there is nothing to say.
+		if c.Restart != nil {
+			if text := c.Restart.TellPane(r.Pane); text != "" {
+				return ctl.Response{OK: true, Data: text}
+			}
 		}
 		return ctl.Response{OK: true}
 	default:

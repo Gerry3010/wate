@@ -1,4 +1,4 @@
-import { AgentStateService, type SavedAgentSession, type Session } from "../api";
+import { AgentStateService, type RestartStatus, type SavedAgentSession, type Session } from "../api";
 import type { AgentStore } from "../agent/store";
 import { DOTS } from "../ui/icons";
 import { showMenu, type MenuEntry } from "../ui/menu";
@@ -7,6 +7,10 @@ import { groupSessions, rowCwd, rowTitle, type Row } from "./groups";
 export interface SidebarHost {
   jumpTo(session: Session): void;
   launch(): void;
+  /** The user pressed the button: stop waiting and restart. */
+  restartNow(): void;
+  /** Call the whole thing off. */
+  restartCancel(): void;
   launchLabel: string;
   /** Key that toggles the panel, for tooltips. */
   toggleLabel?: string;
@@ -101,10 +105,26 @@ export class Sidebar {
     return !this.element.hidden;
   }
 
+  /** The pending restart, if the user has started one. */
+  private restart: RestartStatus | null = null;
+
+  /** A restart round opened, changed or ended. */
+  setRestart(st: RestartStatus | null) {
+    this.restart = st && st.pending ? st : null;
+    this.render();
+  }
+
   render() {
     // The store fires on every status tick; a hidden panel has nothing to show for it.
     if (!this.visible) return;
     const { favorites, others } = groupSessions(this.store.list(), this.saved);
+    if (this.restart) {
+      const blocks = [this.restartBlock(this.restart)];
+      if (favorites.length) blocks.push(this.section("favorites", "Favourites", favorites));
+      blocks.push(this.section("sessions", "Sessions", others));
+      this.list.replaceChildren(...blocks);
+      return;
+    }
     if (favorites.length === 0 && others.length === 0) {
       const empty = document.createElement("div");
       empty.className = "sidebar-empty";
@@ -130,6 +150,74 @@ export class Sidebar {
     this.synced.set(r.id, stamp);
     if (r.saved && r.saved.cwd === r.live.cwd && r.saved.title === r.live.title) return;
     void this.remember({ ...(r.saved ?? blank(r.id)), cwd: r.live.cwd, title: r.live.title });
+  }
+
+  /**
+   * The restart round, at the top of the panel while it is open.
+   *
+   * It lives here rather than in a window of its own because this is already the list of
+   * sessions, it stays open while the answers come in, and it repaints itself. A dialog would
+   * have to be all three again.
+   */
+  private restartBlock(st: RestartStatus): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "sidebar-section sidebar-restart";
+
+    const head = document.createElement("div");
+    head.className = "sidebar-sectionhead";
+    const name = document.createElement("span");
+    name.className = "sidebar-sectionname";
+    name.textContent = "Restart";
+    const count = document.createElement("span");
+    count.className = "sidebar-sectioncount";
+    count.textContent = `${st.agreed}/${st.rows?.length ?? 0}`;
+    head.append(name, count);
+
+    const body = document.createElement("div");
+    body.className = "sidebar-sectionbody";
+
+    const why = document.createElement("div");
+    why.className = "sidebar-restart-why";
+    const until = st.deadline ? new Date(st.deadline).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    why.textContent = (st.reason || "No reason given") + (until ? ` · until ${until}` : "");
+    body.appendChild(why);
+
+    for (const r of st.rows ?? []) {
+      const row = document.createElement("div");
+      row.className = "sidebar-row";
+      const title = document.createElement("div");
+      title.className = "sidebar-title";
+      title.textContent = r.title || r.pane;
+      const said = document.createElement("div");
+      said.className = "sidebar-meta";
+      said.textContent =
+        r.verdict === "go"
+          ? "ready"
+          : r.verdict === "wait"
+            ? `needs ${r.minutes || "a few"} more min${r.note ? ` · ${r.note}` : ""}`
+            : "no answer yet";
+      const text = document.createElement("div");
+      text.className = "sidebar-rowtext";
+      text.append(title, said);
+      row.append(text);
+      body.appendChild(row);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "sidebar-restart-actions";
+    const go = document.createElement("button");
+    go.className = "sidebar-restart-go";
+    go.textContent = st.unanswered || st.waiting ? "Restart anyway" : "Restart now";
+    go.addEventListener("click", () => this.host.restartNow());
+    const stop = document.createElement("button");
+    stop.className = "sidebar-restart-cancel";
+    stop.textContent = "Cancel";
+    stop.addEventListener("click", () => this.host.restartCancel());
+    actions.append(go, stop);
+    body.appendChild(actions);
+
+    wrap.append(head, body);
+    return wrap;
   }
 
   private section(key: string, label: string, rows: Row[]): HTMLElement {

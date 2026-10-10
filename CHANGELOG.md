@@ -7,6 +7,18 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- wate can ask the agents before it restarts. "Prepare restart…" in the Sessions menu (or
+  `wate ctl restart`) puts the question to every running Claude Code session; each can answer
+  `go`, or `wait` with a rough number of minutes and a line about what it is in the middle of.
+  The answers appear in the Claude panel as they come in, with two buttons. The deadline only
+  changes what the panel says — nothing is ever ended without you pressing the button, which is
+  why an estimate is worth asking for in the first place.
+  The question reaches a session through wate's own hooks, which is the only way into a running
+  agent that does not type into its terminal, and each session is told once and reminded once as
+  the deadline comes up. `PostToolUse` joins the installed hooks for this: it is the one event
+  that fires while an agent is busy, and a busy agent is exactly the one worth asking.
+  Restarting means quitting and starting again, with the session restored — so the new build is
+  the one that comes back.
 - A pane can be moved to another tab, or out into one of its own, without restarting anything:
   its shell keeps running, its scrollback comes along, and a command mid-flight does not notice.
   Nothing is rebuilt — a pane is an object with a socket and a terminal in it, and only its

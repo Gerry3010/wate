@@ -36,6 +36,8 @@ export interface TabBarHost {
   moveTabToWindow(tab: Tab, to: string): void;
   /** A tab was let go outside this window (point in this window's client coordinates). */
   dropTabOutside(tab: Tab, x: number, y: number): void;
+  /** Ask the running agents whether wate may restart. */
+  prepareRestart(): void;
   /** Saved sessions for the dropdown. */
   listSessions(): Promise<SessionInfo[]>;
   saveSession(name: string): void;
@@ -395,7 +397,11 @@ export class TabBar {
         });
       }
     }
-    entries.push("separator", { label: "Import tabs from another terminal…", onSelect: () => this.host.openImport() });
+    entries.push(
+      "separator",
+      { label: "Prepare restart…", hint: "ask the agents first", onSelect: () => this.host.prepareRestart() },
+      { label: "Import tabs from another terminal…", onSelect: () => this.host.openImport() },
+    );
     const el = showMenu(x, y, entries);
     if (alignRight) {
       const r = el.getBoundingClientRect();

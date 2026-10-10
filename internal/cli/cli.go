@@ -35,6 +35,12 @@ usage:
   wate ctl pane-close             close a pane
   wate ctl pane-focus             focus a pane
   wate ctl pane-list              list the panes of this tab, as JSON
+  wate ctl restart [<min>] [<why>]
+                                  ask the running agents whether wate may restart
+  wate ctl restart-status         how the answers are coming in, as JSON
+  wate ctl restart-now [quit]     stop waiting: restart, or just quit
+  wate ctl restart-respond go|wait [<min>] [<note>]
+                                  answer, from inside the session that was asked
   wate ctl new-window [<dir>]     open another window
   wate ctl ping                   check the control socket
   wate theme import <file>        import a Ghostty/Alacritty/wate theme and activate it
@@ -115,6 +121,32 @@ func Run(args []string) int {
 			req.Text = rest
 		case "pane-move":
 			req.Name = rest
+		case "restart":
+			// `restart [<minutes>] [<reason…>]`
+			if len(words) > 0 {
+				if n, err := strconv.Atoi(words[0]); err == nil {
+					req.Lines = n
+					words = words[1:]
+				}
+			}
+			req.Text = strings.Join(words, " ")
+		case "restart-now":
+			req.Name = rest
+		case "restart-respond":
+			// `restart-respond go|wait [<minutes>] [<note…>]`
+			if len(words) == 0 {
+				fmt.Fprintln(os.Stderr, "wate: say go or wait")
+				return 2
+			}
+			req.Name = words[0]
+			words = words[1:]
+			if len(words) > 0 {
+				if n, err := strconv.Atoi(words[0]); err == nil {
+					req.Lines = n
+					words = words[1:]
+				}
+			}
+			req.Text = strings.Join(words, " ")
 		case "pane-split", "split-ratio":
 			for _, w := range words {
 				switch {
@@ -200,12 +232,36 @@ func runHook(event string) int {
 	if !json.Valid(data) {
 		data = nil
 	}
-	resp, err := ctl.Send(sock, ctl.Request{Cmd: "hook", Event: event, Pane: os.Getenv("WATE_PANE_ID"), Tab: os.Getenv("WATE_TAB_ID"), Data: data})
+	resp, err := ctl.Send(sock, ctl.Request{
+		Cmd:   "hook",
+		Event: event,
+		Pane:  os.Getenv("WATE_PANE_ID"),
+		Tab:   os.Getenv("WATE_TAB_ID"),
+		Token: os.Getenv("WATE_PANE_TOKEN"),
+		Data:  data,
+	})
 	// The app may be gone; never fail the hook because of us, but say why on stderr.
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "wate hook:", err)
-	} else if !resp.OK {
+		return 0
+	}
+	if !resp.OK {
 		fmt.Fprintln(os.Stderr, "wate hook:", resp.Error)
+		return 0
+	}
+	// Anything wate wants the session to know rides back on this reply, and the only way to
+	// put it in front of the model is a hook's own stdout. Exit code stays 0: a hook that
+	// fails is a hook that gets in the way.
+	if text, ok := resp.Data.(string); ok && text != "" && tellsClaude[event] {
+		out, err := json.Marshal(map[string]any{
+			"hookSpecificOutput": map[string]any{
+				"hookEventName":     event,
+				"additionalContext": text,
+			},
+		})
+		if err == nil {
+			fmt.Println(string(out))
+		}
 	}
 	return 0
 }

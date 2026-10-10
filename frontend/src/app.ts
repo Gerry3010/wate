@@ -1,6 +1,6 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { AccessService, AgentService, ConfigService, OpenerService, PaneBridge, PtyService, SessionService, StateService, ThemeService, WindowService, type Access, type AccessState, type Config, type Resolved, type Session, type Target } from "./api";
+import { AccessService, AgentService, ConfigService, OpenerService, PaneBridge, RestartService, PtyService, SessionService, StateService, ThemeService, WindowService, type Access, type AccessState, type Config, type Resolved, type Session, type Target } from "./api";
 import { fromImported, parseWindow, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
@@ -80,6 +80,7 @@ export class WateApp {
       },
       moveTabToWindow: (t, to) => void this.moveTabToWindow(t, to),
       dropTabOutside: (t, x, y) => void this.dropTabOutside(t, x, y),
+      prepareRestart: () => void this.prepareRestart(),
       listSessions: async () => (await SessionService.List()) ?? [],
       saveSession: (name) => void this.saveNamedSession(name),
       openSession: (id) => void this.openNamedSession(id),
@@ -90,6 +91,8 @@ export class WateApp {
     this.sidebar = new Sidebar(this.agents, {
       jumpTo: (s) => this.jumpToSession(s),
       launch: () => void this.launchClaude(),
+      restartNow: () => void RestartService.Proceed(true),
+      restartCancel: () => void RestartService.Cancel().catch((err) => console.warn("restart:", err)),
       launchLabel: this.keymap.label("launch_claude") || "Launch",
       toggleLabel: this.keymap.label("toggle_sidebar"),
       onVisibility: () => this.active?.render(),
@@ -350,6 +353,18 @@ export class WateApp {
         );
       }
     }
+  }
+
+  /** A restart round opened, changed or ended. */
+  onRestartChanged(st: Parameters<typeof this.sidebar.setRestart>[0]) {
+    // The panel is where the round is shown, so it has to be open to be of any use.
+    if (st?.pending) this.sidebar.toggle(true);
+    this.sidebar.setRestart(st);
+  }
+
+  /** Ask every running session whether wate may restart. */
+  async prepareRestart(): Promise<void> {
+    await RestartService.Announce("", 5).catch((err) => console.warn("restart:", err));
   }
 
   /** A pane's standing changed in the backend (a grant, or an agent opening a pane). */
