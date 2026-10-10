@@ -1,12 +1,29 @@
 package mcp
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Gerry3010/wate/internal/ctl"
 )
+
+// sockPath is a short path to listen on.
+//
+// Not t.TempDir(): that spells the test's name into the directory, and a Unix socket's path
+// is capped at around a hundred characters. On macOS the temporary root eats half of that on
+// its own, so a descriptive test name is enough to turn a listen into "invalid argument" —
+// which is exactly how this was found, on CI and not here.
+func sockPath(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "wate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, "w.sock")
+}
 
 func TestSizeUnderstandsNamesAndFractions(t *testing.T) {
 	cases := []struct {
@@ -64,7 +81,7 @@ func TestDirTakesTheWordsAModelWouldUse(t *testing.T) {
 func fakeWate(t *testing.T) (sock string, seen *[]ctl.Request) {
 	t.Helper()
 	got := make([]ctl.Request, 0, 4)
-	sock = filepath.Join(t.TempDir(), "w.sock")
+	sock = sockPath(t)
 	srv, err := ctl.Listen(sock, func(r ctl.Request) ctl.Response {
 		if r.Cmd == "ping" {
 			return ctl.Response{OK: true, Data: "pong"}
@@ -134,7 +151,7 @@ func TestOutsideAPaneItSaysSoInsteadOfGuessing(t *testing.T) {
 }
 
 func TestAnErrorFromWateComesBackAsOne(t *testing.T) {
-	sock := filepath.Join(t.TempDir(), "w.sock")
+	sock := sockPath(t)
 	srv, err := ctl.Listen(sock, func(r ctl.Request) ctl.Response {
 		if r.Cmd == "ping" {
 			return ctl.Response{OK: true, Data: "pong"}
@@ -202,7 +219,7 @@ func TestOnlyTheEndOfTheScreenCounts(t *testing.T) {
 func wateWithout(t *testing.T, gone string) (sock string, splits *int) {
 	t.Helper()
 	n := 0
-	sock = filepath.Join(t.TempDir(), "w.sock")
+	sock = sockPath(t)
 	srv, err := ctl.Listen(sock, func(r ctl.Request) ctl.Response {
 		switch {
 		case r.Cmd == "ping":
