@@ -977,6 +977,7 @@ export class WateApp {
   // ---- panes ------------------------------------------------------------
 
   private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean; id?: string; adopt?: boolean }): TerminalPane {
+    const owner = () => this.tabOfPane(pane.id) ?? tab;
     const pane: TerminalPane = new TerminalPane({
       // An adopted pane keeps its id: that is how the backend finds the shell it already has,
       // and it is what the shell's own WATE_PANE_ID says.
@@ -991,10 +992,13 @@ export class WateApp {
       theme: this.termTheme(),
       fontDelta: this.fontDelta,
       keyFilter: (e) => this.keymap.match(e) === null,
-      onExit: () => this.removePane(tab, pane),
-      onTitle: () => tab.onChange?.(),
-      onOpenFile: (t) => this.openTarget(tab, t),
-      onBarDrag: (e) => tab.startPaneDrag(pane.id, e),
+      // Looked up when they fire, not captured: a pane can be moved to another tab, and a
+      // callback still pointing at the tab it was born in would act on a tab that no longer
+      // holds it — the drag would do nothing, and an exit would leave the pane on screen.
+      onExit: () => this.removePane(owner(), pane),
+      onTitle: () => owner().onChange?.(),
+      onOpenFile: (t) => this.openTarget(owner(), t),
+      onBarDrag: (e) => owner().startPaneDrag(pane.id, e),
     });
     pane.bar.setHost(this.statusHost());
     return pane;
@@ -1048,15 +1052,17 @@ export class WateApp {
   }
 
   private makeEditor(tab: Tab, path: string, line?: number, col?: number): EditorPane {
+    const owner = () => this.tabOfPane(pane.id) ?? tab;
     const pane: EditorPane = new EditorPane({
       paneId: nextId("pane"),
       path,
       line,
       col,
       editor: this.config.editor,
-      onTitle: () => tab.onChange?.(),
-      onClose: () => void this.closePane(tab, pane),
-      onLink: (href, fromDir) => this.openPreviewLink(tab, href, fromDir),
+      // Same reason as the terminal's: an editor can be moved to another tab too.
+      onTitle: () => owner().onChange?.(),
+      onClose: () => void this.closePane(owner(), pane),
+      onLink: (href, fromDir) => this.openPreviewLink(owner(), href, fromDir),
     });
     return pane;
   }

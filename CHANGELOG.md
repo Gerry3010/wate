@@ -150,6 +150,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- A pane that has been moved to another tab still answers for itself. Its callbacks held on to
+  the tab it was created in, so after a move the drag did nothing, a shell exiting left the
+  pane on screen as a dead terminal, and a file opened from it landed in the wrong tab. They
+  look up the tab that holds the pane now.
 - "Resume" on a restored pane brings the session back with the same flags wate would have
   started it with. It assembled the command line by hand, which meant a session picked up
   after a restart came back without the pane tools — exactly the session most likely to be
