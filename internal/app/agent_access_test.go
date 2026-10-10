@@ -113,6 +113,46 @@ func TestAnUnknownPaneIsNotAnOpening(t *testing.T) {
 	}
 }
 
+func TestReadAndWriteTogetherHandOverThePane(t *testing.T) {
+	// Write on its own is an offer the user accepts by pressing Enter. Ticking Read as well
+	// says "this pane is yours" — the agent can already see what it typed, so withholding the
+	// Return key would leave it stuck rather than safe.
+	a := NewAccessService(panesIn(t, map[string]string{"agent": "t1", "mine": "t1"}))
+
+	a.Grant("mine", Access{Write: true})
+	if a.Submits("agent", "mine") {
+		t.Error("a bare Write grant sent the command off by itself")
+	}
+	a.Grant("mine", Access{Read: true, Write: true})
+	if !a.Submits("agent", "mine") {
+		t.Error("Read and Write together still would not press Enter")
+	}
+
+	// Read alone is not a licence to type at all, let alone to run.
+	a.Grant("mine", Access{Read: true})
+	if a.Submits("agent", "mine") {
+		t.Error("Read alone was taken for permission to run commands")
+	}
+	// Manage fills in the other two in the menu, but the policy only ever reads what is set.
+	a.Grant("mine", Access{Manage: true})
+	if a.Submits("agent", "mine") {
+		t.Error("Manage on its own was taken for permission to run commands")
+	}
+
+	// A pane of one's own needs no grant, and neither does the caller itself.
+	a.Opened("agent", "side")
+	if !a.Submits("agent", "side") {
+		t.Error("an agent could not press Enter in a pane it opened")
+	}
+	if !a.Submits("agent", "agent") {
+		t.Error("a pane could not press Enter in itself")
+	}
+	// And a pane nobody opened up is still closed.
+	if a.Submits("agent", "stranger") {
+		t.Error("an ungranted pane accepted a command")
+	}
+}
+
 func TestTypableKeepsTextAndDropsTheKeysThatAct(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"ls -la", "ls -la"},

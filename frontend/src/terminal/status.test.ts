@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { afterToggle, statusView } from "./status";
+import { afterToggle, statusView, writeMeans } from "./status";
 
 const none = { read: false, write: false, manage: false };
 
@@ -33,6 +33,16 @@ describe("statusView", () => {
     expect(v.chipTitle).not.toContain("type into");
   });
 
+  it("says the agent may run things once Read and Write are both on", () => {
+    // The two ticks together hand the pane over, Enter and all, so the hover text has to
+    // promise more than typing. Write on its own must not.
+    const both = statusView({ openedByAgent: false, command: "zsh", access: { read: true, write: true, manage: false } });
+    expect(both.chipTitle).toContain("run commands");
+    const typing = statusView({ openedByAgent: false, command: "zsh", access: { read: false, write: true, manage: false } });
+    expect(typing.chipTitle).toContain("type into");
+    expect(typing.chipTitle).not.toContain("run commands");
+  });
+
   it("spells all three out when everything is open", () => {
     const v = statusView({ openedByAgent: true, command: "tail", access: { read: true, write: true, manage: true } });
     expect(v.chips).toEqual(["R", "W", "M"]);
@@ -64,5 +74,16 @@ describe("afterToggle", () => {
     expect(afterToggle({ read: true, write: false, manage: false }, "read")).toEqual(none);
     // Write never drags Read in with it: reading is the one that costs privacy.
     expect(afterToggle(none, "write")).toEqual({ read: false, write: true, manage: false });
+  });
+});
+
+describe("writeMeans", () => {
+  it("promises only the prompt until Read is on as well", () => {
+    expect(writeMeans(none)).toBe("type, no Enter");
+    expect(writeMeans({ read: false, write: true, manage: false })).toBe("type, no Enter");
+  });
+
+  it("promises the whole pane once Read is on", () => {
+    expect(writeMeans({ read: true, write: false, manage: false })).toBe("type and run");
   });
 });

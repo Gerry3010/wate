@@ -365,8 +365,8 @@ func (c *CtlService) pane(r ctl.Request) (any, error) {
 			return nil, err
 		}
 		text := r.Text
-		if !c.access.Owns(from, target) {
-			// Somebody else's pane: put the text on the prompt, let the user press Enter.
+		if !c.access.Submits(from, target) {
+			// Write without Read: the text lands on the prompt and the user presses Enter.
 			text = typable(text)
 		}
 		if err := c.pty.WriteToPane(target, text); err != nil {

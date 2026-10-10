@@ -200,10 +200,10 @@ func register(s *mcp.Server) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "wate_pane_write",
-		Description: "Type text into a pane. In a pane you opened this is sent as it stands, so " +
-			"end it with a newline to run a command. In a pane the user opened up to you, " +
-			"newlines and control characters are dropped: the text lands on the prompt and the " +
-			"user presses Enter." + scope,
+		Description: "Type text into a pane. In a pane you opened, and in one the user has given " +
+			"you both Read and Write, this is sent as it stands, so end it with a newline to run " +
+			"a command. With Write alone, newlines and control characters are dropped: the text " +
+			"lands on the prompt and the user presses Enter." + scope,
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in writeIn) (*mcp.CallToolResult, any, error) {
 		if _, err := send(ctl.Request{Cmd: "pane-write", Target: in.Pane, Text: in.Text}); err != nil {
 			return nil, nil, err
@@ -326,7 +326,9 @@ func registerRun(s *mcp.Server) {
 			"and when it asks for something only they can type, this returns straight away, " +
 			"brings the pane to the front and tells you so. Call it again afterwards with an " +
 			"empty command to pick the output back up. Without a pane it uses (and if need be " +
-			"opens) one work pane, which it then keeps using." + scope,
+			"opens) one work pane, which it then keeps using. It needs a pane of your own, or " +
+			"one the user has given you both Read and Write: with Write alone the command is " +
+			"only typed, never sent." + scope,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in runIn) (*mcp.CallToolResult, any, error) {
 		pane := in.Pane
 		if pane == "" {

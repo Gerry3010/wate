@@ -38,13 +38,27 @@ const RIGHTS: [keyof Access, string, string][] = [
   ["manage", "M", "resize and close this pane"],
 ];
 
+/**
+ * What Write currently amounts to, which depends on whether Read is ticked too.
+ *
+ * Write on its own is an offer: the text lands on the prompt and you press Enter. Together
+ * with Read it is the whole pane — the agent can see what it did, so it may also run it. The
+ * menu has to say which of the two you are about to switch on, because that is the entire
+ * difference between the ticks and nothing else on screen tells you.
+ */
+export function writeMeans(access: Access): string {
+  return access.read ? "type and run" : "type, no Enter";
+}
+
 export function statusView(in_: StatusInput): StatusView {
   const chips: string[] = [];
   const spelled: string[] = [];
   for (const [key, letter, what] of RIGHTS) {
     if (in_.access?.[key]) {
       chips.push(letter);
-      spelled.push(what);
+      // Read and Write together mean the agent's Enter counts, so the hover text has to say
+      // "run" — "type into" would describe a weaker grant than the one that is in force.
+      spelled.push(key === "write" && in_.access.read ? "run commands in this pane" : what);
     }
   }
   return {
@@ -170,7 +184,7 @@ export class PaneStatusBar {
       "separator",
       { header: "Agent access" },
       { label: "Read", hint: "see the screen", checked: access.read, onSelect: toggle("read") },
-      { label: "Write", hint: "type, no Enter", checked: access.write, onSelect: toggle("write") },
+      { label: "Write", hint: writeMeans(access), checked: access.write, onSelect: toggle("write") },
       { label: "Manage", hint: "resize, close, move", checked: access.manage, onSelect: toggle("manage") },
     ];
     if (access.read || access.write || access.manage) {

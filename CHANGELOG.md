@@ -71,11 +71,13 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   asking and `--target` says which pane to act on, because the two being the same thing is what
   makes every permission check pass.
 - A pane may always act on itself and on panes it opened; reaching any other pane needs the
-  user to allow it, and never reaches outside the tab. Writing into a pane that was allowed
-  rather than opened is text only — no Enter — so an agent can put a command on your prompt but
-  not run it in your shell, where none of Claude Code's own permission machinery would apply.
-  None of this is written to disk: the session a grant was made for does not survive a restart,
-  and its successor inheriting the rights would be an escalation nobody asked for.
+  user to allow it, and never reaches outside the tab. What Write alone buys is an offer: the
+  text lands on your prompt without the Enter, so an agent can suggest a command but not run it
+  in your shell. Tick Read as well and the pane is handed over, Enter included — at that point
+  the agent can already type a command and watch what comes of it, so holding back the Return
+  key would only leave it waiting, not make it safer. The menu says which of the two is in
+  force. None of this is written to disk: the session a grant was made for does not survive a
+  restart, and its successor inheriting the rights would be an escalation nobody asked for.
 - `wate ctl pane-read [<lines>]` prints what is on a pane's screen as plain text. The terminal's
   text lives in the web view, not in the backend — the bytes from the shell have long since been
   parsed into a grid — so this is the first thing wate asks its own window and waits for an

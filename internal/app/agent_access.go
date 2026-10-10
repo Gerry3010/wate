@@ -178,13 +178,28 @@ func (a *AccessService) Owns(caller, target string) bool {
 	return caller != "" && (caller == target || a.Owner(target) == caller)
 }
 
+// Submits reports whether what the caller types is sent as it stands — Enter and all.
+//
+// Its own panes always are. For somebody else's, the line is Read and Write *together*. A user
+// who has ticked both has handed the pane over: the agent can already put a command on the
+// prompt and watch what comes of it, so holding back the Return key buys no safety, it only
+// leaves the agent waiting for a keypress that will never be explained to it. Write on its own
+// stays text-only, which keeps "put it on my prompt and let me look before it runs" as
+// something you can actually grant.
+func (a *AccessService) Submits(caller, target string) bool {
+	if a.Owns(caller, target) {
+		return true
+	}
+	g := a.Of(target)
+	return g.Read && g.Write
+}
+
 // typable strips everything that would make a shell act on what was typed.
 //
-// Writing into a pane the agent opened is its own business. Writing into one of the user's
-// panes is not: a granted write that could send Enter would run commands in whatever shell
-// happens to be there, with none of Claude Code's own permission machinery in the way. So the
-// agent may put text on the prompt and the user presses Enter. That is the whole difference,
-// and it turns a frightening grant into a reviewable one.
+// This is what a bare Write grant comes to: the agent may put text on the prompt, and the user
+// presses Enter. It is the reviewable half of writing, for the case where you want a command
+// offered rather than run. Add Read to it and the pane is handed over for good — see Submits,
+// which is what decides whether this filter runs at all.
 func typable(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
