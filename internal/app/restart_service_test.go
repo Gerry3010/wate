@@ -186,3 +186,39 @@ func TestASignalOutranksAPendingRestart(t *testing.T) {
 		t.Error("a signal did not get through")
 	}
 }
+
+func TestAWindowWithNoAgentsClosesWithoutBeingAsked(t *testing.T) {
+	s := restartIn(t)
+	if !s.ConfirmClose("w1") {
+		t.Error("an empty window had to ask permission to close")
+	}
+}
+
+func TestTheQuitButtonLetsExactlyOneCloseThrough(t *testing.T) {
+	s := restartIn(t)
+	s.allowCloseFor("w1")
+	if !s.ConfirmClose("w1") {
+		t.Fatal("the button did not let the close through")
+	}
+	// Spent. Another window, or another close later, is asked about again — otherwise one
+	// "quit anyway" would silence the question for the rest of the run.
+	s.mu.Lock()
+	left := len(s.allowClose)
+	s.mu.Unlock()
+	if left != 0 {
+		t.Errorf("%d windows left permanently allowed", left)
+	}
+	if !s.ConfirmClose("w2") {
+		t.Error("an unrelated empty window was refused")
+	}
+}
+
+func TestAnApprovedQuitDoesNotAskPerWindow(t *testing.T) {
+	// The restart dialog's own button, or a signal, has already settled it.
+	s := restartIn(t)
+	s.Announce("the new build", 5)
+	s.Allow()
+	if !s.ConfirmClose("w1") {
+		t.Error("a quit the user already approved was questioned again")
+	}
+}

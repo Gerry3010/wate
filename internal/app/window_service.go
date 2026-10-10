@@ -101,6 +101,10 @@ type WindowService struct {
 	// quitting is set while the app shuts down. Every window closes then, and a window that
 	// closes on the way out must keep its saved tabs — only one the user closed loses them.
 	quitting bool
+
+	// ConfirmClose is asked before a window is allowed to close; false calls the close off.
+	// Set after construction, because what it consults is built later.
+	ConfirmClose func(WindowID) bool
 	// OnClosed is called with the state key of a window the user closed, so its slot can go.
 	OnClosed func(key string)
 	// started is false until the event loop runs. The first window is created on the main
@@ -186,6 +190,16 @@ func (s *WindowService) Open(o OpenWindowOptions) (WindowID, error) {
 	}
 	ForwardFileDrops(win)
 	ForwardFullscreen(win)
+	// A hook, not a listener: hooks run first and can cancel the event, and Wails destroys
+	// the window from a listener. This is the only point at which a close can still be
+	// called off — after it, the window is gone and the shells with it.
+	if s.ConfirmClose != nil {
+		win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+			if !s.ConfirmClose(id) {
+				e.Cancel()
+			}
+		})
+	}
 	slog.Debug("window opened", "id", id, "restore", boot.Restore, "key", key)
 	return id, nil
 }
@@ -300,6 +314,17 @@ func (s *WindowService) windowFor(paneID, tabID string) (*application.WebviewWin
 }
 
 // windowForTab is windowFor as a plain id, for stamping onto an agent session.
+// byID is the window with this id, if it is still open.
+func (s *WindowService) byID(id WindowID) (*application.WebviewWindow, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	e, ok := s.windows[id]
+	if !ok || e.win == nil {
+		return nil, false
+	}
+	return e.win, true
+}
+
 func (s *WindowService) windowForTab(tabID, paneID string) WindowID {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

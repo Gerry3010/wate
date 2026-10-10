@@ -7,6 +7,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- Closing a window with agents still working in it asks first: "N agents are still running",
+  with Quit, Wait and Cancel. Wait hands over to the restart round below — the same question,
+  put to the agents instead of to you. The close is genuinely called off rather than undone
+  afterwards, so nothing has ended by the time you answer.
 - wate can ask the agents before it restarts. "Prepare restart…" in the Sessions menu (or
   `wate ctl restart`) puts the question to every running Claude Code session; each can answer
   `go`, or `wait` with a rough number of minutes and a line about what it is in the middle of.

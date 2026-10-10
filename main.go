@@ -102,6 +102,7 @@ func main() {
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc, winSvc)
 	restartSvc := app.NewRestartService(agentSvc, winSvc)
 	ctlSvc.Restart = restartSvc
+	winSvc.ConfirmClose = restartSvc.ConfirmClose
 	// Quitting: hand the primary role to whoever starts next, then let Claude Code shut down
 	// before the shells get their SIGHUP.
 	winSvc.OnClosed = func(key string) { stateSvc.Remove(key) }
@@ -130,6 +131,7 @@ func main() {
 	application.RegisterEvent[app.PaneRequest]("pane:request")
 	application.RegisterEvent[app.AccessState]("access:changed")
 	application.RegisterEvent[app.RestartStatus]("restart:changed")
+	application.RegisterEvent[app.CloseRequest]("window:confirm-close")
 
 	wapp := application.New(application.Options{
 		Name:        "wate",

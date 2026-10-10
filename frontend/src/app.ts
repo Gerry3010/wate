@@ -5,6 +5,7 @@ import { fromImported, parseWindow, remapTree, type ImportedTab, type SavedClaud
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
 import { closeMenu, type MenuEntry } from "./ui/menu";
+import { showConfirm } from "./ui/confirm";
 import { Sidebar, shortPath } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
@@ -361,6 +362,30 @@ export class WateApp {
         );
       }
     }
+  }
+
+  /**
+   * The window was asked to close while agents were still working in it.
+   *
+   * Closing it would end them mid-thought, so the close was called off and this asks instead.
+   * "Wait" hands over to the restart round, which is the same question put to the agents
+   * rather than to the user.
+   */
+  onConfirmClose(req: { agents: number }) {
+    const n = req.agents;
+    showConfirm(
+      `${n} ${n === 1 ? "agent is" : "agents are"} still running`,
+      "Closing this window ends their sessions. You can ask them whether now is a good moment.",
+      [
+        { label: "Cancel", onSelect: () => {} },
+        { label: "Wait", onSelect: () => void this.prepareRestart() },
+        {
+          label: "Quit",
+          danger: true,
+          onSelect: () => void RestartService.AllowClose().then(() => Window.Close()),
+        },
+      ],
+    );
   }
 
   /** A restart round opened, changed or ended. */

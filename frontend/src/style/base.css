@@ -629,3 +629,40 @@ html, body {
   pointer-events: none;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
+
+/* ---- the one question that must not be answered by accident ------------ */
+.confirm-back {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.confirm-card {
+  min-width: 320px;
+  max-width: 440px;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(var(--bg-rgb), 0.98);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  font: 13px/1.5 var(--font-ui);
+  color: var(--fg);
+}
+.confirm-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+.confirm-detail { color: var(--tab-inactive-fg); margin-bottom: 14px; }
+.confirm-row { display: flex; gap: 8px; justify-content: flex-end; }
+.confirm-button {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.confirm-button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.confirm-button.danger { border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red); }
+.confirm-button.danger:hover { background: color-mix(in srgb, var(--red) 16%, transparent); }

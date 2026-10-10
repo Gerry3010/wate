@@ -81,10 +81,13 @@ type RestartService struct {
 	allowed bool
 	// relaunch means: start again once this process is done.
 	relaunch bool
+	// allowClose holds the windows whose "quit anyway" has been pressed, so the close that
+	// follows goes straight through instead of asking a second time.
+	allowClose map[WindowID]bool
 }
 
 func NewRestartService(agents *AgentService, windows *WindowService) *RestartService {
-	return &RestartService{agents: agents, windows: windows}
+	return &RestartService{agents: agents, windows: windows, allowClose: map[WindowID]bool{}}
 }
 
 func (s *RestartService) ServiceName() string { return "RestartService" }
@@ -340,4 +343,71 @@ func (s *RestartService) announce(st RestartStatus) {
 	if app := application.Get(); app != nil {
 		app.Event.Emit("restart:changed", st)
 	}
+}
+
+// CloseRequest is emitted as "window:confirm-close" when a window with work in it is closed.
+type CloseRequest struct {
+	Agents int `json:"agents"`
+}
+
+// ConfirmClose decides whether a window may close.
+//
+// Closing a window ends the shells in it, and with them any Claude Code session that was
+// working. That is a reasonable thing to want and an awful thing to do by accident, so the
+// first attempt is turned into a question and the answer comes back as AllowClose.
+func (s *RestartService) ConfirmClose(id WindowID) bool {
+	s.mu.Lock()
+	if s.allowClose[id] {
+		delete(s.allowClose, id)
+		s.mu.Unlock()
+		return true
+	}
+	allowed := s.allowed
+	s.mu.Unlock()
+	// A quit the user has already approved elsewhere (the restart dialog, a signal) is not
+	// asked about again.
+	if allowed {
+		return true
+	}
+	n := s.agentsIn(id)
+	if n == 0 {
+		return true
+	}
+	if s.windows != nil {
+		if w, ok := s.windows.byID(id); ok {
+			emitTo(w, "window:confirm-close", CloseRequest{Agents: n})
+			slog.Info("close held back", "window", id, "agents", n)
+			return false
+		}
+	}
+	return true
+}
+
+// AllowClose is the dialog's own button: let the next close of this window through.
+func (s *RestartService) AllowClose(ctx context.Context) {
+	id := WindowID("")
+	if w, ok := ctx.Value(application.WindowKey).(application.Window); ok && w != nil {
+		id = WindowID(w.Name())
+	}
+	s.allowCloseFor(id)
+}
+
+func (s *RestartService) allowCloseFor(id WindowID) {
+	s.mu.Lock()
+	s.allowClose[id] = true
+	s.mu.Unlock()
+}
+
+// agentsIn counts the Claude Code sessions whose pane lives in this window.
+func (s *RestartService) agentsIn(id WindowID) int {
+	if s.agents == nil || s.windows == nil {
+		return 0
+	}
+	n := 0
+	for _, sess := range s.agents.List() {
+		if s.windows.windowForTab(sess.TabID, sess.PaneID) == id {
+			n++
+		}
+	}
+	return n
 }
