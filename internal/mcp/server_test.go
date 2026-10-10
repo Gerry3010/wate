@@ -196,3 +196,74 @@ func TestOnlyTheEndOfTheScreenCounts(t *testing.T) {
 		t.Error("an old prompt far up the screen was taken for a live one")
 	}
 }
+
+// wateWithout answers like a wate in which `gone` does not exist: pane-status refuses it,
+// a split hands back a fresh id, everything else succeeds.
+func wateWithout(t *testing.T, gone string) (sock string, splits *int) {
+	t.Helper()
+	n := 0
+	sock = filepath.Join(t.TempDir(), "w.sock")
+	srv, err := ctl.Listen(sock, func(r ctl.Request) ctl.Response {
+		switch {
+		case r.Cmd == "ping":
+			return ctl.Response{OK: true, Data: "pong"}
+		case r.Cmd == "pane-status" && r.Target == gone:
+			return ctl.Response{Error: `no such pane "` + gone + `"`}
+		case r.Cmd == "pane-status":
+			return ctl.Response{OK: true, Data: `{"name":""}`}
+		case r.Cmd == "pane-split":
+			n++
+			return ctl.Response{OK: true, Data: "pane-fresh"}
+		}
+		return ctl.Response{OK: true, Data: ""}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	t.Setenv("WATE_SOCKET", sock)
+	t.Setenv("WATE_PANE_ID", "pane-7")
+	t.Setenv("WATE_PANE_TOKEN", "tok-7")
+	return sock, &n
+}
+
+func TestAWorkPaneThatIsGoneIsOpenedAgain(t *testing.T) {
+	// This server outlives the panes it opens: the user can close one, and a wate restart
+	// takes them all. Holding on to the id regardless is how every later run ended up failing
+	// on a pane that had not existed for hours, without ever trying to open a new one.
+	_, splits := wateWithout(t, "pane-old")
+	workPane = "pane-old"
+	t.Cleanup(func() { workPane = "" })
+
+	got, err := workPaneFor("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "pane-fresh" {
+		t.Errorf("ran in %q, want a newly opened pane", got)
+	}
+	if *splits != 1 {
+		t.Errorf("%d panes opened, want exactly one", *splits)
+	}
+	// And the new one is kept, so the next call does not open yet another.
+	if got, err := workPaneFor(""); err != nil || got != "pane-fresh" {
+		t.Errorf("second call = %q, %v", got, err)
+	}
+	if *splits != 1 {
+		t.Errorf("%d panes opened after two calls, want one", *splits)
+	}
+}
+
+func TestANamedPaneIsNeverSecondGuessed(t *testing.T) {
+	// Naming a pane is the user's or the agent's own decision; if it is wrong, the refusal
+	// should say so rather than a surprise pane appearing beside it.
+	_, splits := wateWithout(t, "pane-old")
+	workPane = ""
+	t.Cleanup(func() { workPane = "" })
+	if got, err := workPaneFor("pane-old"); err != nil || got != "pane-old" {
+		t.Errorf("workPaneFor(named) = %q, %v", got, err)
+	}
+	if *splits != 0 {
+		t.Errorf("%d panes opened for a named pane, want none", *splits)
+	}
+}

@@ -161,6 +161,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   none for a pane that had just been restored, and wrote it out empty — so the pointer made it
   through exactly one restart and was gone by the second, which is when you want it most. A
   restored pane now keeps its pointer until a real session takes the pane over.
+- `wate_pane_run` opens a new work pane when the one it remembers has gone. The agent outlives
+  its panes: you can close one, and a restart takes them all, while the MCP server carries on
+  holding the id. It never checked, so it never opened a replacement either — every later run
+  without a named pane failed on a pane that had not existed for hours.
 - A pane that has been moved to another tab still answers for itself. Its callbacks held on to
   the tab it was created in, so after a move the drag did nothing, a shell exiting left the
   pane on screen as a dead terminal, and a file opened from it landed in the wrong tab. They

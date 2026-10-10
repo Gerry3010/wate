@@ -269,6 +269,38 @@ func register(s *mcp.Server) {
 // session does not end up with a row of abandoned terminals.
 var workPane string
 
+// stillThere reports whether a pane is one we can still act on.
+//
+// Reusing the work pane means remembering an id for as long as the agent lives, and an agent
+// lives longer than the pane does: the user can close it, and a wate restart takes every pane
+// with it while this process carries on. Without this check the remembered id is never let go
+// of — no new pane is opened, because one is "already there" — and every later run fails on a
+// pane that has been gone for hours. pane-status is the cheap question to ask: the backend
+// answers it without going near a web view.
+func stillThere(pane string) bool {
+	_, err := send(ctl.Request{Cmd: "pane-status", Target: pane})
+	return err == nil
+}
+
+// workPaneFor picks the pane a run goes to: the one it was told, else the remembered one if
+// it is still there, else a new one.
+func workPaneFor(named string) (string, error) {
+	if named != "" {
+		return named, nil
+	}
+	if workPane != "" && !stillThere(workPane) {
+		workPane = ""
+	}
+	if workPane == "" {
+		id, err := send(ctl.Request{Cmd: "pane-split", Dir: "col", Ratio: 1.0 / 3.0})
+		if err != nil {
+			return "", err
+		}
+		workPane = id
+	}
+	return workPane, nil
+}
+
 // needsYou spots the prompts that cannot be answered from here — a password, a passphrase, a
 // host key, a second factor. They all mean the same thing: the pane is waiting for the user.
 var needsYou = []string{
@@ -330,16 +362,9 @@ func registerRun(s *mcp.Server) {
 			"one the user has given you both Read and Write: with Write alone the command is " +
 			"only typed, never sent." + scope,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in runIn) (*mcp.CallToolResult, any, error) {
-		pane := in.Pane
-		if pane == "" {
-			pane = workPane
-		}
-		if pane == "" {
-			id, err := send(ctl.Request{Cmd: "pane-split", Dir: "col", Ratio: 1.0 / 3.0})
-			if err != nil {
-				return nil, nil, err
-			}
-			workPane, pane = id, id
+		pane, err := workPaneFor(in.Pane)
+		if err != nil {
+			return nil, nil, err
 		}
 		if in.Command != "" {
 			if _, err := send(ctl.Request{Cmd: "pane-write", Target: pane, Text: in.Command + "\n"}); err != nil {
