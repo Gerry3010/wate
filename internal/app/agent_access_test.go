@@ -147,29 +147,25 @@ func TestWhoIsAskingIsNotWhatIsBeingActedOn(t *testing.T) {
 	}
 }
 
-func TestManagingAPaneCarriesSeeingAndTypingWithIt(t *testing.T) {
-	// Resizing and closing a pane you may neither look at nor type into is not a halfway
-	// house anybody asked for.
+func TestEachRightStandsOnItsOwn(t *testing.T) {
+	// Ticking Manage fills the other two in as well, but that happens in the menu: here each
+	// one is simply what it says, so revoking one never quietly leaves another behind.
 	a := NewAccessService(panesIn(t, map[string]string{"agent": "t1", "mine": "t1"}))
 	a.Grant("mine", Access{Manage: true})
-	for _, want := range []Right{RightRead, RightWrite, RightManage} {
-		if err := a.Allow("agent", "mine", want); err != nil {
-			t.Errorf("manage did not carry %s: %v", want, err)
-		}
+	if err := a.Allow("agent", "mine", RightManage); err != nil {
+		t.Errorf("manage was refused: %v", err)
 	}
-	st := a.State("mine")
-	// What the user ticked stays what they ticked, so unticking it takes the lot away again.
-	if st.Access != (Access{Manage: true}) {
-		t.Errorf("stored grant = %+v, want manage alone", st.Access)
+	if err := a.Allow("agent", "mine", RightRead); err == nil {
+		t.Error("a bare manage grant allowed reading the screen")
 	}
-	if st.Allows != (Access{Read: true, Write: true, Manage: true}) {
-		t.Errorf("allows = %+v, want all three", st.Allows)
+	if err := a.Allow("agent", "mine", RightWrite); err == nil {
+		t.Error("a bare manage grant allowed typing")
 	}
 }
 
 func TestWritingDoesNotQuietlyGrantReading(t *testing.T) {
-	// Reading is the one that carries a privacy cost, so it is never implied by anything
-	// but Manage, which is explicit about being the whole lot.
+	// Reading is the one that carries a privacy cost: whatever is on that screen is whatever
+	// the user typed. Nothing grants it as a side effect.
 	a := NewAccessService(panesIn(t, map[string]string{"agent": "t1", "mine": "t1"}))
 	a.Grant("mine", Access{Write: true})
 	if err := a.Allow("agent", "mine", RightRead); err == nil {

@@ -365,8 +365,7 @@ export class WateApp {
             openedByAgent: !!st?.owner,
             agentStatus: this.agents.forPane(p.id)?.status,
             command: p.running,
-            // What it allows, not what was ticked: Manage carries the other two.
-            access: st?.allows ?? none,
+            access: st?.access ?? none,
           }),
         );
       }
@@ -424,7 +423,6 @@ export class WateApp {
   private statusHost(): StatusHost {
     return {
       access: (id) => this.access.get(id)?.access ?? { read: false, write: false, manage: false },
-      allows: (id) => this.access.get(id)?.allows ?? { read: false, write: false, manage: false },
       setAccess: (id, a) => void AccessService.Grant(id, a).catch((err) => console.warn("grant:", err)),
       closePane: (id) => {
         const tab = this.tabOfPane(id);

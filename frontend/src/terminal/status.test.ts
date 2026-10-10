@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { statusView } from "./status";
+import { afterToggle, statusView } from "./status";
 
 const none = { read: false, write: false, manage: false };
 
@@ -41,5 +41,28 @@ describe("statusView", () => {
   it("survives an access record that is not there yet", () => {
     const v = statusView({ openedByAgent: false, command: "zsh", access: undefined as unknown as typeof none });
     expect(v.chips).toEqual([]);
+  });
+});
+
+describe("afterToggle", () => {
+  it("fills the other two in when Manage goes on", () => {
+    expect(afterToggle(none, "manage")).toEqual({ read: true, write: true, manage: true });
+  });
+
+  it("leaves them when Manage goes off", () => {
+    // Taking away the right to close a pane is no reason to stop reading it. "Revoke all"
+    // is there for when it is.
+    expect(afterToggle({ read: true, write: true, manage: true }, "manage")).toEqual({
+      read: true,
+      write: true,
+      manage: false,
+    });
+  });
+
+  it("treats Read and Write as plain switches", () => {
+    expect(afterToggle(none, "read")).toEqual({ read: true, write: false, manage: false });
+    expect(afterToggle({ read: true, write: false, manage: false }, "read")).toEqual(none);
+    // Write never drags Read in with it: reading is the one that costs privacy.
+    expect(afterToggle(none, "write")).toEqual({ read: false, write: true, manage: false });
   });
 });

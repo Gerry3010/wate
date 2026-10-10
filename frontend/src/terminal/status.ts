@@ -56,12 +56,24 @@ export function statusView(in_: StatusInput): StatusView {
   };
 }
 
+/**
+ * What a grant looks like after one tick is flipped.
+ *
+ * Turning Manage on fills in the other two, because managing a pane one may neither see nor
+ * type into is not a halfway house anybody would pick. Turning it off leaves them: taking
+ * away the right to close a pane is not a reason to stop reading it, and "Revoke all" is
+ * right there for when it is. Nothing else implies anything — least of all Read, which is
+ * the one with a privacy cost.
+ */
+export function afterToggle(access: Access, key: keyof Access): Access {
+  const now = { ...access, [key]: !access[key] };
+  if (key === "manage" && now.manage) return { read: true, write: true, manage: true };
+  return now;
+}
+
 /** What the bar needs from the app to do its job. */
 export interface StatusHost {
-  /** What the user ticked — what a tick has to toggle back. */
   access(paneId: string): Access;
-  /** What that actually permits: Manage carries Read and Write with it. */
-  allows(paneId: string): Access;
   setAccess(paneId: string, access: Access): void;
   closePane(paneId: string): void;
   /** Extra entries above the agent section (moving the pane about). Empty is fine. */
@@ -152,17 +164,14 @@ export class PaneStatusBar {
     const host = this.host;
     if (!host) return;
     const access = host.access(this.paneId);
-    const allows = host.allows(this.paneId);
-    const toggle = (key: keyof Access) => () => host.setAccess(this.paneId, { ...access, [key]: !access[key] });
-    // Read and Write are shown as granted and fixed while Manage is on: it includes them, and
-    // a tick that looks switchable but changes nothing is worse than one that says why not.
+    const toggle = (key: keyof Access) => () => host.setAccess(this.paneId, afterToggle(access, key));
     const entries: MenuEntry[] = [
       ...host.paneEntries(this.paneId),
       "separator",
       { header: "Agent access" },
-      { label: "Read", hint: access.manage ? "via Manage" : "see the screen", checked: allows.read, disabled: access.manage, onSelect: toggle("read") },
-      { label: "Write", hint: access.manage ? "via Manage" : "type, no Enter", checked: allows.write, disabled: access.manage, onSelect: toggle("write") },
-      { label: "Manage", hint: "everything, incl. resize and close", checked: access.manage, onSelect: toggle("manage") },
+      { label: "Read", hint: "see the screen", checked: access.read, onSelect: toggle("read") },
+      { label: "Write", hint: "type, no Enter", checked: access.write, onSelect: toggle("write") },
+      { label: "Manage", hint: "resize, close, move", checked: access.manage, onSelect: toggle("manage") },
     ];
     if (access.read || access.write || access.manage) {
       entries.push({
