@@ -22,8 +22,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 - A pane can be moved to another tab, or out into one of its own, without restarting anything:
   its shell keeps running, its scrollback comes along, and a command mid-flight does not notice.
   Nothing is rebuilt — a pane is an object with a socket and a terminal in it, and only its
-  parent changes. Reach it from the pane's menu, by dragging the pane by its bar (onto the
-  middle of another pane to swap the two, onto an edge to land there), or with
+  parent changes. Reach it from the pane's menu, by dragging the pane by its bar — onto the
+  middle of another pane to swap the two, onto an edge to land there, or onto another tab's
+  button, which outlines itself and says "Move to this tab"; rest on that button for a moment
+  and the tab comes forward, so the pane can be aimed at a spot inside it — or with
   `wate ctl pane-move new|<n>`. An agent may only move a pane it opened itself; ownership
   survives the move, but reach does not while the pane sits in another tab, because the tab is
   the boundary.

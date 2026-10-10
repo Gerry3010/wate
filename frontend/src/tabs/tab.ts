@@ -21,6 +21,9 @@ import {
   type Rect,
 } from "../layout/tree";
 
+/** Pointer travel before a press on the bar counts as a drag rather than a click. */
+const DRAG_THRESHOLD = 4;
+
 let seq = 0;
 export const nextId = (prefix: string) => `${prefix}-${++seq}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -192,86 +195,86 @@ export class Tab {
     if (other) this.swap(this.focusedId, other);
   }
 
+  /** During a pane drag: let the app take over (a tab button, or another tab now in front). */
+  onPaneDragMove?: (paneId: string, x: number, y: number) => boolean;
+  /** The pane was let go while the app had taken over. */
+  onPaneDragDrop?: (paneId: string, x: number, y: number) => void;
+
   /**
    * Drag a pane by its status bar: onto the middle of another to swap the two, onto an edge
-   * to put it there instead.
+   * to land there, onto another tab's button to move it over there.
    *
-   * Alt+drag (startSwapDrag) stays as it was — it can only swap, and people have it in their
-   * fingers. This is the same gesture with the drop zones the file drop already uses.
+   * The preview is the highlight box and nothing else — the same idea as the file drop. The
+   * first version rearranged the real layout on every zone change, which was accurate and
+   * looked awful: the panes slid about under the pointer at every twitch.
+   *
+   * Nothing happens until the pointer has actually travelled, because this gesture starts on
+   * the same bar that holds the menu button, and a click that quietly rebuilt the layout
+   * would take the button out from under itself before it could be clicked.
    */
   startPaneDrag(id: string, start: PointerEvent): void {
-    start.preventDefault();
     const source = this.panes.get(id)?.element;
-    if (!source || !this.tree || this.panes.size < 2) return;
-    const original = this.tree;
-    const highlight = new DropHighlight(document.body);
-    // Measured once, against the layout as it was: the preview rearranges the panes, and
-    // re-measuring would make the decision chase its own result.
+    if (!source || !this.tree) return;
+    // Measured once: nothing moves during the drag, so nothing needs measuring again.
     const boxes = this.rects();
-    source.classList.add("swap-source");
-    for (const p of this.panes.values()) p.setFitSuspended?.(true);
-    let shown = "";
+    let armed = false;
+    let highlight: DropHighlight | null = null;
     let landed: { target: string; zone: DropZone } | null = null;
+    let elsewhere = false;
+    let shown = "";
 
-    const hit = (x: number, y: number) => {
-      const box = boxAt(boxes, x, y);
-      if (!box || box.id === id) return null;
-      return { target: box.id, zone: dropZone(box, x, y), box };
+    const arm = () => {
+      armed = true;
+      highlight = new DropHighlight(document.body);
+      source.classList.add("swap-source");
     };
     const preview = (x: number, y: number) => {
-      const h = hit(x, y);
-      const key = h ? `${h.target}:${h.zone}` : "";
-      if (key === shown) return;
-      shown = key;
-      landed = h ? { target: h.target, zone: h.zone } : null;
-      if (!h) {
-        highlight.hide();
-        this.tree = original;
-        this.view.render(this.tree);
+      elsewhere = this.onPaneDragMove?.(id, x, y) ?? false;
+      if (elsewhere) {
+        landed = null;
+        shown = "away";
+        highlight?.hide();
         return;
       }
-      highlight.show(zoneRect(h.box, h.zone), h.zone);
-      if (h.zone === "center") {
-        this.tree = swapLeaves(original, id, h.target);
-      } else {
-        const split = zoneSplit(h.zone);
-        const t0 = removeLeaf(original, id);
-        if (!split || !t0) return;
-        const { dir, before } = split;
-        let t = t0;
-        t = splitLeaf(t, h.target, dir, id);
-        this.tree = before ? swapLeaves(t, id, h.target) : t;
-      }
-      this.view.render(this.tree);
+      const box = boxAt(boxes, x, y);
+      const h = box && box.id !== id ? { box, zone: dropZone(box, x, y) } : null;
+      const key = h ? `${h.box.id}:${h.zone}` : "";
+      if (key === shown) return;
+      shown = key;
+      landed = h ? { target: h.box.id, zone: h.zone } : null;
+      if (h) highlight?.show(zoneRect(h.box, h.zone), h.zone);
+      else highlight?.hide();
     };
     const cleanup = () => {
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", finish, true);
       window.removeEventListener("pointercancel", cancel, true);
       window.removeEventListener("keydown", onKey, true);
-      highlight.dispose();
+      highlight?.dispose();
       source.classList.remove("swap-source");
-      for (const p of this.panes.values()) p.setFitSuspended?.(false);
     };
-    const move = (e: PointerEvent) => preview(e.clientX, e.clientY);
+    const move = (e: PointerEvent) => {
+      if (!armed) {
+        if (Math.abs(e.clientX - start.clientX) < DRAG_THRESHOLD && Math.abs(e.clientY - start.clientY) < DRAG_THRESHOLD) return;
+        arm();
+      }
+      e.preventDefault();
+      preview(e.clientX, e.clientY);
+    };
     const finish = (e: PointerEvent) => {
+      // Never travelled: this was a click on the bar, and the bar's own buttons want it.
+      if (!armed) {
+        cleanup();
+        return;
+      }
       preview(e.clientX, e.clientY);
       const done = landed;
+      const away = elsewhere;
       cleanup();
-      if (!done) {
-        this.tree = original;
-      }
-      this.render();
-      if (done) {
-        this.setFocus(id);
-        this.onChange?.();
-      }
+      if (away) this.onPaneDragDrop?.(id, e.clientX, e.clientY);
+      else if (done) this.dropPane(id, done.target, done.zone);
     };
-    const cancel = () => {
-      cleanup();
-      this.tree = original;
-      this.render();
-    };
+    const cancel = () => cleanup();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") cancel();
     };
@@ -279,6 +282,23 @@ export class Tab {
     window.addEventListener("pointerup", finish, true);
     window.addEventListener("pointercancel", cancel, true);
     window.addEventListener("keydown", onKey, true);
+  }
+
+  /** Put `id` where the drop said, in one move. */
+  private dropPane(id: string, target: string, zone: DropZone): void {
+    if (!this.tree || target === id) return;
+    if (zone === "center") {
+      this.tree = swapLeaves(this.tree, id, target);
+    } else {
+      const split = zoneSplit(zone);
+      const without = removeLeaf(this.tree, id);
+      if (!split || !without) return;
+      const t = splitLeaf(without, target, split.dir, id);
+      this.tree = split.before ? swapLeaves(t, id, target) : t;
+    }
+    this.render();
+    this.setFocus(id);
+    this.onChange?.();
   }
 
   private startSwapDrag(id: string, start: PointerEvent): void {

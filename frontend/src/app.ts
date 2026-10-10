@@ -39,6 +39,9 @@ export interface SplitAt {
 /** Top-level UI state: tabs, panes, keybindings and the actions they trigger. */
 /** Scrollback kept per pane (bytes of ANSI text): named sessions keep more than the auto-restore file. */
 const SESSION_SCROLLBACK = 256 * 1024;
+
+/** How long a dragged pane has to rest on a tab button before that tab comes forward. */
+const SPRING_MS = 400;
 const RESTORE_SCROLLBACK = 48 * 1024;
 
 export class WateApp {
@@ -257,6 +260,8 @@ export class WateApp {
         this.scheduleSave();
       };
       tab.onLayout = (r) => this.sidebar.cutEdge(tab === this.active ? r : null);
+    tab.onPaneDragMove = (paneId, x, y) => this.paneDragMove(tab, paneId, x, y);
+    tab.onPaneDragDrop = (paneId, x, y) => void this.paneDragDrop(tab, paneId, x, y);
       const map = new Map<string, string>();
       const panes: Pane[] = [];
       const starts: Promise<unknown>[] = [];
@@ -332,6 +337,9 @@ export class WateApp {
 
   /** Last status painted per pane, so an unchanged one costs no DOM work. */
   private paneStatus = new Map<string, string>();
+
+  /** The tab button a dragged pane is resting on, and since when. */
+  private springTab: { id: string; at: number } | null = null;
 
   /** What the backend says about each pane: who opened it, what it has been opened up to. */
   private access = new Map<string, AccessState>();
@@ -786,6 +794,66 @@ export class WateApp {
     const from = this.tabOfPane(paneId);
     if (!from || from.panes.size < 2) return false;
     return this.movePane(paneId, this.createTab());
+  }
+
+  /**
+   * A pane is being dragged: does the app want this point rather than the tab it came from?
+   *
+   * Yes when the pointer is over a tab button (which is a destination), and yes once another
+   * tab is in front, because then the panes under the pointer are not the source tab's any
+   * more. Resting on a tab button brings that tab forward, so a pane can be aimed at a
+   * particular spot in it rather than only dumped in.
+   */
+  private paneDragMove(from: Tab, paneId: string, x: number, y: number): boolean {
+    const overId = this.tabBar.tabIdAt(x, y);
+    if (overId) {
+      this.tabBar.showPaneTarget(overId === from.id && this.active === from ? null : overId);
+      this.drops?.hide();
+      const over = this.tabs.find((t) => t.id === overId);
+      if (over && over !== this.active) {
+        const now = performance.now();
+        if (this.springTab?.id !== overId) this.springTab = { id: overId, at: now };
+        else if (now - this.springTab.at >= SPRING_MS) {
+          this.springTab = null;
+          this.activate(over);
+        }
+      } else {
+        this.springTab = null;
+      }
+      return true;
+    }
+    this.springTab = null;
+    this.tabBar.showPaneTarget(null);
+    if (this.active === from) {
+      this.drops?.hide();
+      return false;
+    }
+    // Over another tab's panes: show where it would land there, since the source tab's own
+    // preview cannot speak for a layout it is not part of.
+    const dest = this.active;
+    const box = dest ? boxAt(dest.rects(), x, y) : undefined;
+    if (box && box.id !== paneId) this.drops?.show(zoneRect(box, dropZone(box, x, y)), dropZone(box, x, y));
+    else this.drops?.hide();
+    return true;
+  }
+
+  /** The pane was let go somewhere the source tab does not own. */
+  private async paneDragDrop(from: Tab, paneId: string, x: number, y: number): Promise<void> {
+    this.springTab = null;
+    this.tabBar.showPaneTarget(null);
+    this.drops?.hide();
+    const overId = this.tabBar.tabIdAt(x, y);
+    const onButton = overId ? this.tabs.find((t) => t.id === overId) : undefined;
+    const dest = onButton && onButton !== from ? onButton : this.active !== from ? this.active : null;
+    if (!dest) return;
+    let at: SplitAt | undefined;
+    const box = boxAt(dest.rects(), x, y);
+    if (box && box.id !== paneId) {
+      const zone = dropZone(box, x, y);
+      const split = zoneSplit(zone);
+      if (split) at = { target: box.id, dir: split.dir, before: split.before };
+    }
+    await this.movePane(paneId, dest, at);
   }
 
   /** The tab of this window that holds this pane, if any. */

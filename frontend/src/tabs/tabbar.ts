@@ -380,6 +380,42 @@ export class TabBar {
     showMenu(x, y, entries);
   }
 
+  /** The tab button under a point, for dropping a pane onto a tab. */
+  tabIdAt(x: number, y: number): string | null {
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>(".tabbar-tab[data-tab-id]");
+    return el?.dataset.tabId ?? null;
+  }
+
+  /**
+   * Mark the tab a dragged pane would land in, and say so.
+   *
+   * A tab button is a small target and the thing being dragged is somewhere else entirely, so
+   * without this the gesture is a guess: the pane vanishes from one tab and turns up in
+   * another with nothing in between to confirm the aim.
+   */
+  showPaneTarget(tabId: string | null): void {
+    for (const el of this.list.querySelectorAll<HTMLElement>(".tabbar-tab.pane-target")) {
+      if (el.dataset.tabId !== tabId) el.classList.remove("pane-target");
+    }
+    const el = tabId ? this.list.querySelector<HTMLElement>(`.tabbar-tab[data-tab-id="${CSS.escape(tabId)}"]`) : null;
+    if (!el) {
+      this.paneHint?.remove();
+      this.paneHint = undefined;
+      return;
+    }
+    el.classList.add("pane-target");
+    if (!this.paneHint) {
+      this.paneHint = document.createElement("div");
+      this.paneHint.className = "pane-drag-hint";
+      this.paneHint.textContent = "Move to this tab";
+      document.body.appendChild(this.paneHint);
+    }
+    const r = el.getBoundingClientRect();
+    this.paneHint.style.transform = `translate(${Math.round(r.left)}px, ${Math.round(r.bottom + 4)}px)`;
+  }
+
+  private paneHint?: HTMLElement;
+
   private async showSessionMenu(x: number, y: number, alignRight: boolean) {
     const sessions = await this.host.listSessions().catch(() => [] as SessionInfo[]);
     const entries: MenuEntry[] = [

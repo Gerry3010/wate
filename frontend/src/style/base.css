@@ -608,3 +608,24 @@ html, body {
   cursor: pointer;
 }
 .pane-bar-menu:hover { opacity: 1; }
+
+/* ---- a pane being dragged onto a tab ----------------------------------- */
+.tabbar-tab.pane-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.pane-drag-hint {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: rgba(var(--bg-rgb), 1);
+  font: 11px/1.3 var(--font-ui);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}

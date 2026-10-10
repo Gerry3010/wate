@@ -86,8 +86,11 @@ export class PaneStatusBar {
     this.element.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
       // The bar is the pane's handle: dragging it moves the pane, without having to know
-      // that Alt+drag does the same thing from anywhere on the pane.
-      if (e.button === 0) this.onDragStart?.(e);
+      // that Alt+drag does the same thing from anywhere on the pane. Not from the buttons
+      // on it, though — those are for pressing.
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement | null)?.closest(".pane-bar-menu")) return;
+      this.onDragStart?.(e);
     });
 
     this.originEl = document.createElement("span");
