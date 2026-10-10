@@ -265,7 +265,14 @@ export class Tab {
     return !this.tree || leaves(this.tree).length === 0;
   }
 
+  /** A pane that is alone in its tab needs no label: it is the tab. */
+  private updateBars(): void {
+    const many = this.panes.size > 1;
+    for (const p of this.panes.values()) p.setStatusVisible?.(many);
+  }
+
   render(): void {
+    this.updateBars();
     this.view.render(this.tree);
     requestAnimationFrame(() => this.relayoutPanes());
   }

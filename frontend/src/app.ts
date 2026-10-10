@@ -1,6 +1,6 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { AccessService, AgentService, ConfigService, OpenerService, PaneBridge, PtyService, SessionService, StateService, ThemeService, WindowService, type Config, type Resolved, type Session, type Target } from "./api";
+import { AccessService, AgentService, ConfigService, OpenerService, PaneBridge, PtyService, SessionService, StateService, ThemeService, WindowService, type Access, type AccessState, type Config, type Resolved, type Session, type Target } from "./api";
 import { fromImported, parseWindow, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
@@ -18,6 +18,7 @@ import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
 import { TabBar } from "./tabs/tabbar";
 import { TerminalPane, type PaneNotice } from "./terminal/pane";
+import { statusView, type StatusHost } from "./terminal/status";
 import { EditorPane } from "./editor/pane";
 import { SettingsPane } from "./settings/pane";
 
@@ -329,6 +330,47 @@ export class WateApp {
   /** Last status painted per pane, so an unchanged one costs no DOM work. */
   private paneStatus = new Map<string, string>();
 
+  /** What the backend says about each pane: who opened it, what it has been opened up to. */
+  private access = new Map<string, AccessState>();
+
+  /** Fold a pane's standing into its status bar. The bar itself skips an unchanged repaint. */
+  private refreshBars() {
+    const none: Access = { read: false, write: false, manage: false };
+    for (const t of this.tabs) {
+      for (const p of t.panes.values()) {
+        if (!(p instanceof TerminalPane)) continue;
+        const st = this.access.get(p.id);
+        p.bar.update(
+          statusView({
+            openedByAgent: !!st?.owner,
+            agentStatus: this.agents.forPane(p.id)?.status,
+            command: p.running,
+            access: st?.access ?? none,
+          }),
+        );
+      }
+    }
+  }
+
+  /** A pane's standing changed in the backend (a grant, or an agent opening a pane). */
+  onAccessChanged(state: AccessState) {
+    this.access.set(state.pane, state);
+    this.refreshBars();
+  }
+
+  private statusHost(): StatusHost {
+    return {
+      access: (id) => this.access.get(id)?.access ?? { read: false, write: false, manage: false },
+      setAccess: (id, a) => void AccessService.Grant(id, a).catch((err) => console.warn("grant:", err)),
+      closePane: (id) => {
+        const tab = this.tabOfPane(id);
+        const pane = this.paneById(id);
+        if (tab && pane) this.closePane(tab, pane);
+      },
+      paneEntries: () => [],
+    };
+  }
+
   private onAgentsChanged() {
     this.tabBar.render(this.tabs, this.active);
     for (const t of this.tabs) {
@@ -350,6 +392,7 @@ export class WateApp {
         }
       }
     }
+    this.refreshBars();
     // Which panes hold which session belongs in the saved state, so a restore can offer them
     // again even if the save on quit does not get through.
     const sig = this.agents
@@ -748,6 +791,8 @@ export class WateApp {
   private refreshChrome(tab?: Tab) {
     this.tabBar.render(this.tabs, this.active);
     this.reportTabs();
+    // Panes come and go here, and a pane with no agent never reaches the agent tick.
+    this.refreshBars();
     if (!this.active || (tab && tab !== this.active)) return;
     const title = `${this.active.title} — wate`;
     if (title === this.lastWindowTitle) return;
@@ -776,6 +821,7 @@ export class WateApp {
       onTitle: () => tab.onChange?.(),
       onOpenFile: (t) => this.openTarget(tab, t),
     });
+    pane.bar.setHost(this.statusHost());
     return pane;
   }
 
@@ -862,6 +908,7 @@ export class WateApp {
   private removePane(tab: Tab, pane: Pane) {
     AgentService.Forget(pane.id).catch(() => {});
     AccessService.Forget(pane.id).catch(() => {});
+    this.access.delete(pane.id);
     this.paneStatus.delete(pane.id);
     tab.remove(pane.id);
     if (tab.isEmpty) this.closeTab(tab);

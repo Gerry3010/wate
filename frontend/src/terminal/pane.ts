@@ -18,6 +18,7 @@ import { logData } from "../keys-debug";
 import { ligatureJoiner } from "./ligatures";
 import { CLAUDE_LOGO, PLAY } from "../ui/icons";
 import { SNAPSHOT_LINES, clampTail, snapshotRange, trimTrailingBlanks } from "./snapshot";
+import { PaneStatusBar } from "./status";
 
 /** A call-to-action block drawn across the pane between the restored history and the prompt. */
 export interface PaneNotice {
@@ -125,6 +126,10 @@ export class TerminalPane implements Pane {
   private ws?: WebSocket;
   private sessionId?: string;
   private resizeObserver: ResizeObserver;
+  /** The box the grid lives in, below the status bar. */
+  private body: HTMLElement;
+  /** The strip along the top, shown only when the tab holds more than one pane. */
+  readonly bar: PaneStatusBar;
   private disposed = false;
   private fitTimer?: ReturnType<typeof setTimeout>;
   private fitSuspended = false;
@@ -153,6 +158,14 @@ export class TerminalPane implements Pane {
     this.element = document.createElement("div");
     this.element.className = "pane pane-terminal";
     this.element.dataset.paneId = opts.paneId;
+    // The grid goes in a box of its own, with the status bar above it. FitAddon measures the
+    // terminal element's *parent*, so that parent has to be exactly the space the grid may
+    // use — put the bar in there with it and the grid comes out a row too tall (see
+    // setPadding for the WebKitGTK half of this).
+    this.bar = new PaneStatusBar(opts.paneId);
+    this.body = document.createElement("div");
+    this.body.className = "pane-term-body";
+    this.element.append(this.bar.element, this.body);
 
     const t = opts.terminal;
     const termOpts: ITerminalOptions = {
@@ -174,7 +187,7 @@ export class TerminalPane implements Pane {
     this.term = new Terminal(termOpts);
     this.term.loadAddon(this.fit);
     this.term.loadAddon(this.serializer);
-    this.term.open(this.element);
+    this.term.open(this.body);
     this.setPadding(t.padding);
     this.wantVisible = opts.visible !== false;
     if (this.wantVisible) this.enableWebgl();
@@ -243,7 +256,8 @@ export class TerminalPane implements Pane {
     // Debounced: a divider drag fires dozens of size changes per second and every
     // column change makes the shell redraw its prompt.
     this.resizeObserver = new ResizeObserver(() => this.scheduleFit());
-    this.resizeObserver.observe(this.element);
+    // The body, not the pane: showing the bar shrinks the body without the pane moving.
+    this.resizeObserver.observe(this.body);
 
     const openUrl = (e: MouseEvent, uri: string) => {
       if (isModifierClick(e)) OpenerService.OpenURL(uri).catch((err) => console.warn(err));
@@ -272,8 +286,11 @@ export class TerminalPane implements Pane {
   private onCommand(c: PaneCommand) {
     if (c.pane !== this.opts.paneId) return;
     const before = this.title;
+    const wasRunning = this.running;
     this.cmd = c;
-    if (this.title !== before) this.opts.onTitle?.(this.title);
+    // The bar names what is running, which can change without the title changing at all —
+    // two commands in the same directory read the same from the prompt.
+    if (this.title !== before || this.running !== wasRunning) this.opts.onTitle?.(this.title);
   }
 
   /** The focused pane blinks its cursor; the others show a still outline. */
@@ -655,6 +672,11 @@ export class TerminalPane implements Pane {
     if (up < 0 || up > 8) return null;
     // DECSC, cursor up to the prompt line, erase to end of screen, DECRC: rows stay blank.
     return `\x1b7${up > 0 ? `\x1b[${up}A` : ""}\r\x1b[J\x1b8`;
+  }
+
+  /** Show or hide the status bar; the grid loses or gains that row, so it has to refit. */
+  setStatusVisible(on: boolean) {
+    if (this.bar.setVisible(on)) this.relayout();
   }
 
   relayout() {

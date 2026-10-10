@@ -554,3 +554,53 @@ html, body {
 }
 /* Dragged past the window's edge: letting go here gives the tab a window of its own. */
 .tabbar-tab.tearing { opacity: 0.35; outline: 1px dashed var(--accent); outline-offset: -1px; }
+
+/* ---- per-pane status bar ----------------------------------------------- */
+/* Only shown while a tab holds more than one pane (see Tab.render). The grid lives in
+   .pane-term-body so that FitAddon, which measures the terminal's parent, never counts the
+   bar's height as usable rows — the same trap setPadding documents. */
+.pane-terminal { display: flex; flex-direction: column; }
+.pane-term-body { flex: 1 1 0; min-height: 0; min-width: 0; overflow: hidden; position: relative; }
+.pane-terminal .pane-term-body .xterm { height: 100%; }
+.pane-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 2px 0 6px;
+  font: 11px/1 var(--font-ui);
+  color: var(--tab-inactive-fg);
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  user-select: none;
+}
+.pane.focused > .pane-bar { color: var(--fg); }
+.pane-bar-origin {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #d97757 22%, transparent);
+  color: #d97757;
+}
+.pane-bar .status-dot { width: 6px; height: 6px; margin: 0; }
+.pane-bar-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-bar-chips {
+  flex: 0 0 auto;
+  letter-spacing: 1px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--yellow) 22%, transparent);
+  color: var(--yellow);
+}
+.pane-bar-menu {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+}
+.pane-bar-menu:hover { opacity: 1; }

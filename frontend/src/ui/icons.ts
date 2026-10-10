@@ -7,3 +7,9 @@ export const CLAUDE_LOGO =
   "</svg>";
 
 export const PLAY = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+
+/** Vertical ellipsis: "there is a menu behind this". */
+export const DOTS =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">' +
+  '<circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/>' +
+  "</svg>";

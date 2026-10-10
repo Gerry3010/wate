@@ -123,6 +123,7 @@ func main() {
 	application.RegisterEvent[app.DropRequest]("window:drop")
 	application.RegisterEvent[app.FullscreenState]("window:fullscreen")
 	application.RegisterEvent[app.PaneRequest]("pane:request")
+	application.RegisterEvent[app.AccessState]("access:changed")
 
 	wapp := application.New(application.Options{
 		Name:        "wate",

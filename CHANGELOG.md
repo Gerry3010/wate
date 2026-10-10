@@ -7,6 +7,15 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- A pane sharing its tab with another gets a thin bar along its top: what it is running, an
+  orange mark if an agent opened it, letters for anything the user has opened it up to, and a
+  menu. A pane on its own keeps the uncluttered look — it is the tab, so there is nothing to
+  tell apart. The bar's menu is where an agent is let into a pane that is not its own: Read,
+  Write, Manage, each a tick, with "Revoke all" once something is on. The letters are there so
+  that a pane which has been opened up says so without anyone opening the menu.
+  The grid moved into a box of its own underneath the bar, because FitAddon measures the
+  terminal's parent and would otherwise have counted the bar's height as usable rows and let
+  the pane clip the last one.
 - Claude Code sessions wate starts can drive their own tab through an MCP server built into the
   binary (`wate mcp`, stdio). Seven tools: open a pane beside or below, give it a third, a half
   or two thirds of the space, type into it, read it back, close it, focus it. wate hands the

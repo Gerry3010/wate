@@ -1,5 +1,6 @@
 import { AgentStateService, type SavedAgentSession, type Session } from "../api";
 import type { AgentStore } from "../agent/store";
+import { DOTS } from "../ui/icons";
 import { showMenu, type MenuEntry } from "../ui/menu";
 import { groupSessions, rowCwd, rowTitle, type Row } from "./groups";
 
@@ -20,11 +21,6 @@ export interface SidebarHost {
 }
 
 export const STATUS_LABEL: Record<string, string> = { running: "working", waiting: "waiting for you", done: "finished" };
-
-const DOTS =
-  '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">' +
-  '<circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/>' +
-  "</svg>";
 
 const CHEVRON =
   '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';

@@ -18,5 +18,7 @@ export interface Pane {
   relayout(): void;
   /** While true, size changes are ignored until relayout() (divider drags). */
   setFitSuspended?(suspended: boolean): void;
+  /** Show the pane's status bar (only worth it when the tab holds more than one pane). */
+  setStatusVisible?(visible: boolean): void;
   dispose(): void;
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -46,25 +47,51 @@ func (a *AccessService) ServiceStartup(context.Context, application.ServiceOptio
 	return nil
 }
 
+// AccessState is what the pane's own status bar shows: who opened it, and what has been
+// opened up to the agents in its tab.
+type AccessState struct {
+	Pane   string `json:"pane"`
+	Owner  string `json:"owner"`
+	Access Access `json:"access"`
+}
+
 // Opened records that `owner` asked for `pane`, which makes it the owner.
 func (a *AccessService) Opened(owner, pane string) {
 	if owner == "" || pane == "" {
 		return
 	}
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.openedBy[pane] = owner
+	a.mu.Unlock()
+	a.announce(pane)
+}
+
+// State is everything the frontend needs to draw one pane's bar.
+func (a *AccessService) State(pane string) AccessState {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return AccessState{Pane: pane, Owner: a.openedBy[pane], Access: a.granted[pane]}
+}
+
+// announce tells the windows that a pane's standing changed, so the bar repaints without
+// anybody polling for it.
+func (a *AccessService) announce(pane string) {
+	if app := application.Get(); app != nil {
+		app.Event.Emit("access:changed", a.State(pane))
+	}
 }
 
 // Grant sets what agents in the pane's tab may do to it. Bound: the pane's own menu calls this.
 func (a *AccessService) Grant(pane string, access Access) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if access == (Access{}) {
 		delete(a.granted, pane)
-		return
+	} else {
+		a.granted[pane] = access
 	}
-	a.granted[pane] = access
+	a.mu.Unlock()
+	slog.Info("agent access", "pane", pane, "read", access.Read, "write", access.Write, "manage", access.Manage)
+	a.announce(pane)
 }
 
 // Of is what has been granted on a pane (not counting ownership).
