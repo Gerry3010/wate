@@ -18,7 +18,7 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   the deadline comes up. `PostToolUse` joins the installed hooks for this: it is the one event
   that fires while an agent is busy, and a busy agent is exactly the one worth asking.
   Restarting means quitting and starting again, with the session restored — so the new build is
-  the one that comes back.
+  the one that comes back. `[claude] restart_deadline` sets how long the agents get.
 - A pane can be moved to another tab, or out into one of its own, without restarting anything:
   its shell keeps running, its scrollback comes along, and a command mid-flight does not notice.
   Nothing is rebuilt — a pane is an object with a socket and a terminal in it, and only its

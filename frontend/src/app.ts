@@ -364,7 +364,7 @@ export class WateApp {
 
   /** Ask every running session whether wate may restart. */
   async prepareRestart(): Promise<void> {
-    await RestartService.Announce("", 5).catch((err) => console.warn("restart:", err));
+    await RestartService.Announce("", this.config.claude.restart_deadline || 5).catch((err) => console.warn("restart:", err));
   }
 
   /** A pane's standing changed in the backend (a grant, or an agent opening a pane). */

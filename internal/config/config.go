@@ -95,6 +95,9 @@ type Claude struct {
 	ContextWindow int `toml:"context_window" json:"context_window"`
 	// MCP hands sessions wate starts the pane tools (splits, reading, writing).
 	MCP bool `toml:"mcp" json:"mcp"`
+	// RestartDeadline is how many minutes the agents get to answer "may wate restart?".
+	// It decides nothing on its own; it only changes what the panel says.
+	RestartDeadline int `toml:"restart_deadline" json:"restart_deadline"`
 }
 
 // Editor is the appearance and behaviour of editor panes.
