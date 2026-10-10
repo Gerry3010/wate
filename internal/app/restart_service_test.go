@@ -6,13 +6,18 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"github.com/Gerry3010/wate/internal/config"
 )
 
 // Every test gets its own state directory, because the pending restart lives in a file.
 func restartIn(t *testing.T) *RestartService {
 	t.Helper()
 	t.Setenv("WATE_CONFIG_DIR", t.TempDir())
-	return NewRestartService(nil, nil)
+	return NewRestartService(nil, nil, func() config.Config {
+		// No countdown by default in these tests: the ones about it set their own.
+		return config.Config{Claude: config.Claude{RestartCountdown: 0}}
+	})
 }
 
 func TestNothingIsPendingUntilSomebodyAsks(t *testing.T) {
@@ -30,7 +35,7 @@ func TestNothingIsPendingUntilSomebodyAsks(t *testing.T) {
 
 func TestAnAnnouncementHoldsTheQuitBack(t *testing.T) {
 	s := restartIn(t)
-	s.Announce("installing the new build", 5)
+	s.Announce("installing the new build", 5, true)
 	if !s.Status().Pending {
 		t.Fatal("the announcement did not stick")
 	}
@@ -48,7 +53,7 @@ func TestAnAnnouncementHoldsTheQuitBack(t *testing.T) {
 
 func TestCancellingPutsEverythingBack(t *testing.T) {
 	s := restartIn(t)
-	s.Announce("never mind", 5)
+	s.Announce("never mind", 5, true)
 	s.Cancel()
 	if s.Status().Pending {
 		t.Error("a cancelled restart was still pending")
@@ -60,7 +65,7 @@ func TestCancellingPutsEverythingBack(t *testing.T) {
 
 func TestAnAgentIsToldOnceAndThenLeftAlone(t *testing.T) {
 	s := restartIn(t)
-	s.Announce("the new build", 5)
+	s.Announce("the new build", 5, true)
 	first := s.TellPane("pane-1")
 	if first == "" {
 		t.Fatal("the first hook was told nothing")
@@ -86,7 +91,7 @@ func TestAnAgentIsToldOnceAndThenLeftAlone(t *testing.T) {
 
 func TestTheRemindersWaitForTheDeadline(t *testing.T) {
 	s := restartIn(t)
-	s.Announce("soon", 5)
+	s.Announce("soon", 5, true)
 	s.TellPane("pane-1")
 	// Pull the deadline in to under a minute: now the second telling is due.
 	rec, _ := readRestart()
@@ -104,7 +109,7 @@ func TestTheRemindersWaitForTheDeadline(t *testing.T) {
 
 func TestAnAnswerStopsTheTelling(t *testing.T) {
 	s := restartIn(t)
-	s.Announce("the new build", 5)
+	s.Announce("the new build", 5, true)
 	if err := s.Respond("pane-1", "wait", 7, "mid-migration"); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +125,7 @@ func TestAnAnswerStopsTheTelling(t *testing.T) {
 
 func TestOnlyGoOrWait(t *testing.T) {
 	s := restartIn(t)
-	s.Announce("the new build", 5)
+	s.Announce("the new build", 5, true)
 	if err := s.Respond("pane-1", "maybe", 0, ""); err == nil {
 		t.Error("a verdict nobody understands was accepted")
 	}
@@ -138,7 +143,7 @@ func TestAnsweringWithNothingPendingSaysSo(t *testing.T) {
 
 func TestTheDeadlineOnlyChangesWhatIsShown(t *testing.T) {
 	s := restartIn(t)
-	s.Announce("the new build", 5)
+	s.Announce("the new build", 5, true)
 	rec, _ := readRestart()
 	rec.Deadline = time.Now().Add(-time.Minute).Format(time.RFC3339)
 	if err := writeRestart(rec); err != nil {
@@ -159,9 +164,9 @@ func TestTheDeadlineOnlyChangesWhatIsShown(t *testing.T) {
 
 func TestARecordFromALastRunIsDropped(t *testing.T) {
 	s := restartIn(t)
-	s.Announce("a restart that already happened", 5)
+	s.Announce("a restart that already happened", 5, true)
 	// A fresh service in the same state directory is the next start of wate.
-	next := NewRestartService(nil, nil)
+	next := NewRestartService(nil, nil, nil)
 	if err := next.ServiceStartup(t.Context(), application.ServiceOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +182,7 @@ func TestASignalOutranksAPendingRestart(t *testing.T) {
 	// A terminal that cannot be closed from a script is worse than a restart that finishes
 	// early, so Allow — which is what the signal handler calls — always wins.
 	s := restartIn(t)
-	s.Announce("the new build", 5)
+	s.Announce("the new build", 5, true)
 	if s.MayQuit() {
 		t.Fatal("the restart was not holding anything back to begin with")
 	}
@@ -216,9 +221,69 @@ func TestTheQuitButtonLetsExactlyOneCloseThrough(t *testing.T) {
 func TestAnApprovedQuitDoesNotAskPerWindow(t *testing.T) {
 	// The restart dialog's own button, or a signal, has already settled it.
 	s := restartIn(t)
-	s.Announce("the new build", 5)
+	s.Announce("the new build", 5, true)
 	s.Allow()
 	if !s.ConfirmClose("w1") {
 		t.Error("a quit the user already approved was questioned again")
 	}
+}
+
+// countingDown builds a service whose countdown is this many seconds.
+func countingDown(t *testing.T, secs int) *RestartService {
+	t.Helper()
+	t.Setenv("WATE_CONFIG_DIR", t.TempDir())
+	return NewRestartService(nil, nil, func() config.Config {
+		return config.Config{Claude: config.Claude{RestartCountdown: secs}}
+	})
+}
+
+func TestWithNobodyLeftToWaitForItGoesByItself(t *testing.T) {
+	// The user asked for the restart when they started the round; once every agent has said
+	// go there is nothing left to decide, so it should not need a second press.
+	s := countingDown(t, 10)
+	st := s.Announce("the new build", 5, true)
+	if st.GoAt == "" {
+		t.Fatal("no countdown with nobody to wait for")
+	}
+	at, err := time.Parse(time.RFC3339, st.GoAt)
+	if err != nil {
+		t.Fatalf("go_at: %v", err)
+	}
+	if d := time.Until(at); d < 5*time.Second || d > 11*time.Second {
+		t.Errorf("countdown is %v, want about ten seconds", d)
+	}
+}
+
+func TestZeroSecondsMeansWaitForTheButton(t *testing.T) {
+	s := countingDown(t, 0)
+	if st := s.Announce("the new build", 5, true); st.GoAt != "" {
+		t.Error("a countdown ran although it was switched off")
+	}
+}
+
+func TestCancellingStopsTheCountdown(t *testing.T) {
+	s := countingDown(t, 10)
+	s.Announce("the new build", 5, true)
+	s.Cancel()
+	s.mu.Lock()
+	running := s.countdown != nil
+	s.mu.Unlock()
+	if running {
+		t.Error("the countdown kept running after the restart was called off")
+	}
+}
+
+func TestTheCountdownActuallyFires(t *testing.T) {
+	s := countingDown(t, 1)
+	s.Announce("the new build", 5, true)
+	// Proceed needs an application to quit; without one it only clears the record, which is
+	// exactly the observable part here.
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, pending := readRestart(); !pending {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("the countdown never fired")
 }

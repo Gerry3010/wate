@@ -38,6 +38,11 @@ export function quotePath(path: string): string {
   return /^[A-Za-z0-9_@%+=:,./-]+$/.test(path) ? path : `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
+/** A command line safe to type into a shell: every word quoted as `quotePath` would. */
+export function shellCommand(args: readonly string[]): string {
+  return args.map(quotePath).join(" ");
+}
+
 /** What the drop types into the shell: the quoted paths, with a trailing space to type on. */
 export function dropText(paths: string[]): string {
   return paths.length === 0 ? "" : paths.map(quotePath).join(" ") + " ";

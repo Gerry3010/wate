@@ -35,6 +35,8 @@ type RestartRecord struct {
 	StartedAt string                   `json:"started_at"`
 	Deadline  string                   `json:"deadline"`
 	Answers   map[string]RestartAnswer `json:"answers"`
+	// Relaunch is what the user asked for: start again afterwards, or only close.
+	Relaunch bool `json:"relaunch"`
 	// Notified counts how often each pane has been told, so a busy agent is not reminded on
 	// every single tool call.
 	Notified map[string]int `json:"notified"`
@@ -60,6 +62,9 @@ type RestartStatus struct {
 	Waiting    int          `json:"waiting"`
 	Agreed     int          `json:"agreed"`
 	Unanswered int          `json:"unanswered"`
+	// GoAt is when the countdown will start the restart by itself (RFC3339), empty while
+	// anybody is still being waited on.
+	GoAt string `json:"go_at"`
 }
 
 // howOftenToTell is how many times one announcement may reach the same agent: once when it is
@@ -74,6 +79,7 @@ const howOftenToTell = 2
 type RestartService struct {
 	agents  *AgentService
 	windows *WindowService
+	cfg     func() config.Config
 
 	mu sync.Mutex
 	// allowed is set by the dialog's own button. Until then a quit is held back, so a restart
@@ -84,10 +90,13 @@ type RestartService struct {
 	// allowClose holds the windows whose "quit anyway" has been pressed, so the close that
 	// follows goes straight through instead of asking a second time.
 	allowClose map[WindowID]bool
+	// countdown runs once every agent has agreed; goAt is when it will fire.
+	countdown *time.Timer
+	goAt      time.Time
 }
 
-func NewRestartService(agents *AgentService, windows *WindowService) *RestartService {
-	return &RestartService{agents: agents, windows: windows, allowClose: map[WindowID]bool{}}
+func NewRestartService(agents *AgentService, windows *WindowService, cfg func() config.Config) *RestartService {
+	return &RestartService{agents: agents, windows: windows, cfg: cfg, allowClose: map[WindowID]bool{}}
 }
 
 func (s *RestartService) ServiceName() string { return "RestartService" }
@@ -142,7 +151,7 @@ func (s *RestartService) clear() {
 }
 
 // Announce starts the round: every running agent is told at its next hook.
-func (s *RestartService) Announce(reason string, minutes int) RestartStatus {
+func (s *RestartService) Announce(reason string, minutes int, relaunch bool) RestartStatus {
 	if minutes <= 0 {
 		minutes = 5
 	}
@@ -153,6 +162,7 @@ func (s *RestartService) Announce(reason string, minutes int) RestartStatus {
 		Deadline:  now.Add(time.Duration(minutes) * time.Minute).Format(time.RFC3339),
 		Answers:   map[string]RestartAnswer{},
 		Notified:  map[string]int{},
+		Relaunch:  relaunch,
 	}
 	if err := writeRestart(rec); err != nil {
 		slog.Warn("restart: could not record the request", "err", err)
@@ -160,9 +170,72 @@ func (s *RestartService) Announce(reason string, minutes int) RestartStatus {
 	s.mu.Lock()
 	s.allowed = false
 	s.mu.Unlock()
-	st := s.Status()
+	st := s.settle()
 	s.announce(st)
 	return st
+}
+
+// countdownSeconds is how long to leave between the last agent agreeing and the restart.
+// Zero means: wait for the button instead.
+func (s *RestartService) countdownSeconds() int {
+	if s.cfg == nil {
+		return 10
+	}
+	return s.cfg().Claude.RestartCountdown
+}
+
+// settle takes the current picture and arms or disarms the countdown to match it.
+//
+// Once nobody is being waited on there is nothing left to decide: the user asked for the
+// restart when they started the round, so it goes ahead on its own after a short pause —
+// short enough not to be a wait, long enough to be called off.
+func (s *RestartService) settle() RestartStatus {
+	st := s.Status()
+	secs := s.countdownSeconds()
+	ready := st.Pending && st.Waiting == 0 && st.Unanswered == 0 && secs > 0
+
+	s.mu.Lock()
+	if !ready {
+		if s.countdown != nil {
+			s.countdown.Stop()
+			s.countdown = nil
+		}
+		s.goAt = time.Time{}
+		s.mu.Unlock()
+		return st
+	}
+	if s.countdown != nil {
+		// Already running; leave it be rather than restarting the clock under the user.
+		goAt := s.goAt
+		s.mu.Unlock()
+		st.GoAt = goAt.Format(time.RFC3339)
+		return st
+	}
+	s.goAt = time.Now().Add(time.Duration(secs) * time.Second)
+	goAt := s.goAt
+	s.countdown = time.AfterFunc(time.Duration(secs)*time.Second, s.fire)
+	s.mu.Unlock()
+	slog.Info("restart: everyone agreed, going in", "seconds", secs)
+	st.GoAt = goAt.Format(time.RFC3339)
+	return st
+}
+
+// fire is the countdown running out.
+func (s *RestartService) fire() {
+	s.mu.Lock()
+	s.countdown = nil
+	s.goAt = time.Time{}
+	s.mu.Unlock()
+	rec, ok := readRestart()
+	if !ok {
+		return
+	}
+	// Somebody may have started working again in the meantime.
+	if st := s.Status(); st.Waiting > 0 || st.Unanswered > 0 {
+		s.announce(s.settle())
+		return
+	}
+	s.Proceed(rec.Relaunch)
 }
 
 // Cancel drops the pending restart; everything carries on.
@@ -170,6 +243,11 @@ func (s *RestartService) Cancel() RestartStatus {
 	s.clear()
 	s.mu.Lock()
 	s.allowed = false
+	if s.countdown != nil {
+		s.countdown.Stop()
+		s.countdown = nil
+	}
+	s.goAt = time.Time{}
 	s.mu.Unlock()
 	st := s.Status()
 	s.announce(st)
@@ -196,7 +274,7 @@ func (s *RestartService) Respond(pane, verdict string, minutes int, note string)
 		return err
 	}
 	slog.Info("restart answer", "pane", pane, "verdict", verdict, "minutes", minutes)
-	s.announce(s.Status())
+	s.announce(s.settle())
 	return nil
 }
 

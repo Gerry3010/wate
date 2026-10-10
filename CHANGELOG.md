@@ -7,6 +7,12 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- Once every agent has said go, the restart happens by itself after ten seconds
+  (`[claude] restart_countdown`, 0 to wait for the button instead). The instruction was given
+  when the round was started; there is nothing left to decide, and the button only existed to
+  cover the agents who had not answered. The panel counts down and Cancel still stops it.
+  Each session shows where it stands: an empty circle for no answer, a filled grey one for
+  "heard you, but not yet", green for ready — the countdown starts when they are all green.
 - `wate_pane_run` runs a command in a pane beside the agent and waits for it to finish. Its
   reason for existing is the command that needs *you*: sudo, an ssh passphrase, a host key, a
   second factor. The command runs where you can see it, and the moment it asks for something
@@ -144,6 +150,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- "Resume" on a restored pane brings the session back with the same flags wate would have
+  started it with. It assembled the command line by hand, which meant a session picked up
+  after a restart came back without the pane tools — exactly the session most likely to be
+  asked about the next restart.
 - A control-socket action now lands in the tab it was sent from. `wate ctl action split_right`
   from a pane in a background tab used to split whichever tab happened to be in front, because
   the pane the request named was thrown away on the way to the frontend. The new split also

@@ -98,6 +98,9 @@ type Claude struct {
 	// RestartDeadline is how many minutes the agents get to answer "may wate restart?".
 	// It decides nothing on its own; it only changes what the panel says.
 	RestartDeadline int `toml:"restart_deadline" json:"restart_deadline"`
+	// RestartCountdown is the pause between the last agent agreeing and the restart,
+	// in seconds. 0 waits for the button instead.
+	RestartCountdown int `toml:"restart_countdown" json:"restart_countdown"`
 }
 
 // Editor is the appearance and behaviour of editor panes.

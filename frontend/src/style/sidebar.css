@@ -183,6 +183,18 @@
   white-space: nowrap;
 }
 .sidebar-restart .sidebar-row { padding: 5px 8px; }
+/* Three states, told apart without reading: nothing yet, heard but not ready, ready. */
+.restart-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border: 1.5px solid var(--tab-inactive-fg);
+  border-radius: 50%;
+  background: none;
+}
+.restart-dot.ack { background: var(--tab-inactive-fg); }
+.restart-dot.go { border-color: var(--green); background: var(--green); }
 .sidebar-restart .sidebar-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-restart-actions { display: flex; gap: 6px; padding: 6px 10px 2px; }
 .sidebar-restart-actions button {

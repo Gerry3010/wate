@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boxAt, dropText, dropZone, droppedPaths, quotePath, zoneRect, zoneSplit } from "./drop";
+import { boxAt, dropText, dropZone, droppedPaths, quotePath, shellCommand, zoneRect, zoneSplit } from "./drop";
 
 /** The parts of DataTransfer a drop handler reads. */
 function transfer(data: Record<string, string>): DataTransfer {
@@ -131,5 +131,25 @@ describe("boxAt", () => {
 
   it("has nothing to say about a point next to every pane", () => {
     expect(boxAt(panes, 50, 500)).toBeUndefined();
+  });
+});
+
+describe("shellCommand", () => {
+  it("leaves a plain command alone", () => {
+    expect(shellCommand(["claude", "--resume", "abc-123"])).toBe("claude --resume abc-123");
+  });
+
+  it("quotes an argument the shell would otherwise take apart", () => {
+    // This is the real case: the MCP server definition goes in as one argument.
+    const json = '{"mcpServers":{"wate":{"command":"/home/g/.local/bin/wate","args":["mcp"]}}}';
+    const line = shellCommand(["claude", "--mcp-config", json]);
+    expect(line.startsWith("claude --mcp-config '")).toBe(true);
+    expect(line.endsWith("'")).toBe(true);
+    // No unquoted brace or quote escapes into the command line.
+    expect(line.slice("claude --mcp-config ".length)).toBe(`'${json}'`);
+  });
+
+  it("survives an argument containing a quote", () => {
+    expect(shellCommand(["echo", "it's"])).toBe(`echo 'it'\\''s'`);
   });
 });

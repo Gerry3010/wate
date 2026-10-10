@@ -100,7 +100,7 @@ func main() {
 	themeSvc := app.NewThemeService(cfgSvc.Current)
 	notifySvc := notifications.New()
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc, winSvc)
-	restartSvc := app.NewRestartService(agentSvc, winSvc)
+	restartSvc := app.NewRestartService(agentSvc, winSvc, cfgSvc.Current)
 	ctlSvc.Restart = restartSvc
 	winSvc.ConfirmClose = restartSvc.ConfirmClose
 	// Quitting: hand the primary role to whoever starts next, then let Claude Code shut down

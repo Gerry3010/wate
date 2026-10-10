@@ -175,7 +175,7 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		if c.Restart == nil {
 			return ctl.Response{Error: "restarts are not set up"}
 		}
-		return ctl.Response{OK: true, Data: c.Restart.Announce(r.Text, r.Lines)}
+		return ctl.Response{OK: true, Data: c.Restart.Announce(r.Text, r.Lines, true)}
 	case "restart-status":
 		if c.Restart == nil {
 			return ctl.Response{Error: "restarts are not set up"}

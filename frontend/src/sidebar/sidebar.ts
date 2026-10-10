@@ -111,8 +111,15 @@ export class Sidebar {
   /** A restart round opened, changed or ended. */
   setRestart(st: RestartStatus | null) {
     this.restart = st && st.pending ? st : null;
+    // A running countdown is the one thing here that changes without anybody telling us, so
+    // it gets a tick of its own rather than making the whole panel poll.
+    clearInterval(this.ticking);
+    this.ticking = undefined;
+    if (this.restart?.go_at) this.ticking = setInterval(() => this.render(), 1000);
     this.render();
   }
+
+  private ticking?: ReturnType<typeof setInterval>;
 
   render() {
     // The store fires on every status tick; a hidden panel has nothing to show for it.
@@ -185,6 +192,11 @@ export class Sidebar {
     for (const r of st.rows ?? []) {
       const row = document.createElement("div");
       row.className = "sidebar-row";
+      // Empty circle: has not answered. Filled grey: answered, but asked for more time.
+      // Filled green: ready. The countdown starts when they are all green.
+      const dot = document.createElement("span");
+      dot.className = "restart-dot" + (r.verdict === "go" ? " go" : r.verdict === "wait" ? " ack" : "");
+      dot.title = r.verdict === "go" ? "ready" : r.verdict === "wait" ? "answered, needs longer" : "no answer yet";
       const title = document.createElement("div");
       title.className = "sidebar-title";
       title.textContent = r.title || r.pane;
@@ -202,7 +214,7 @@ export class Sidebar {
       const text = document.createElement("div");
       text.className = "sidebar-main";
       text.append(title, said);
-      row.append(text);
+      row.append(dot, text);
       body.appendChild(row);
     }
 
@@ -210,7 +222,8 @@ export class Sidebar {
     actions.className = "sidebar-restart-actions";
     const go = document.createElement("button");
     go.className = "sidebar-restart-go";
-    go.textContent = st.unanswered || st.waiting ? "Restart anyway" : "Restart now";
+    const left = st.go_at ? Math.max(0, Math.round((new Date(st.go_at).getTime() - Date.now()) / 1000)) : 0;
+    go.textContent = st.go_at ? `Restart now (${left})` : st.unanswered || st.waiting ? "Restart anyway" : "Restart now";
     go.addEventListener("click", () => this.host.restartNow());
     const stop = document.createElement("button");
     stop.className = "sidebar-restart-cancel";

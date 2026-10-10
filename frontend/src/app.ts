@@ -11,7 +11,7 @@ import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
 import { perf, takePerf } from "./perf";
 import { keys, logKey, takeKeys } from "./keys-debug";
-import { boxAt, dropText, dropZone, droppedPaths, zoneRect, zoneSplit, type Box, type DropZone } from "./drop";
+import { boxAt, dropText, dropZone, droppedPaths, shellCommand, zoneRect, zoneSplit, type Box, type DropZone } from "./drop";
 import { DropHighlight, installDragMotion } from "./drop-overlay";
 import { neighbor, type Dir, type Direction } from "./layout/tree";
 import { moveItem } from "./tabs/order";
@@ -323,10 +323,18 @@ export class WateApp {
       title: c.title,
       detail: [c.cwd ? shortPath(c.cwd) : "", c.model ?? "", c.contextPercent ? `context ${c.contextPercent} %` : ""].filter(Boolean).join("  ·  "),
       action: c.sessionId ? "Resume" : "Continue",
+      // The hint is the short form; what actually runs carries the flags as well, and the
+      // inline MCP definition among them is far too long to put in front of anybody.
       hint: c.sessionId ? `${cmd()} --resume ${c.sessionId}` : `${cmd()} --continue`,
       onActivate: () => {
-        pane.runCommand(c.sessionId ? `${cmd()} --resume ${c.sessionId}` : `${cmd()} --continue`);
-        pane.focus();
+        void (async () => {
+          // Through ClaudeArgs, not assembled here: a session brought back this way has to
+          // come back with the same flags one wate starts itself, or it returns without the
+          // pane tools and cannot answer a restart with anything but the shell.
+          const args = (await ConfigService.ClaudeArgs(c.sessionId ?? "").catch(() => null)) ?? [cmd()];
+          pane.runCommand(shellCommand(c.sessionId ? args : [...args, "--continue"]));
+          pane.focus();
+        })();
       },
     };
   }
@@ -378,7 +386,7 @@ export class WateApp {
       "Closing this window ends their sessions. You can ask them whether now is a good moment.",
       [
         { label: "Cancel", onSelect: () => {} },
-        { label: "Wait", onSelect: () => void this.prepareRestart() },
+        { label: "Wait", onSelect: () => void this.prepareRestart(false) },
         {
           label: "Quit",
           danger: true,
@@ -395,9 +403,15 @@ export class WateApp {
     this.sidebar.setRestart(st);
   }
 
-  /** Ask every running session whether wate may restart. */
-  async prepareRestart(): Promise<void> {
-    await RestartService.Announce("", this.config.claude.restart_deadline || 5).catch((err) => console.warn("restart:", err));
+  /**
+   * Ask every running session whether wate may restart.
+   *
+   * `relaunch` is what the user asked for in the first place: the Sessions menu means restart,
+   * the close dialog's "Wait" means close. The countdown that runs once everyone has agreed
+   * carries out whichever it was.
+   */
+  async prepareRestart(relaunch = true): Promise<void> {
+    await RestartService.Announce("", this.config.claude.restart_deadline || 5, relaunch).catch((err) => console.warn("restart:", err));
   }
 
   /** A pane's standing changed in the backend (a grant, or an agent opening a pane). */
