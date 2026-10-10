@@ -49,6 +49,43 @@ export type SavedPane =
     }
   | { id: string; kind: "editor"; path: string };
 
+/**
+ * The resume offers panes were restored with, held until a live session takes over.
+ *
+ * A pane that came back out of the state file has no Claude running in it: the session it
+ * points at died with the last wate, and the offer to resume it is the only trace left. The
+ * save that follows a restart looks at the live sessions, finds none for that pane, and —
+ * before this existed — wrote the pane out with no pointer at all. So the offer survived
+ * exactly one restart and was gone by the second, which is precisely when you would want it.
+ */
+export class ResumeOffers {
+  private byPane = new Map<string, SavedClaude>();
+
+  /** Take note of what a restored pane was pointing at. */
+  remember(pane: string, c: SavedClaude | undefined) {
+    if (c) this.byPane.set(pane, c);
+  }
+
+  forget(pane: string) {
+    this.byPane.delete(pane);
+  }
+
+  /**
+   * What to write for a pane, given whatever is running in it now.
+   *
+   * A live session always wins, and it also retires the old offer: once Claude has run here,
+   * the pointer from before the restart is a worse answer than the one in front of us, and
+   * keeping it would mean offering a dead session again the next time this pane falls idle.
+   */
+  forSave(pane: string, live: SavedClaude | undefined): SavedClaude | undefined {
+    if (live) {
+      this.byPane.delete(pane);
+      return live;
+    }
+    return this.byPane.get(pane);
+  }
+}
+
 /** The Claude Code session a pane held when the state was saved. */
 export interface SavedClaude {
   /** Session title: its transcript summary, or the first prompt. */

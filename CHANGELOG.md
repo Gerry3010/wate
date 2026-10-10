@@ -156,6 +156,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- A pane's offer to resume its Claude session survives more than one restart. The offer lived
+  only in the state file, and the save that followed a restart read the *live* sessions, found
+  none for a pane that had just been restored, and wrote it out empty — so the pointer made it
+  through exactly one restart and was gone by the second, which is when you want it most. A
+  restored pane now keeps its pointer until a real session takes the pane over.
 - A pane that has been moved to another tab still answers for itself. Its callbacks held on to
   the tab it was created in, so after a move the drag did nothing, a shell exiting left the
   pane on screen as a dead terminal, and a file opened from it landed in the wrong tab. They

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { leaf, leaves, splitLeaf } from "./layout/tree";
-import { parseSession, parseWindow, remapTree } from "./session";
+import { parseSession, parseWindow, remapTree, ResumeOffers } from "./session";
 
 describe("session", () => {
   it("rejects garbage and old versions", () => {
@@ -91,5 +91,43 @@ describe("parseSession across versions", () => {
     expect(parseWindow(JSON.stringify({ active: 1, tabs: [tab, tab] }))?.active).toBe(1);
     expect(parseWindow(JSON.stringify({ key: "k", active: 0, tabs: [tab] }))?.key).toBe("k");
     expect(parseWindow(JSON.stringify({ active: 0, tabs: [] }))).toBeNull();
+  });
+});
+
+describe("ResumeOffers", () => {
+  const offer = { title: "wate restart work", sessionId: "s-1" };
+
+  it("keeps a restored pane's offer when nothing is running in it", () => {
+    // The bug this is here for: after a restart the pane has no live session, the save wrote
+    // nothing, and the offer was gone by the second restart.
+    const o = new ResumeOffers();
+    o.remember("pane-1", offer);
+    expect(o.forSave("pane-1", undefined)).toEqual(offer);
+    // Still there on the save after that, and the one after that.
+    expect(o.forSave("pane-1", undefined)).toEqual(offer);
+  });
+
+  it("lets a live session take the pane over for good", () => {
+    const o = new ResumeOffers();
+    o.remember("pane-1", offer);
+    const live = { title: "what is running now", sessionId: "s-2" };
+    expect(o.forSave("pane-1", live)).toEqual(live);
+    // The old pointer is retired: offering a session from before the restart once this pane
+    // falls idle again would be worse than offering nothing.
+    expect(o.forSave("pane-1", undefined)).toBeUndefined();
+  });
+
+  it("knows nothing about a pane that was not restored", () => {
+    const o = new ResumeOffers();
+    expect(o.forSave("pane-9", undefined)).toBeUndefined();
+    o.remember("pane-9", undefined);
+    expect(o.forSave("pane-9", undefined)).toBeUndefined();
+  });
+
+  it("forgets a pane that is gone", () => {
+    const o = new ResumeOffers();
+    o.remember("pane-1", offer);
+    o.forget("pane-1");
+    expect(o.forSave("pane-1", undefined)).toBeUndefined();
   });
 });

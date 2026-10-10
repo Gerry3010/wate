@@ -1,7 +1,7 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
 import { AccessService, AgentService, ConfigService, OpenerService, PaneBridge, RestartService, PtyService, SessionService, StateService, ThemeService, WindowService, type Access, type AccessState, type Config, type Resolved, type Session, type Target } from "./api";
-import { fromImported, parseWindow, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
+import { fromImported, parseWindow, remapTree, ResumeOffers, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
 import { closeMenu, type MenuEntry } from "./ui/menu";
@@ -277,7 +277,10 @@ export class WateApp {
           }));
         } else {
           const pane = this.makeTerminal(tab, { cwd: sp.cwd, replay: sp.replay, visible: false });
-          if (sp.claude) pane.setNotice(this.claudeNotice(pane, sp.claude));
+          if (sp.claude) {
+            this.offers.remember(pane.id, sp.claude);
+            pane.setNotice(this.claudeNotice(pane, sp.claude));
+          }
           map.set(sp.id, pane.id);
           panes.push(pane);
           starts.push(pane.start());
@@ -306,14 +309,16 @@ export class WateApp {
   /** The Claude Code session running in a pane, in the shape the session file keeps. */
   private claudeOf(p: TerminalPane): SavedClaude | undefined {
     const s = this.agents.forPane(p.id);
-    if (!s) return undefined;
-    return {
+    const live: SavedClaude | undefined = s && {
       title: s.title || s.message || "Claude Code",
       sessionId: s.session_id || undefined,
       cwd: s.cwd || undefined,
       model: s.context?.model || undefined,
       contextPercent: s.context_percent || undefined,
     };
+    // A pane restored from the file has nothing live in it; without the fallback its offer
+    // to resume would be dropped by the very next save.
+    return this.offers.forSave(p.id, live);
   }
 
   /** The block a restored pane shows where its Claude session was: one click brings it back. */
@@ -346,6 +351,9 @@ export class WateApp {
 
   /** Last status painted per pane, so an unchanged one costs no DOM work. */
   private paneStatus = new Map<string, string>();
+
+  /** Resume offers carried over from the state file; see ResumeOffers. */
+  private offers = new ResumeOffers();
 
   /** The tab button a dragged pane is resting on, and since when. */
   private springTab: { id: string; at: number } | null = null;
@@ -580,6 +588,9 @@ export class WateApp {
       // and the handover — which is a far better trade than arriving with a blank screen.
       const adopt = !!t.live[sp.id];
       const pane = this.makeTerminal(tab, { id: sp.id, adopt, cwd: sp.cwd, replay: sp.replay, visible: true });
+      // A tab handed over from another window brings its resume offers with it: an adopted
+      // pane still has its live session, but one that had only the offer would lose it here.
+      this.offers.remember(sp.id, sp.claude);
       panes.set(sp.id, pane);
     }
     const at = t.index < 0 || t.index > this.tabs.length ? this.tabs.length : t.index;
@@ -1091,6 +1102,7 @@ export class WateApp {
     AccessService.Forget(pane.id).catch(() => {});
     this.access.delete(pane.id);
     this.paneStatus.delete(pane.id);
+    this.offers.forget(pane.id);
     tab.remove(pane.id);
     if (tab.isEmpty) this.closeTab(tab);
     else tab.focusPane();
