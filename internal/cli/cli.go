@@ -31,6 +31,7 @@ usage:
   wate ctl split-ratio [row|col] <size>
                                   resize this pane's share of its divider
   wate ctl pane-write <text>      type text into a pane (--target <id> for another one)
+  wate ctl pane-move new|<n>      move a pane into a tab of its own, or into tab <n>
   wate ctl pane-close             close a pane
   wate ctl pane-focus             focus a pane
   wate ctl pane-list              list the panes of this tab, as JSON
@@ -112,6 +113,8 @@ func Run(args []string) int {
 			}
 		case "pane-write":
 			req.Text = rest
+		case "pane-move":
+			req.Name = rest
 		case "pane-split", "split-ratio":
 			for _, w := range words {
 				switch {

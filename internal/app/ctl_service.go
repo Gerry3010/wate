@@ -168,7 +168,7 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 			return ctl.Response{Error: err.Error()}
 		}
 		return ctl.Response{OK: true}
-	case "pane-read", "pane-split", "pane-close", "pane-focus", "pane-list", "split-ratio", "pane-write":
+	case "pane-read", "pane-split", "pane-close", "pane-focus", "pane-list", "split-ratio", "pane-write", "pane-move":
 		data, err := c.pane(r)
 		if err != nil {
 			return ctl.Response{Error: err.Error()}
@@ -293,6 +293,16 @@ func (c *CtlService) pane(r ctl.Request) (any, error) {
 			return nil, err
 		}
 		return c.askPane(target, "read", map[string]any{"lines": r.Lines})
+
+	case "pane-move":
+		// Only a pane the caller opened may be moved, so a user's pane cannot be carried off.
+		// Ownership survives the move, but reach does not: while the pane sits in another tab
+		// its owner cannot read or write it, because the tab is the boundary. Moving it back
+		// is still allowed, and restores the rest.
+		if !c.access.Owns(from, target) {
+			return nil, fmt.Errorf("pane %q is not yours to move", target)
+		}
+		return c.askPane(target, "move", map[string]any{"to": r.Name})
 
 	case "pane-write":
 		if err := c.access.Allow(from, target, RightWrite); err != nil {

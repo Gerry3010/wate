@@ -1,5 +1,7 @@
 import type { Pane } from "../pane";
 import { LayoutView } from "../layout/view";
+import { boxAt, dropZone, zoneRect, zoneSplit, type DropZone } from "../drop";
+import { DropHighlight } from "../drop-overlay";
 import {
   focusAfterClose,
   leaves,
@@ -27,6 +29,8 @@ export class Tab {
   readonly id = nextId("tab");
   readonly element = document.createElement("div");
   readonly panes = new Map<string, Pane>();
+  /** One per attached pane, so moving a pane between tabs does not leave its old wiring on. */
+  private wiring = new Map<string, AbortController>();
   tree: LayoutNode | null = null;
   focusedId: string | null = null;
   /** Fired after the layout settled, with the focused pane's rectangle (the sidebar edge follows it). */
@@ -137,7 +141,13 @@ export class Tab {
   private attach(pane: Pane) {
     this.panes.set(pane.id, pane);
     pane.element.dataset.paneId = pane.id;
-    pane.element.addEventListener("focusin", () => this.setFocus(pane.id));
+    // A pane can be attached twice — it moves between tabs without being rebuilt — so the old
+    // tab's listeners have to come off first, or a moved pane would answer to both.
+    this.wiring.get(pane.id)?.abort();
+    const wiring = new AbortController();
+    this.wiring.set(pane.id, wiring);
+    const opts = { signal: wiring.signal };
+    pane.element.addEventListener("focusin", () => this.setFocus(pane.id), opts);
     pane.element.addEventListener(
       "pointerdown",
       (e) => {
@@ -145,8 +155,25 @@ export class Tab {
         // Alt + drag moves the pane: drop it on another pane to swap the two.
         if (e.altKey && e.button === 0 && !e.ctrlKey && !e.metaKey) this.startSwapDrag(pane.id, e);
       },
-      { capture: true },
+      { capture: true, signal: wiring.signal },
     );
+  }
+
+  /** Take a pane out without killing it: it is moving to another tab, not closing. */
+  detachPane(id: string): Pane | undefined {
+    const pane = this.panes.get(id);
+    if (!pane) return undefined;
+    const next = this.tree ? focusAfterClose(this.tree, id) : null;
+    this.panes.delete(id);
+    this.wiring.get(id)?.abort();
+    this.wiring.delete(id);
+    this.tree = this.tree ? removeLeaf(this.tree, id) : null;
+    pane.element.remove();
+    this.render();
+    if (next) this.setFocus(next);
+    else this.focusedId = null;
+    this.onChange?.();
+    return pane;
   }
 
   /** Exchange two panes' positions. */
@@ -163,6 +190,95 @@ export class Tab {
     if (!this.focusedId) return;
     const other = neighbor(this.rects(), this.focusedId, direction);
     if (other) this.swap(this.focusedId, other);
+  }
+
+  /**
+   * Drag a pane by its status bar: onto the middle of another to swap the two, onto an edge
+   * to put it there instead.
+   *
+   * Alt+drag (startSwapDrag) stays as it was — it can only swap, and people have it in their
+   * fingers. This is the same gesture with the drop zones the file drop already uses.
+   */
+  startPaneDrag(id: string, start: PointerEvent): void {
+    start.preventDefault();
+    const source = this.panes.get(id)?.element;
+    if (!source || !this.tree || this.panes.size < 2) return;
+    const original = this.tree;
+    const highlight = new DropHighlight(document.body);
+    // Measured once, against the layout as it was: the preview rearranges the panes, and
+    // re-measuring would make the decision chase its own result.
+    const boxes = this.rects();
+    source.classList.add("swap-source");
+    for (const p of this.panes.values()) p.setFitSuspended?.(true);
+    let shown = "";
+    let landed: { target: string; zone: DropZone } | null = null;
+
+    const hit = (x: number, y: number) => {
+      const box = boxAt(boxes, x, y);
+      if (!box || box.id === id) return null;
+      return { target: box.id, zone: dropZone(box, x, y), box };
+    };
+    const preview = (x: number, y: number) => {
+      const h = hit(x, y);
+      const key = h ? `${h.target}:${h.zone}` : "";
+      if (key === shown) return;
+      shown = key;
+      landed = h ? { target: h.target, zone: h.zone } : null;
+      if (!h) {
+        highlight.hide();
+        this.tree = original;
+        this.view.render(this.tree);
+        return;
+      }
+      highlight.show(zoneRect(h.box, h.zone), h.zone);
+      if (h.zone === "center") {
+        this.tree = swapLeaves(original, id, h.target);
+      } else {
+        const split = zoneSplit(h.zone);
+        const t0 = removeLeaf(original, id);
+        if (!split || !t0) return;
+        const { dir, before } = split;
+        let t = t0;
+        t = splitLeaf(t, h.target, dir, id);
+        this.tree = before ? swapLeaves(t, id, h.target) : t;
+      }
+      this.view.render(this.tree);
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", finish, true);
+      window.removeEventListener("pointercancel", cancel, true);
+      window.removeEventListener("keydown", onKey, true);
+      highlight.dispose();
+      source.classList.remove("swap-source");
+      for (const p of this.panes.values()) p.setFitSuspended?.(false);
+    };
+    const move = (e: PointerEvent) => preview(e.clientX, e.clientY);
+    const finish = (e: PointerEvent) => {
+      preview(e.clientX, e.clientY);
+      const done = landed;
+      cleanup();
+      if (!done) {
+        this.tree = original;
+      }
+      this.render();
+      if (done) {
+        this.setFocus(id);
+        this.onChange?.();
+      }
+    };
+    const cancel = () => {
+      cleanup();
+      this.tree = original;
+      this.render();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancel();
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", finish, true);
+    window.addEventListener("pointercancel", cancel, true);
+    window.addEventListener("keydown", onKey, true);
   }
 
   private startSwapDrag(id: string, start: PointerEvent): void {
@@ -230,6 +346,8 @@ export class Tab {
     if (!pane) return;
     const next = this.tree ? focusAfterClose(this.tree, id) : null;
     this.panes.delete(id);
+    this.wiring.get(id)?.abort();
+    this.wiring.delete(id);
     this.tree = this.tree ? removeLeaf(this.tree, id) : null;
     pane.dispose();
     this.render();

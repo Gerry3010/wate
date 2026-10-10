@@ -55,6 +55,8 @@ export interface TerminalPaneOptions {
   onTitle?: (title: string) => void;
   /** Ctrl/Cmd-click on an existing file or directory. */
   onOpenFile?: (t: Target) => void;
+  /** A drag started on the status bar, which is the pane's handle. */
+  onBarDrag?: (e: PointerEvent) => void;
 }
 
 /**
@@ -166,6 +168,7 @@ export class TerminalPane implements Pane {
     this.body = document.createElement("div");
     this.body.className = "pane-term-body";
     this.element.append(this.bar.element, this.body);
+    this.bar.onDragStart = (e) => this.opts.onBarDrag?.(e);
 
     const t = opts.terminal;
     const termOpts: ITerminalOptions = {

@@ -4,7 +4,7 @@ import { AccessService, AgentService, ConfigService, OpenerService, PaneBridge, 
 import { fromImported, parseWindow, remapTree, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
-import { closeMenu } from "./ui/menu";
+import { closeMenu, type MenuEntry } from "./ui/menu";
 import { Sidebar, shortPath } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap } from "./keymap/keymap";
@@ -367,7 +367,15 @@ export class WateApp {
         const pane = this.paneById(id);
         if (tab && pane) this.closePane(tab, pane);
       },
-      paneEntries: () => [],
+      paneEntries: (id) => {
+        const from = this.tabOfPane(id);
+        const entries: MenuEntry[] = [];
+        if (from && from.panes.size > 1) entries.push({ label: "Move to new tab", onSelect: () => void this.movePaneToNewTab(id) });
+        this.tabs.forEach((t, i) => {
+          if (t !== from) entries.push({ label: `Move to tab ${i + 1}`, hint: t.title, onSelect: () => void this.movePane(id, t) });
+        });
+        return entries;
+      },
     };
   }
 
@@ -697,6 +705,18 @@ export class WateApp {
         if (!tab.setSplitRatio(req.pane, dir, args.ratio)) throw new Error(`pane ${req.pane} has no ${dir} divider next to it`);
         return "";
       }
+      case "move": {
+        const to = String((args as { to?: string }).to ?? "new");
+        if (to === "new" || to === "") {
+          if (!(await this.movePaneToNewTab(req.pane))) throw new Error("a pane on its own is already a tab");
+          return "";
+        }
+        const n = Number(to);
+        const dest = this.tabs[n - 1];
+        if (!dest) throw new Error(`there is no tab ${to}`);
+        if (!(await this.movePane(req.pane, dest))) throw new Error("that pane is already there");
+        return "";
+      }
       case "close":
         this.closePane(tab, pane);
         return "";
@@ -719,6 +739,38 @@ export class WateApp {
       default:
         throw new Error(`unknown pane request ${req.kind}`);
     }
+  }
+
+  /**
+   * Move a pane into another tab of this window, shell and scrollback intact.
+   *
+   * Nothing is rebuilt: a pane is a JavaScript object with a WebSocket and an xterm instance,
+   * and only its parent element changes. The backend is told which tab it is in now, because
+   * that is what decides who may reach it — the WATE_TAB_ID frozen into its shell does not
+   * move with it and must not be believed (see PtyService.Retab).
+   */
+  async movePane(paneId: string, to: Tab, at?: SplitAt): Promise<boolean> {
+    const from = this.tabOfPane(paneId);
+    if (!from || from === to) return false;
+    const pane = from.detachPane(paneId);
+    if (!pane) return false;
+    if (from.panes.size === 0) this.closeTab(from);
+    to.add(pane, at?.dir ?? "row", at?.target ?? to.focusedId, at?.before ?? false);
+    if (at?.ratio !== undefined) to.setSplitRatio(pane.id, at.dir ?? "row", at.ratio);
+    await PtyService.Retab(pane.id, to.id).catch((err) => console.warn("retab:", err));
+    this.activate(to);
+    to.setFocus(pane.id);
+    pane.relayout();
+    this.refreshChrome();
+    this.scheduleSave();
+    return true;
+  }
+
+  /** Move a pane out into a tab of its own. */
+  async movePaneToNewTab(paneId: string): Promise<boolean> {
+    const from = this.tabOfPane(paneId);
+    if (!from || from.panes.size < 2) return false;
+    return this.movePane(paneId, this.createTab());
   }
 
   /** The tab of this window that holds this pane, if any. */
@@ -820,6 +872,7 @@ export class WateApp {
       onExit: () => this.removePane(tab, pane),
       onTitle: () => tab.onChange?.(),
       onOpenFile: (t) => this.openTarget(tab, t),
+      onBarDrag: (e) => tab.startPaneDrag(pane.id, e),
     });
     pane.bar.setHost(this.statusHost());
     return pane;

@@ -7,6 +7,14 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- A pane can be moved to another tab, or out into one of its own, without restarting anything:
+  its shell keeps running, its scrollback comes along, and a command mid-flight does not notice.
+  Nothing is rebuilt — a pane is an object with a socket and a terminal in it, and only its
+  parent changes. Reach it from the pane's menu, by dragging the pane by its bar (onto the
+  middle of another pane to swap the two, onto an edge to land there), or with
+  `wate ctl pane-move new|<n>`. An agent may only move a pane it opened itself; ownership
+  survives the move, but reach does not while the pane sits in another tab, because the tab is
+  the boundary.
 - A pane sharing its tab with another gets a thin bar along its top: what it is running, an
   orange mark if an agent opened it, letters for anything the user has opened it up to, and a
   menu. A pane on its own keeps the uncluttered look — it is the tab, so there is nothing to
