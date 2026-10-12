@@ -78,6 +78,12 @@ html, body {
    of our own content — the first tab would sit underneath them. Their right edge is at 80px,
    and in fullscreen they are gone, so the room would just be a gap (see window:fullscreen). */
 :root[data-platform="darwin"]:not([data-fullscreen]) .tabbar { padding-left: 88px; }
+/* HiddenInset gives the window an (empty) unified toolbar, 52px tall, and macOS centres the
+   traffic lights in it — at 26px. A shorter bar leaves them hanging over the pane's top edge.
+   So the bar takes the toolbar's full height, and each tab keeps 6px clear at its foot so its
+   label sits on the traffic lights' line rather than in the middle of the taller tab. */
+:root[data-platform="darwin"] .tabbar { height: 52px; padding-top: 8px; }
+:root[data-platform="darwin"] .tabbar-tab { padding-bottom: 6px; border-radius: 10px 10px 0 0; }
 .tabbar-tabs {
   display: flex;
   gap: 4px;

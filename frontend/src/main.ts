@@ -1,6 +1,7 @@
 import { ConfigService, Events, LogService, WindowService } from "./api";
 import { initWindowId, onMine } from "./api/events";
 import { WateApp } from "./app";
+import { loadBundledFonts } from "./terminal/fonts";
 
 // Mirror console errors/warnings into the Go log so packaged builds are debuggable.
 for (const level of ["error", "warn"] as const) {
@@ -25,6 +26,8 @@ async function boot() {
   if (warning) console.warn(warning);
   // Lets the stylesheet dodge the macOS traffic lights (see .tabbar in base.css).
   document.documentElement.dataset.platform = os;
+  // Before the first terminal: its glyph atlas keeps whatever it drew first.
+  await loadBundledFonts();
 
   const app = new WateApp(root, config);
   app.windowId = boot.window_id;
