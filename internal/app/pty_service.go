@@ -96,6 +96,9 @@ type SpawnRequest struct {
 	Rows    int      `json:"rows"`
 	PaneID  string   `json:"paneId"`
 	TabID   string   `json:"tabId"`
+	// Agent marks a pane opened over the control socket (pane-split) — a workspace whose
+	// output is read back by a program rather than by somebody at the keyboard.
+	Agent bool `json:"agent"`
 }
 
 // SpawnResult tells the frontend where to connect.
@@ -147,6 +150,12 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 	// a word everywhere else.
 	if cfg.Terminal.WordKeys == "ctrl" || cfg.Terminal.WordKeys == "both" {
 		env = append(env, "CLAUDE_CODE_BS_AS_CTRL_BACKSPACE=1")
+	}
+	// A pager in an agent's pane swallows the output it was meant to read: `git log` opens
+	// less on the alternate screen, and quitting it takes everything back off the screen.
+	// Profiles that only fill these in when unset (oh-my-zsh does) leave them alone.
+	if req.Agent {
+		env = append(env, "PAGER=cat", "GIT_PAGER=cat")
 	}
 	if cfg.General.ShellIntegration {
 		env = append(env, shell.Env(cmd[0], shellDir())...)

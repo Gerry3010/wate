@@ -769,7 +769,7 @@ export class WateApp {
       }
       case "split": {
         const dir: Dir = args.dir === "col" ? "col" : "row";
-        const made = await this.addTerminal(tab, dir, {}, { target: req.pane, ratio: args.ratio || undefined });
+        const made = await this.addTerminal(tab, dir, { agent: true }, { target: req.pane, ratio: args.ratio || undefined });
         return made.id;
       }
       case "ratio": {
@@ -987,13 +987,14 @@ export class WateApp {
 
   // ---- panes ------------------------------------------------------------
 
-  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean; id?: string; adopt?: boolean }): TerminalPane {
+  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean; id?: string; adopt?: boolean; agent?: boolean }): TerminalPane {
     const owner = () => this.tabOfPane(pane.id) ?? tab;
     const pane: TerminalPane = new TerminalPane({
       // An adopted pane keeps its id: that is how the backend finds the shell it already has,
       // and it is what the shell's own WATE_PANE_ID says.
       paneId: opts.id ?? nextId("pane"),
       adopt: opts.adopt,
+      agent: opts.agent,
       tabId: tab.id,
       cwd: opts.cwd ?? "",
       command: opts.command,
@@ -1015,7 +1016,7 @@ export class WateApp {
     return pane;
   }
 
-  private async addTerminal(tab: Tab, dir: Dir, opts: { cwd?: string; command?: string[] } = {}, at?: SplitAt): Promise<TerminalPane> {
+  private async addTerminal(tab: Tab, dir: Dir, opts: { cwd?: string; command?: string[]; agent?: boolean } = {}, at?: SplitAt): Promise<TerminalPane> {
     // A new split starts where the pane it was asked for is looking — which is the focused one
     // from the keyboard, but the *asking* one when a request named it.
     const beside = (at?.target && tab.panes.get(at.target)) || tab.focused;

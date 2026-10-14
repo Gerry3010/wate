@@ -334,6 +334,15 @@ func waitingForUser(screen string) bool {
 	return false
 }
 
+// inPager spots a pager sitting on its prompt: less shows ":" or "(END)" on the last line,
+// more "--More--". The foreground process is no help here — for `git log` it is git, with
+// less as its child — but the screen says it plainly.
+func inPager(screen string) bool {
+	lines := strings.Split(strings.TrimRight(screen, " \t\r\n"), "\n")
+	last := strings.TrimSpace(lines[len(lines)-1])
+	return last == ":" || strings.HasSuffix(last, "(END)") || strings.HasPrefix(last, "--More--")
+}
+
 // paneIsBusy reports the name of what a pane is running, "" for the shell itself.
 func paneIsBusy(pane string) (string, error) {
 	out, err := send(ctl.Request{Cmd: "pane-status", Target: pane})
@@ -401,6 +410,16 @@ func registerRun(s *mcp.Server) {
 				return nil, nil, err
 			}
 			if busy != "" {
+				// Waiting here would end one of two ways, both wrong: at the deadline, or —
+				// once somebody quits the pager — with a screen the output has been taken
+				// off again. Quit it now and say why there is nothing to show.
+				if inPager(screen) {
+					_, _ = send(ctl.Request{Cmd: "pane-write", Target: pane, Text: "q"})
+					return text("The output went into a pager (less or more) in pane " + pane +
+						", which has been quit again — it shows output on a screen of its own and " +
+						"takes it away on exit, so none of it can be read back. Run the command " +
+						"again without a pager: git --no-pager …, or pipe it through | cat."), nil, nil
+				}
 				started = true
 				continue
 			}

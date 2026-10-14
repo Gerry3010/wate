@@ -42,6 +42,8 @@ export interface TerminalPaneOptions {
   replay?: string;
   /** Re-attach to the pane's existing shell instead of spawning one (the tab moved windows). */
   adopt?: boolean;
+  /** Opened over the control socket, for an agent to run things in (no pager, see Spawn). */
+  agent?: boolean;
   /** false for panes created in a hidden tab: no GPU renderer until the tab is shown. */
   visible?: boolean;
   terminal: TerminalConfig;
@@ -379,6 +381,7 @@ export class TerminalPane implements Pane {
                 tabId: this.opts.tabId,
                 cwd: this.opts.cwd ?? "",
                 command: this.opts.command ?? [],
+                agent: this.opts.agent ?? false,
                 cols: this.term.cols,
                 rows: this.term.rows,
               }),

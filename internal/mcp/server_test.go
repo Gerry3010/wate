@@ -214,6 +214,35 @@ func TestOnlyTheEndOfTheScreenCounts(t *testing.T) {
 	}
 }
 
+func TestInPagerSpotsAPagerOnItsPrompt(t *testing.T) {
+	yes := []string{
+		"5888b11 Regenerate the .icns\n4b2f4d6 Line the tab bar up\n:",
+		"859390f Listen on a path\n(END)",
+		"lines 1-40/120 (END)",
+		"line one\n--More--(42%)",
+		// The screen read comes with the rows under the prompt, empty.
+		"commit 5888b11\n:\n\n\n",
+	}
+	for _, s := range yes {
+		if !inPager(s) {
+			t.Errorf("missed a pager: %q", s)
+		}
+	}
+	no := []string{
+		"",
+		"➜  wate git:(main) ",
+		"Enter the name:",
+		"config.yml:12:  key: value",
+		// A pager's prompt far up the screen is long gone.
+		":\n➜  wate git:(main) ",
+	}
+	for _, s := range no {
+		if inPager(s) {
+			t.Errorf("saw a pager in ordinary output: %q", s)
+		}
+	}
+}
+
 // wateWithout answers like a wate in which `gone` does not exist: pane-status refuses it,
 // a split hands back a fresh id, everything else succeeds.
 func wateWithout(t *testing.T, gone string) (sock string, splits *int) {
