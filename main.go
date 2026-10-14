@@ -117,6 +117,8 @@ func main() {
 
 	// Before the toolkit draws anything: GSK reads its renderer from the environment.
 	app.PreferStableRenderer()
+	// Before the first pane: a Claude Code session that started wate must not reach them.
+	app.ForgetLaunchingClaude()
 
 	application.RegisterEvent[app.ConfigResponse]("config:changed")
 	application.RegisterEvent[app.OpenRequest]("ctl:open")
