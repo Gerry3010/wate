@@ -54,6 +54,7 @@ export const TAB_COLORS: [string, string][] = [
   ["green", "#a6e3a1"],
   ["cyan", "#94e2d5"],
   ["blue", "#89b4fa"],
+  ["violet", "#9d7cf5"],
   ["purple", "#cba6f7"],
   ["pink", "#f5c2e7"],
   ["gray", "#9399b2"],
