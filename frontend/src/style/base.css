@@ -658,7 +658,7 @@ html, body {
   color: var(--fg);
 }
 .confirm-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-.confirm-detail { color: var(--tab-inactive-fg); margin-bottom: 14px; }
+.confirm-detail { color: var(--tab-inactive-fg); margin-bottom: 14px; white-space: pre-line; }
 .confirm-row { display: flex; gap: 8px; justify-content: flex-end; }
 .confirm-button {
   padding: 5px 12px;
@@ -670,5 +670,7 @@ html, body {
   cursor: pointer;
 }
 .confirm-button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.confirm-button.primary { border-color: color-mix(in srgb, var(--accent) 60%, transparent); color: var(--accent); }
+.confirm-button.primary:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .confirm-button.danger { border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red); }
 .confirm-button.danger:hover { background: color-mix(in srgb, var(--red) 16%, transparent); }

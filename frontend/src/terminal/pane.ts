@@ -646,6 +646,16 @@ export class TerminalPane implements Pane {
     this.notice = undefined;
   }
 
+  /** Is the block still on screen, waiting for its button? */
+  hasNotice(): boolean {
+    return !!this.notice && !this.notice.isDisposed;
+  }
+
+  /** Take the block away because its action is being run from elsewhere. */
+  dismissNotice() {
+    this.clearNotice();
+  }
+
   /** Type a command into the shell and run it (the restore CTA). */
   runCommand(text: string) {
     this.send(text + "\r");

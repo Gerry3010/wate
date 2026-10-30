@@ -242,6 +242,7 @@ export class WateApp {
       const active = opened[saved.active];
       if (active) this.activate(active);
       this.active?.focusPane();
+      this.offerReopen(opened);
       return this.tabs.length > 0;
     } finally {
       this.restoring = false;
@@ -331,17 +332,56 @@ export class WateApp {
       // The hint is the short form; what actually runs carries the flags as well, and the
       // inline MCP definition among them is far too long to put in front of anybody.
       hint: c.sessionId ? `${cmd()} --resume ${c.sessionId}` : `${cmd()} --continue`,
-      onActivate: () => {
-        void (async () => {
-          // Through ClaudeArgs, not assembled here: a session brought back this way has to
-          // come back with the same flags one wate starts itself, or it returns without the
-          // pane tools and cannot answer a restart with anything but the shell.
-          const args = (await ConfigService.ClaudeArgs(c.sessionId ?? "").catch(() => null)) ?? [cmd()];
-          pane.runCommand(shellCommand(c.sessionId ? args : [...args, "--continue"]));
-          pane.focus();
-        })();
-      },
+      onActivate: () => void this.reopenIn(pane, c).then(() => pane.focus()),
     };
+  }
+
+  /** Bring a restored pane's Claude session back where it was. */
+  private async reopenIn(pane: TerminalPane, c: SavedClaude): Promise<void> {
+    // Through ClaudeArgs, not assembled here: a session brought back this way has to come back
+    // with the same flags one wate starts itself, or it returns without the pane tools and
+    // cannot answer a restart with anything but the shell.
+    const cmd = this.config.claude.command || "claude";
+    const args = (await ConfigService.ClaudeArgs(c.sessionId ?? "").catch(() => null)) ?? [cmd];
+    pane.runCommand(shellCommand(c.sessionId ? args : [...args, "--continue"]));
+  }
+
+  /**
+   * After a restore, ask once whether the agents should all come back: the same as pressing
+   * every pane's Resume, without going through the tabs to find them. "Not now" leaves the
+   * blocks where they are, so any of them can still be brought back by hand.
+   */
+  private offerReopen(tabs: Tab[]) {
+    const waiting: [TerminalPane, SavedClaude][] = [];
+    for (const tab of tabs) {
+      for (const p of tab.panes.values()) {
+        if (!(p instanceof TerminalPane) || !p.hasNotice()) continue;
+        const c = this.offers.offerFor(p.id);
+        if (c) waiting.push([p, c]);
+      }
+    }
+    if (waiting.length === 0) return;
+    const n = waiting.length;
+    showConfirm(
+      n === 1 ? "Reopen the agent?" : `Reopen ${n} agents?`,
+      `Claude Code was running in ${n === 1 ? "one pane" : `${n} panes`} when wate closed:\n` +
+        waiting.map(([, c]) => `· ${c.title}`).join("\n"),
+      [
+        { label: "Not now", onSelect: () => {} },
+        {
+          label: "Reopen",
+          primary: true,
+          onSelect: () => {
+            // Without moving the focus: the user stays in the pane they were in, and the
+            // sessions come up in the background tabs where they were.
+            for (const [p, c] of waiting) {
+              p.dismissNotice();
+              void this.reopenIn(p, c);
+            }
+          },
+        },
+      ],
+    );
   }
 
   /** Backend event: a session changed. */

@@ -70,6 +70,11 @@ export class ResumeOffers {
     this.byPane.delete(pane);
   }
 
+  /** The session a restored pane points at, if it still has one. */
+  offerFor(pane: string): SavedClaude | undefined {
+    return this.byPane.get(pane);
+  }
+
   /**
    * What to write for a pane, given whatever is running in it now.
    *
