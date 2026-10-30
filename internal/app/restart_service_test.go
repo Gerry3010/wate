@@ -287,3 +287,86 @@ func TestTheCountdownActuallyFires(t *testing.T) {
 	}
 	t.Fatal("the countdown never fired")
 }
+
+// closingIn is a service that knows which window each pane lives in, for the close rounds.
+// Windows w1 and w2 are open.
+func closingIn(t *testing.T, panes map[string]WindowID) *RestartService {
+	t.Helper()
+	s := restartIn(t)
+	s.windows = NewWindowService(nil)
+	for _, id := range []WindowID{"w1", "w2"} {
+		s.windows.windows[id] = &winEntry{id: id}
+	}
+	for pane, w := range panes {
+		s.windows.paneWindow[pane] = w
+	}
+	return s
+}
+
+func TestAClosingWindowOnlyAsksItsOwnAgents(t *testing.T) {
+	s := closingIn(t, map[string]WindowID{"pane-a": "w1", "pane-b": "w2"})
+	s.start("", 5, false, "w1")
+	if s.TellPane("pane-b") != "" {
+		t.Error("an agent in another window was asked about closing this one")
+	}
+	told := s.TellPane("pane-a")
+	if told == "" {
+		t.Fatal("the agent in the closing window was told nothing")
+	}
+	// It is told what is really going to happen: an agent expecting a restart plans to come
+	// back afterwards, and closing the window is not that.
+	if strings.Contains(told, "restart,") || !strings.Contains(told, "close this wate window") {
+		t.Errorf("the notice does not say the window is closing:\n%s", told)
+	}
+}
+
+func TestAClosingWindowDoesNotHoldTheQuitBack(t *testing.T) {
+	s := closingIn(t, nil)
+	s.start("", 5, false, "w1")
+	if !s.MayQuit() {
+		t.Error("closing one window held quitting the whole of wate back")
+	}
+}
+
+func TestTheStatusSaysWhatTheRoundEndsIn(t *testing.T) {
+	s := restartIn(t)
+	if st := s.Announce("the new build", 5, true); !st.Relaunch || st.Window != "" {
+		t.Errorf("a restart reads as relaunch=%v window=%q", st.Relaunch, st.Window)
+	}
+	s.Cancel()
+	if st := s.start("", 5, false, "w1"); st.Relaunch || st.Window != "w1" {
+		t.Errorf("a close reads as relaunch=%v window=%q", st.Relaunch, st.Window)
+	}
+}
+
+func TestARoundForAWindowThatIsGoneIsDropped(t *testing.T) {
+	// The window was closed some other way while its agents were being asked. Nobody can see
+	// the round any more to call it off, so it must not linger.
+	s := closingIn(t, nil)
+	s.start("", 5, false, "w-gone")
+	if s.Status().Pending {
+		t.Error("a round for a window that no longer exists was still pending")
+	}
+	if _, pending := readRestart(); pending {
+		t.Error("the record of it was left on disk")
+	}
+}
+
+func TestFinishingACloseRoundDoesNotRestart(t *testing.T) {
+	s := closingIn(t, nil)
+	s.start("", 5, false, "w1")
+	s.Finish()
+	if s.Relaunch() {
+		t.Error("closing a window restarted wate")
+	}
+	if _, pending := readRestart(); pending {
+		t.Error("the round was still pending after it finished")
+	}
+	// The window's own question counts as answered, so its close goes straight through.
+	s.mu.Lock()
+	allowed := s.allowClose["w1"]
+	s.mu.Unlock()
+	if !allowed {
+		t.Error("the window would have asked again on the way out")
+	}
+}

@@ -37,6 +37,10 @@ type RestartRecord struct {
 	Answers   map[string]RestartAnswer `json:"answers"`
 	// Relaunch is what the user asked for: start again afterwards, or only close.
 	Relaunch bool `json:"relaunch"`
+	// Window is the window the user wants to close, when that is what the round is for: only
+	// the agents in it are asked, and the end of it closes that window and nothing else. Empty
+	// means the whole of wate.
+	Window string `json:"window,omitempty"`
 	// Notified counts how often each pane has been told, so a busy agent is not reminded on
 	// every single tool call.
 	Notified map[string]int `json:"notified"`
@@ -54,8 +58,12 @@ type RestartRow struct {
 
 // RestartStatus is the whole picture, for the dialog.
 type RestartStatus struct {
-	Pending    bool         `json:"pending"`
-	Reason     string       `json:"reason"`
+	Pending bool   `json:"pending"`
+	Reason  string `json:"reason"`
+	// Relaunch and Window say what the round ends in — a restart, closing one window, or a
+	// quit — so the dialog can call it by its name.
+	Relaunch   bool         `json:"relaunch"`
+	Window     string       `json:"window"`
 	Deadline   string       `json:"deadline"`
 	Expired    bool         `json:"expired"`
 	Rows       []RestartRow `json:"rows"`
@@ -152,6 +160,17 @@ func (s *RestartService) clear() {
 
 // Announce starts the round: every running agent is told at its next hook.
 func (s *RestartService) Announce(reason string, minutes int, relaunch bool) RestartStatus {
+	return s.start(reason, minutes, relaunch, "")
+}
+
+// AnnounceClose starts the round for closing the window it is called from — the close
+// dialog's "wait". The window's agents are asked the same question; wate is not restarted,
+// and the other windows are left out of it.
+func (s *RestartService) AnnounceClose(ctx context.Context, minutes int) RestartStatus {
+	return s.start("", minutes, false, callerWindow(ctx))
+}
+
+func (s *RestartService) start(reason string, minutes int, relaunch bool, window WindowID) RestartStatus {
 	if minutes <= 0 {
 		minutes = 5
 	}
@@ -163,6 +182,7 @@ func (s *RestartService) Announce(reason string, minutes int, relaunch bool) Res
 		Answers:   map[string]RestartAnswer{},
 		Notified:  map[string]int{},
 		Relaunch:  relaunch,
+		Window:    string(window),
 	}
 	if err := writeRestart(rec); err != nil {
 		slog.Warn("restart: could not record the request", "err", err)
@@ -235,7 +255,60 @@ func (s *RestartService) fire() {
 		s.announce(s.settle())
 		return
 	}
-	s.Proceed(rec.Relaunch)
+	s.finish(rec)
+}
+
+// Finish is the dialog's own button: do now what the round was for.
+func (s *RestartService) Finish() {
+	if rec, ok := readRestart(); ok {
+		s.finish(rec)
+	}
+}
+
+func (s *RestartService) finish(rec RestartRecord) {
+	if rec.Window == "" {
+		s.Proceed(rec.Relaunch)
+		return
+	}
+	s.closeWindow(WindowID(rec.Window))
+}
+
+// closeWindow ends a close round: the record goes, the window's own question counts as
+// answered, and it closes like any other window — the last one taking wate with it.
+func (s *RestartService) closeWindow(id WindowID) {
+	s.mu.Lock()
+	if s.countdown != nil {
+		s.countdown.Stop()
+		s.countdown = nil
+	}
+	s.goAt = time.Time{}
+	s.mu.Unlock()
+	s.clear()
+	s.allowCloseFor(id)
+	s.announce(RestartStatus{})
+	if s.windows != nil {
+		if w, ok := s.windows.byID(id); ok {
+			w.Close()
+		}
+	}
+}
+
+// concerns says whether a pane is part of the round. A restart is about every pane; a close
+// only about the panes in that window.
+func (s *RestartService) concerns(rec RestartRecord, tabID, paneID string) bool {
+	if rec.Window == "" || s.windows == nil {
+		return true
+	}
+	return s.windows.windowForTab(tabID, paneID) == WindowID(rec.Window)
+}
+
+// gone reports a close round whose window has already gone some other way. Nothing is left
+// to decide in it, and nobody would see it to call it off.
+func (s *RestartService) gone(rec RestartRecord) bool {
+	if rec.Window == "" || s.windows == nil {
+		return false
+	}
+	return !s.windows.has(WindowID(rec.Window))
 }
 
 // Cancel drops the pending restart; everything carries on.
@@ -284,11 +357,18 @@ func (s *RestartService) Status() RestartStatus {
 	if !ok {
 		return RestartStatus{}
 	}
-	st := RestartStatus{Pending: true, Reason: rec.Reason, Deadline: rec.Deadline}
+	if s.gone(rec) {
+		s.clear()
+		return RestartStatus{}
+	}
+	st := RestartStatus{Pending: true, Reason: rec.Reason, Deadline: rec.Deadline, Relaunch: rec.Relaunch, Window: rec.Window}
 	if t, err := time.Parse(time.RFC3339, rec.Deadline); err == nil {
 		st.Expired = time.Now().After(t)
 	}
 	for _, sess := range s.sessions() {
+		if !s.concerns(rec, sess.TabID, sess.PaneID) {
+			continue
+		}
 		row := RestartRow{Pane: sess.PaneID, Title: sess.Title, Status: string(sess.Status)}
 		if a, ok := rec.Answers[sess.PaneID]; ok {
 			row.Verdict, row.Minutes, row.Note = a.Verdict, a.Minutes, a.Note
@@ -329,6 +409,10 @@ func (s *RestartService) TellPane(pane string) string {
 	if _, answered := rec.Answers[pane]; answered {
 		return ""
 	}
+	// Closing one window is no business of the agents in the others.
+	if !s.concerns(rec, "", pane) {
+		return ""
+	}
 	told := rec.Notified[pane]
 	if told >= howOftenToTell {
 		return ""
@@ -345,16 +429,26 @@ func (s *RestartService) TellPane(pane string) string {
 	if err := writeRestart(rec); err != nil {
 		slog.Warn("restart: could not record the telling", "err", err)
 	}
-	reason := rec.Reason
-	if reason == "" {
-		reason = "no reason given"
+	// Closing a window needs no reason beyond itself; "no reason given" would read like one
+	// was being kept back.
+	why := ""
+	if rec.Reason != "" {
+		why = " Reason: " + rec.Reason + "."
 	}
 	when := rec.Deadline
 	if t, err := time.Parse(time.RFC3339, rec.Deadline); err == nil {
 		when = t.Format("15:04")
 	}
+	// Said as what it is: an agent asked about a restart expects to come back afterwards.
+	what := "wate would like to restart"
+	switch {
+	case rec.Window != "":
+		what = "The user would like to close this wate window"
+	case !rec.Relaunch:
+		what = "wate would like to quit"
+	}
 	return fmt.Sprintf(
-		"wate would like to restart, which will end this session. Reason: %s. The user is "+
+		"%s, which will end this session.%s The user is "+
 			"waiting for an answer until %s.\n"+
 			"Answer once, now, with the wate_restart_respond tool, or by running "+
 			"`wate ctl restart-respond go` (or `wait <minutes>`) in a shell:\n"+
@@ -362,7 +456,7 @@ func (s *RestartService) TellPane(pane string) string {
 			"  wait <minutes> — you need a little longer; say roughly how long\n"+
 			"Nothing will be ended without the user pressing the button, so an honest estimate "+
 			"is more useful than a quick yes. Carry on with your work either way.",
-		reason, when)
+		what, why, when)
 }
 
 // MayQuit is Wails' ShouldQuit: it holds a quit back only while a restart the user started is
@@ -374,7 +468,9 @@ func (s *RestartService) MayQuit() bool {
 	if allowed {
 		return true
 	}
-	if _, pending := readRestart(); !pending {
+	// A window being closed is not wate being quit; holding the quit back for it would keep
+	// wate alive for a question asked somewhere else.
+	if rec, pending := readRestart(); !pending || rec.Window != "" {
 		return true
 	}
 	// Only while there is still a window to decide in. Hold a quit back after the last one
@@ -463,11 +559,15 @@ func (s *RestartService) ConfirmClose(id WindowID) bool {
 
 // AllowClose is the dialog's own button: let the next close of this window through.
 func (s *RestartService) AllowClose(ctx context.Context) {
-	id := WindowID("")
+	s.allowCloseFor(callerWindow(ctx))
+}
+
+// callerWindow is the window a bound call came from.
+func callerWindow(ctx context.Context) WindowID {
 	if w, ok := ctx.Value(application.WindowKey).(application.Window); ok && w != nil {
-		id = WindowID(w.Name())
+		return WindowID(w.Name())
 	}
-	s.allowCloseFor(id)
+	return ""
 }
 
 func (s *RestartService) allowCloseFor(id WindowID) {

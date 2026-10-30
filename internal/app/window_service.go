@@ -313,6 +313,14 @@ func (s *WindowService) windowFor(paneID, tabID string) (*application.WebviewWin
 	return nil, false
 }
 
+// has reports whether the window is still open.
+func (s *WindowService) has(id WindowID) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.windows[id]
+	return ok
+}
+
 // windowForTab is windowFor as a plain id, for stamping onto an agent session.
 // byID is the window with this id, if it is still open.
 func (s *WindowService) byID(id WindowID) (*application.WebviewWindow, bool) {

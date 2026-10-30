@@ -237,8 +237,8 @@ func register(s *mcp.Server) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "wate_restart_respond",
-		Description: "Answer the user's question about restarting wate, which would end this " +
-			"session. Say \"go\" when you are at a point where stopping costs nothing, or " +
+		Description: "Answer the user's question about restarting wate or closing its window, " +
+			"either of which would end this session. Say \"go\" when you are at a point where stopping costs nothing, or " +
 			"\"wait\" with a rough number of minutes when you are in the middle of something. " +
 			"Nothing is ended without the user pressing the button, so an honest estimate is " +
 			"worth more than a quick yes. Answer once and carry on working.",

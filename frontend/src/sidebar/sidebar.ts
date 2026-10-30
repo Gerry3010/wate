@@ -7,7 +7,7 @@ import { groupSessions, rowCwd, rowTitle, type Row } from "./groups";
 export interface SidebarHost {
   jumpTo(session: Session): void;
   launch(): void;
-  /** The user pressed the button: stop waiting and restart. */
+  /** The user pressed the button: stop waiting and do what the round is for. */
   restartNow(): void;
   /** Call the whole thing off. */
   restartCancel(): void;
@@ -167,6 +167,9 @@ export class Sidebar {
    * have to be all three again.
    */
   private restartBlock(st: RestartStatus): HTMLElement {
+    // The same round serves the Sessions menu's restart and a window being closed; it is
+    // called by what it will do when it is over.
+    const verb = st.window ? "Close" : st.relaunch ? "Restart" : "Quit";
     const wrap = document.createElement("div");
     wrap.className = "sidebar-section sidebar-restart";
 
@@ -174,7 +177,7 @@ export class Sidebar {
     head.className = "sidebar-sectionhead";
     const name = document.createElement("span");
     name.className = "sidebar-sectionname";
-    name.textContent = "Restart";
+    name.textContent = st.window ? "Close window" : verb;
     const count = document.createElement("span");
     count.className = "sidebar-sectioncount";
     count.textContent = `${st.agreed}/${st.rows?.length ?? 0}`;
@@ -223,7 +226,7 @@ export class Sidebar {
     const go = document.createElement("button");
     go.className = "sidebar-restart-go";
     const left = st.go_at ? Math.max(0, Math.round((new Date(st.go_at).getTime() - Date.now()) / 1000)) : 0;
-    go.textContent = st.go_at ? `Restart now (${left})` : st.unanswered || st.waiting ? "Restart anyway" : "Restart now";
+    go.textContent = st.go_at ? `${verb} now (${left})` : st.unanswered || st.waiting ? `${verb} anyway` : `${verb} now`;
     go.addEventListener("click", () => this.host.restartNow());
     const stop = document.createElement("button");
     stop.className = "sidebar-restart-cancel";

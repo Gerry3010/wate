@@ -95,7 +95,7 @@ export class WateApp {
     this.sidebar = new Sidebar(this.agents, {
       jumpTo: (s) => this.jumpToSession(s),
       launch: () => void this.launchClaude(),
-      restartNow: () => void RestartService.Proceed(true),
+      restartNow: () => void RestartService.Finish(),
       restartCancel: () => void RestartService.Cancel().catch((err) => console.warn("restart:", err)),
       launchLabel: this.keymap.label("launch_claude") || "Launch",
       toggleLabel: this.keymap.label("toggle_sidebar"),
@@ -424,8 +424,9 @@ export class WateApp {
    * The window was asked to close while agents were still working in it.
    *
    * Closing it would end them mid-thought, so the close was called off and this asks instead.
-   * "Wait" hands over to the restart round, which is the same question put to the agents
-   * rather than to the user.
+   * "Wait, then close" puts the same question to the agents in this window rather than to the
+   * user, and closes the window once they have answered. It never restarts anything; only the
+   * Sessions menu does that.
    */
   onConfirmClose(req: { agents: number }) {
     const n = req.agents;
@@ -434,9 +435,9 @@ export class WateApp {
       "Closing this window ends their sessions. You can ask them whether now is a good moment.",
       [
         { label: "Cancel", onSelect: () => {} },
-        { label: "Wait", onSelect: () => void this.prepareRestart(false) },
+        { label: "Wait, then close", onSelect: () => void this.prepareClose() },
         {
-          label: "Quit",
+          label: "Close now",
           danger: true,
           onSelect: () => void RestartService.AllowClose().then(() => Window.Close()),
         },
@@ -446,20 +447,21 @@ export class WateApp {
 
   /** A restart round opened, changed or ended. */
   onRestartChanged(st: Parameters<typeof this.sidebar.setRestart>[0]) {
+    // A window being closed asks only its own agents; the other windows have no part in it.
+    const mine = st?.pending && (!st.window || st.window === this.windowId) ? st : null;
     // The panel is where the round is shown, so it has to be open to be of any use.
-    if (st?.pending) this.sidebar.toggle(true);
-    this.sidebar.setRestart(st);
+    if (mine) this.sidebar.toggle(true);
+    this.sidebar.setRestart(mine);
   }
 
-  /**
-   * Ask every running session whether wate may restart.
-   *
-   * `relaunch` is what the user asked for in the first place: the Sessions menu means restart,
-   * the close dialog's "Wait" means close. The countdown that runs once everyone has agreed
-   * carries out whichever it was.
-   */
-  async prepareRestart(relaunch = true): Promise<void> {
-    await RestartService.Announce("", this.config.claude.restart_deadline || 5, relaunch).catch((err) => console.warn("restart:", err));
+  /** Ask every running session whether wate may restart (the Sessions menu). */
+  async prepareRestart(): Promise<void> {
+    await RestartService.Announce("", this.config.claude.restart_deadline || 5, true).catch((err) => console.warn("restart:", err));
+  }
+
+  /** Ask the agents in this window whether it may close; the countdown then closes it. */
+  async prepareClose(): Promise<void> {
+    await RestartService.AnnounceClose(this.config.claude.restart_deadline || 5).catch((err) => console.warn("close:", err));
   }
 
   /** A pane's standing changed in the backend (a grant, or an agent opening a pane). */
