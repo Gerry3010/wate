@@ -8,7 +8,7 @@ import { closeMenu, type MenuEntry } from "./ui/menu";
 import { showConfirm } from "./ui/confirm";
 import { Sidebar, shortPath } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
-import { Keymap } from "./keymap/keymap";
+import { Keymap, claimsChord } from "./keymap/keymap";
 import { perf, takePerf } from "./perf";
 import { keys, logKey, takeKeys } from "./keys-debug";
 import { boxAt, dropText, dropZone, droppedPaths, shellCommand, zoneRect, zoneSplit, type Box, type DropZone } from "./drop";
@@ -1003,7 +1003,7 @@ export class WateApp {
       terminal: this.config.terminal,
       theme: this.termTheme(),
       fontDelta: this.fontDelta,
-      keyFilter: (e) => this.keymap.match(e) === null,
+      keyFilter: (e) => this.actionFor(e) === null,
       // Looked up when they fire, not captured: a pane can be moved to another tab, and a
       // callback still pointing at the tab it was born in would act on a tab that no longer
       // holds it — the drag would do nothing, and an exit would leave the pane on screen.
@@ -1216,9 +1216,15 @@ export class WateApp {
     pane.pasteSoon(dropText(paths));
   }
 
+  /** The action a key event stands for here, or null when the key belongs to the pane. */
+  private actionFor(e: KeyboardEvent): string | null {
+    const action = this.keymap.match(e);
+    return action && claimsChord(action, this.active?.focused instanceof EditorPane) ? action : null;
+  }
+
   private onKey(e: KeyboardEvent) {
     logKey(e);
-    const action = this.keymap.match(e);
+    const action = this.actionFor(e);
     if (!action) return;
     e.preventDefault();
     e.stopPropagation();

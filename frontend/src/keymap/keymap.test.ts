@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Keymap, chordId, parseChord } from "./keymap";
+import { Keymap, chordId, claimsChord, parseChord } from "./keymap";
 
 const ev = (key: string, mods: Partial<{ ctrl: boolean; shift: boolean; alt: boolean; meta: boolean }> = {}, code?: string) => ({
   key,
@@ -56,5 +56,20 @@ describe("Keymap.match", () => {
   it("labels actions", () => {
     expect(km.label("split_down")).toBe("Ctrl+Shift+Space");
     expect(km.label("nope")).toBe("");
+  });
+});
+
+describe("claimsChord", () => {
+  it("leaves an editor's chords to the terminal everywhere else", () => {
+    // Ctrl+S is Claude Code's, and half of its Ctrl+X Ctrl+S; a terminal must get it.
+    expect(claimsChord("editor_save", false)).toBe(false);
+    expect(claimsChord("editor_mode", false)).toBe(false);
+    expect(claimsChord("search", false)).toBe(false);
+    expect(claimsChord("editor_save", true)).toBe(true);
+  });
+
+  it("keeps every other action wherever the focus is", () => {
+    expect(claimsChord("split_right", false)).toBe(true);
+    expect(claimsChord("close_pane", true)).toBe(true);
   });
 });

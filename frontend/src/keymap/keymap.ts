@@ -90,6 +90,18 @@ export function eventChord(e: KeyLike): Chord {
   return { ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, key: normalizeKey(key) };
 }
 
+/**
+ * Actions that only mean something in an editor pane. Anywhere else their chord belongs to the
+ * program in the terminal: Ctrl+S is Claude Code's stash and the second half of its
+ * Ctrl+X Ctrl+S, and wate used to swallow it for a save with nothing to save.
+ */
+const EDITOR_ACTIONS = new Set(["editor_save", "editor_mode", "search"]);
+
+/** Whether the action takes its chord while focus is in an editor (`true`) or elsewhere. */
+export function claimsChord(action: string, inEditor: boolean): boolean {
+  return inEditor || !EDITOR_ACTIONS.has(action);
+}
+
 export type Bindings = Record<string, string | undefined> | null | undefined;
 
 /** Resolves key events to action names. */
