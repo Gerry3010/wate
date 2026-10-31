@@ -3,6 +3,7 @@ import type { AgentStore } from "../agent/store";
 import { DOTS } from "../ui/icons";
 import { showMenu, type MenuEntry } from "../ui/menu";
 import { groupSessions, rowCwd, rowTitle, type Row } from "./groups";
+import { FILTERS, SORTS, applyView, countByFilter, groupByDir, parseView, type StatusFilter, type View } from "./view";
 
 export interface SidebarHost {
   jumpTo(session: Session): void;
@@ -26,6 +27,12 @@ export interface SidebarHost {
 
 export const STATUS_LABEL: Record<string, string> = { running: "working", waiting: "waiting for you", done: "finished" };
 
+const VIEW_KEY = "wate.sidebar.view";
+
+/** Sort lines: what the view button opens. */
+const SORT_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg>';
+
 const CHEVRON =
   '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 
@@ -40,6 +47,10 @@ export class Sidebar {
   private collapsed: Record<string, boolean | undefined> = {};
   /** session id → the cwd/title last written back, so a live favourite syncs once, not per frame. */
   private synced = new Map<string, string>();
+  /** Filter, search, sort and grouping; remembered per window, except the search. */
+  private view: View = loadView();
+  private controls = document.createElement("div");
+  private chips = new Map<StatusFilter, HTMLButtonElement>();
 
   constructor(private store: AgentStore, private host: SidebarHost) {
     this.element.className = "sidebar";
@@ -60,7 +71,8 @@ export class Sidebar {
     launch.addEventListener("click", () => host.launch());
     this.list.className = "sidebar-list";
     this.edge.className = "sidebar-edge";
-    this.element.append(this.edge, head, this.list, launch);
+    this.buildControls();
+    this.element.append(this.edge, head, this.controls, this.list, launch);
     store.subscribe(() => this.render());
     void this.reload();
   }
@@ -125,14 +137,19 @@ export class Sidebar {
     // The store fires on every status tick; a hidden panel has nothing to show for it.
     if (!this.visible) return;
     const { favorites, others } = groupSessions(this.store.list(), this.saved);
+    const all = [...favorites, ...others];
+    // Nothing to sort or look for until there is something.
+    this.controls.hidden = all.length === 0;
+    this.updateChips(all);
+    const shown = { favorites: applyView(favorites, this.view), others: applyView(others, this.view) };
     if (this.restart) {
       const blocks = [this.restartBlock(this.restart)];
-      if (favorites.length) blocks.push(this.section("favorites", "Favourites", favorites));
-      blocks.push(this.section("sessions", "Sessions", others));
+      if (favorites.length) blocks.push(this.section("favorites", "Favourites", shown.favorites));
+      blocks.push(this.section("sessions", "Sessions", shown.others));
       this.list.replaceChildren(...blocks);
       return;
     }
-    if (favorites.length === 0 && others.length === 0) {
+    if (all.length === 0) {
       const empty = document.createElement("div");
       empty.className = "sidebar-empty";
       empty.innerHTML = `No Claude Code sessions.<br><kbd>${this.host.launchLabel}</kbd> starts one in the current directory.`;
@@ -141,9 +158,83 @@ export class Sidebar {
     }
     for (const r of favorites) this.syncSaved(r);
     const blocks: HTMLElement[] = [];
-    if (favorites.length) blocks.push(this.section("favorites", "Favourites", favorites));
-    blocks.push(this.section("sessions", "Sessions", others));
+    if (favorites.length) blocks.push(this.section("favorites", "Favourites", shown.favorites));
+    blocks.push(this.section("sessions", "Sessions", shown.others));
     this.list.replaceChildren(...blocks);
+  }
+
+  // ---- filter, search, sort ----------------------------------------------
+
+  /** Built once: the search field must keep its focus and caret while the list repaints. */
+  private buildControls() {
+    this.controls.className = "sidebar-controls";
+    const top = document.createElement("div");
+    top.className = "sidebar-searchrow";
+    const search = document.createElement("input");
+    search.className = "sidebar-search";
+    search.type = "search";
+    search.placeholder = "Search sessions";
+    search.spellcheck = false;
+    search.addEventListener("input", () => {
+      this.view.query = search.value;
+      this.render();
+    });
+    search.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      // First Escape empties the field, the second gives the keys back to the panes.
+      e.preventDefault();
+      if (search.value) {
+        search.value = "";
+        this.view.query = "";
+        this.render();
+      } else {
+        search.blur();
+      }
+    });
+    const sort = document.createElement("button");
+    sort.className = "sidebar-viewbtn";
+    sort.innerHTML = SORT_ICON;
+    sort.title = "Sort and group";
+    sort.addEventListener("click", () => this.openViewMenu(sort.getBoundingClientRect()));
+    top.append(search, sort);
+
+    const filters = document.createElement("div");
+    filters.className = "sidebar-filters";
+    for (const [f, label] of FILTERS) {
+      const chip = document.createElement("button");
+      chip.className = "sidebar-chip";
+      chip.dataset.label = label;
+      chip.addEventListener("click", () => this.setView({ filter: f }));
+      this.chips.set(f, chip);
+      filters.appendChild(chip);
+    }
+    this.controls.append(top, filters);
+  }
+
+  private updateChips(rows: Row[]) {
+    const counts = countByFilter(rows, this.view.query);
+    for (const [f, chip] of this.chips) {
+      const text = `${chip.dataset.label} ${counts[f]}`;
+      if (chip.textContent !== text) chip.textContent = text;
+      chip.classList.toggle("active", f === this.view.filter);
+      // An empty filter stays clickable when it is the one selected, so it can be left again.
+      chip.classList.toggle("empty", counts[f] === 0 && f !== this.view.filter);
+    }
+  }
+
+  private openViewMenu(anchor: DOMRect) {
+    showMenuLeftOf(anchor, [
+      { header: "Sort by" },
+      ...SORTS.map(([key, label]) => ({ label, checked: this.view.sort === key, onSelect: () => this.setView({ sort: key }) })),
+      "separator",
+      { label: "Group by directory", checked: this.view.byDir, onSelect: () => this.setView({ byDir: !this.view.byDir }) },
+    ]);
+  }
+
+  private setView(change: Partial<View>) {
+    this.view = { ...this.view, ...change };
+    saveView(this.view);
+    this.render();
   }
 
   /**
@@ -265,11 +356,20 @@ export class Sidebar {
     const body = document.createElement("div");
     body.className = "sidebar-sectionbody";
     body.hidden = collapsed;
+    const narrowed = this.view.filter !== "all" || this.view.query.trim() !== "";
     if (rows.length === 0) {
       const hint = document.createElement("div");
       hint.className = "sidebar-sectionempty";
-      hint.textContent = key === "favorites" ? "Nothing pinned yet." : "Everything is pinned above.";
+      hint.textContent = narrowed ? "Nothing matches." : key === "favorites" ? "Nothing pinned yet." : "Everything is pinned above.";
       body.appendChild(hint);
+    } else if (this.view.byDir) {
+      for (const g of groupByDir(rows)) {
+        const dir = document.createElement("div");
+        dir.className = "sidebar-dirhead";
+        dir.textContent = shortPath(g.dir) || "no directory";
+        dir.title = g.dir;
+        body.append(dir, ...g.rows.map((r) => this.row(r)));
+      }
     } else {
       body.append(...rows.map((r) => this.row(r)));
     }
@@ -300,6 +400,7 @@ export class Sidebar {
     sub.textContent = [
       r.saved?.label || !s ? shortPath(cwd) : "",
       r.ended ? "ended" : (STATUS_LABEL[status] ?? status),
+      s?.asking ? "asked you something" : "",
       s ? elapsed(s.started_at) : "",
       elsewhere ? "other window" : "",
     ]
@@ -449,6 +550,23 @@ export class Sidebar {
     }
     this.synced.delete(r.id);
     await this.reload();
+  }
+}
+
+/** Browser storage can be missing or refuse; the panel then simply starts with the defaults. */
+function loadView(): View {
+  try {
+    return parseView(localStorage.getItem(VIEW_KEY));
+  } catch {
+    return parseView(null);
+  }
+}
+
+function saveView(v: View) {
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify({ filter: v.filter, sort: v.sort, byDir: v.byDir }));
+  } catch {
+    // Not remembered, then; the view itself still works.
   }
 }
 
