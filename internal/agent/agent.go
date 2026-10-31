@@ -29,9 +29,13 @@ type Session struct {
 	Status    Status `json:"status"`
 	SessionID string `json:"session_id"`
 	// Title names the session like `claude --resume` does (summary or first prompt).
-	Title     string    `json:"title"`
-	Cwd       string    `json:"cwd"`
-	Message   string    `json:"message"`
+	Title   string `json:"title"`
+	Cwd     string `json:"cwd"`
+	Message string `json:"message"`
+	// Asking is set when Claude's last word was a question for the user — an AskUserQuestion
+	// still open, or a turn that ended on "?". It lasts until the next prompt, so a question
+	// stays findable after the pane has been looked at.
+	Asking    bool      `json:"asking"`
 	StartedAt time.Time `json:"started_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	// Source is "hook" when hooks deliver precise events, "proc" when only process detection sees it.
@@ -94,6 +98,12 @@ type hookPayload struct {
 func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 	var p hookPayload
 	_ = json.Unmarshal(data, &p)
+	// Whether Claude ended on a question is in the transcript. Read outside the lock: it is a
+	// file read, and the poller should not wait for it.
+	asking := false
+	if event == "Stop" || event == "Notification" {
+		asking = ReadAsking(t.transcriptFor(paneID, p.Transcript))
+	}
 	t.mu.Lock()
 	s := t.get(paneID, tabID)
 	s.Source = "hook"
@@ -114,9 +124,11 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 	case "SessionStart":
 		s.Status = StatusRunning
 		s.Message = ""
+		s.Asking = false
 		s.StartedAt = t.now()
 	case "UserPromptSubmit":
 		s.Status = StatusRunning
+		s.Asking = false
 		// Something Claude Code put in the prompt slot itself, with nothing readable in it,
 		// leaves the last real prompt standing.
 		if m := promptMessage(p.Prompt); m != "" {
@@ -125,9 +137,11 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 	case "Notification":
 		s.Status = StatusWaiting
 		s.Message = firstNonEmpty(p.Message, p.Title, "Claude is waiting for you")
+		s.Asking = asking
 	case "Stop":
 		s.Status = StatusDone
 		s.Message = firstNonEmpty(s.Message, "Finished")
+		s.Asking = asking
 	case "SessionEnd":
 		delete(t.sessions, paneID)
 		s.Status = StatusIdle
@@ -235,6 +249,20 @@ func (t *Tracker) Observe(paneID, tabID string, running bool, cwd string) {
 	if changed != nil && t.OnChange != nil {
 		t.OnChange(snapshot)
 	}
+}
+
+// transcriptFor is the transcript a hook is about: the one it names, else the one known for
+// the pane.
+func (t *Tracker) transcriptFor(paneID, named string) string {
+	if named != "" {
+		return named
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if s, ok := t.sessions[paneID]; ok {
+		return s.TranscriptPath
+	}
+	return ""
 }
 
 // Acknowledge clears waiting/done once the user looked at the pane.
