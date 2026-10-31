@@ -262,8 +262,7 @@ export class WateApp {
         this.scheduleSave();
       };
       tab.onLayout = (r) => this.sidebar.cutEdge(tab === this.active ? r : null);
-    tab.onPaneDragMove = (paneId, x, y) => this.paneDragMove(tab, paneId, x, y);
-    tab.onPaneDragDrop = (paneId, x, y) => void this.paneDragDrop(tab, paneId, x, y);
+      this.wirePaneDrag(tab);
       const map = new Map<string, string>();
       const panes: Pane[] = [];
       const starts: Promise<unknown>[] = [];
@@ -617,6 +616,7 @@ export class WateApp {
       this.scheduleSave();
     };
     tab.onLayout = (focused) => this.sidebar.cutEdge(focused);
+    this.wirePaneDrag(tab);
     const panes = new Map<string, Pane>();
     for (const sp of st.panes) {
       if (sp.kind === "editor") {
@@ -742,9 +742,20 @@ export class WateApp {
       this.scheduleSave();
     };
     tab.onLayout = (r) => this.sidebar.cutEdge(tab === this.active ? r : null);
+    this.wirePaneDrag(tab);
     this.tabs.push(tab);
     this.activate(tab);
     return tab;
+  }
+
+  /**
+   * Let a pane dragged out of this tab land in another one: on its button, or in it once it is
+   * in front. Every tab needs this, whichever way it came about — a new tab used to miss it, and
+   * its panes could only be moved about inside it.
+   */
+  private wirePaneDrag(tab: Tab) {
+    tab.onPaneDragMove = (paneId, x, y) => this.paneDragMove(tab, paneId, x, y);
+    tab.onPaneDragDrop = (paneId, x, y) => void this.paneDragDrop(tab, paneId, x, y);
   }
 
   activate(tab: Tab) {
