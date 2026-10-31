@@ -5,7 +5,9 @@ package agent
 import (
 	"encoding/json"
 	"os"
+	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -112,7 +114,11 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 		s.StartedAt = t.now()
 	case "UserPromptSubmit":
 		s.Status = StatusRunning
-		s.Message = truncate(p.Prompt, 120)
+		// Something Claude Code put in the prompt slot itself, with nothing readable in it,
+		// leaves the last real prompt standing.
+		if m := promptMessage(p.Prompt); m != "" {
+			s.Message = truncate(m, 120)
+		}
 	case "Notification":
 		s.Status = StatusWaiting
 		s.Message = firstNonEmpty(p.Message, p.Title, "Claude is waiting for you")
@@ -284,6 +290,51 @@ func firstNonEmpty(v ...string) string {
 		}
 	}
 	return ""
+}
+
+var (
+	reminderRe = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
+	tagRe      = regexp.MustCompile(`</?[a-zA-Z][\w-]*>`)
+	spaceRe    = regexp.MustCompile(`\s+`)
+)
+
+// promptMessage is what a submitted prompt says, for the sidebar and the notifications.
+//
+// Not everything that arrives as a prompt was typed. Claude Code hands a finished background
+// task to the session as a <task-notification> block, a slash command as <command-name> and
+// friends, and system notes as <system-reminder> — and a notification that read
+// "<task-notification> <task-id>ab01…" told nobody anything. Each says what it is about in
+// plain words somewhere; that is what is kept.
+func promptMessage(prompt string) string {
+	s := strings.TrimSpace(reminderRe.ReplaceAllString(prompt, ""))
+	switch {
+	case strings.HasPrefix(s, "<task-notification>"):
+		if sum := tagText(s, "summary"); sum != "" {
+			return sum
+		}
+		if st := tagText(s, "status"); st != "" {
+			return "Background task " + st
+		}
+		return "Background task finished"
+	case strings.HasPrefix(s, "<command-name>"):
+		return strings.TrimSpace(tagText(s, "command-name") + " " + tagText(s, "command-args"))
+	}
+	return strings.TrimSpace(spaceRe.ReplaceAllString(tagRe.ReplaceAllString(s, " "), " "))
+}
+
+// tagText is the text between <name> and </name>, on one line.
+func tagText(s, name string) string {
+	open, close := "<"+name+">", "</"+name+">"
+	i := strings.Index(s, open)
+	if i < 0 {
+		return ""
+	}
+	rest := s[i+len(open):]
+	j := strings.Index(rest, close)
+	if j < 0 {
+		return ""
+	}
+	return strings.TrimSpace(spaceRe.ReplaceAllString(rest[:j], " "))
 }
 
 func truncate(s string, n int) string {

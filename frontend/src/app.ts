@@ -1017,7 +1017,9 @@ export class WateApp {
 
   /** Bring a tab (and optionally one of its panes) to the front — see window:activate-tab. */
   activateTab(tabId: string, paneId?: string) {
-    const tab = this.tabs.find((t) => t.id === tabId);
+    // The pane first: it may have moved tab since whoever asked last looked (a notification
+    // clicked minutes after it went out).
+    const tab = (paneId ? this.tabOfPane(paneId) : undefined) ?? this.tabs.find((t) => t.id === tabId);
     if (!tab) return;
     this.activate(tab);
     if (paneId && tab.panes.has(paneId)) {

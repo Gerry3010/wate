@@ -2,9 +2,10 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,6 +45,9 @@ func NewAgentService(pty *PtyService, ctl *CtlService, cfg func() config.Config,
 	}
 	a.tracker.OnChange = a.onChange
 	ctl.OnHook = func(ev HookEvent) { a.tracker.Hook(ev.Pane, ev.Tab, ev.Event, ev.Data) }
+	if notify != nil {
+		notify.OnNotificationResponse(a.onNotificationResponse)
+	}
 	return a
 }
 
@@ -129,10 +133,52 @@ func (a *AgentService) onChange(s agent.Session) {
 	err := a.notify.SendNotification(notifications.NotificationOptions{
 		ID:    "wate-" + s.PaneID,
 		Title: title,
-		Body:  fmt.Sprintf("%s — %s", s.Message, s.Cwd),
+		Body:  notificationBody(s.Message, s.Cwd, homeDir()),
+		// Read back when it is clicked, to find the pane again.
+		Data: map[string]interface{}{"pane": s.PaneID, "tab": s.TabID},
 	})
 	if err != nil {
 		slog.Debug("notification", "err", err)
+	}
+}
+
+// notificationBody says what the session was doing and where: "<message> — ~/<dir>", leaving
+// out whichever half is missing.
+func notificationBody(message, cwd, home string) string {
+	if home != "" && (cwd == home || strings.HasPrefix(cwd, home+string(filepath.Separator))) {
+		cwd = "~" + cwd[len(home):]
+	}
+	var parts []string
+	for _, p := range []string{message, cwd} {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, " — ")
+}
+
+// onNotificationResponse brings the pane a clicked notification is about to the front: its
+// window, its tab, and the focus in it.
+func (a *AgentService) onNotificationResponse(r notifications.NotificationResult) {
+	if r.Error != nil || r.Response.ActionIdentifier != notifications.DefaultActionIdentifier {
+		return
+	}
+	pane, _ := r.Response.UserInfo["pane"].(string)
+	tab, _ := r.Response.UserInfo["tab"].(string)
+	if pane == "" {
+		pane = strings.TrimPrefix(r.Response.ID, "wate-")
+	}
+	if pane == "" || a.windows == nil {
+		return
+	}
+	// The pane may have moved tab or window since the notification went out; the window
+	// service knows where it is now, and the frontend finds the pane by its id.
+	win := a.windows.windowForTab(tab, pane)
+	if win == "" {
+		return
+	}
+	if err := a.windows.FocusPane(string(win), tab, pane); err != nil {
+		slog.Debug("notification click", "pane", pane, "err", err)
 	}
 }
 

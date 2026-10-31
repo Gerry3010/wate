@@ -68,3 +68,31 @@ func TestListOrderAndTruncate(t *testing.T) {
 		t.Fatalf("truncate: %q", got)
 	}
 }
+
+func TestPromptsSayWhatTheyAreAbout(t *testing.T) {
+	for _, c := range []struct{ name, prompt, want string }{
+		{"typed", "fix the bug", "fix the bug"},
+		{"background task", "<task-notification>\n<task-id>ab016483a3ee82815</task-id>\n" +
+			"<tool-use-id>toolu_01MLj7</tool-use-id>\n<output-file>/tmp/x.output</output-file>\n" +
+			"<status>completed</status>\n<summary>Background command \"npm test\" completed (exit code 0)</summary>\n" +
+			"</task-notification>", `Background command "npm test" completed (exit code 0)`},
+		{"background task without a summary", "<task-notification><task-id>x</task-id><status>failed</status></task-notification>", "Background task failed"},
+		{"slash command", "<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args>keep the tests</command-args>", "/compact keep the tests"},
+		{"system note before the prompt", "<system-reminder>\nToday is Friday.\n</system-reminder>\nship it", "ship it"},
+		{"only a system note", "<system-reminder>nothing for you</system-reminder>", ""},
+		{"other wrappers", "<bash-input>ls -la</bash-input>", "ls -la"},
+	} {
+		if got := promptMessage(c.prompt); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestANoteInThePromptSlotKeepsTheLastPrompt(t *testing.T) {
+	tr := NewTracker()
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"fix the bug"}`))
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"<system-reminder>x</system-reminder>"}`))
+	if s := tr.List()[0]; s.Message != "fix the bug" {
+		t.Errorf("message became %q", s.Message)
+	}
+}
