@@ -1048,11 +1048,10 @@ export class WateApp {
       keyFilter: (e) => this.actionFor(e) === null,
       // Looked up when they fire, not captured: a pane can be moved to another tab, and a
       // callback still pointing at the tab it was born in would act on a tab that no longer
-      // holds it — the drag would do nothing, and an exit would leave the pane on screen.
+      // holds it, and an exit would leave the pane on screen.
       onExit: () => this.removePane(owner(), pane),
       onTitle: () => owner().onChange?.(),
       onOpenFile: (t) => this.openTarget(owner(), t),
-      onBarDrag: (e) => owner().startPaneDrag(pane.id, e),
     });
     pane.bar.setHost(this.statusHost());
     return pane;

@@ -160,6 +160,17 @@ export class Tab {
       },
       { capture: true, signal: wiring.signal },
     );
+    // The header is the pane's handle: dragging it moves the pane, without having to know that
+    // Alt+drag does the same from anywhere on it (that one stops the event above, so the two
+    // never both start). Not from the buttons on the header, though — those are for pressing.
+    pane.handle?.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (e.button !== 0 || (e.target as HTMLElement | null)?.closest("button")) return;
+        this.startPaneDrag(pane.id, e);
+      },
+      opts,
+    );
   }
 
   /** Take a pane out without killing it: it is moving to another tab, not closing. */

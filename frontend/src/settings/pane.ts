@@ -65,6 +65,7 @@ export class SettingsPane implements Pane {
   title = "Settings";
   private config: Config;
   private body = document.createElement("div");
+  readonly handle = document.createElement("div");
   private nav = document.createElement("nav");
   private content = document.createElement("div");
   private status = document.createElement("span");
@@ -80,7 +81,7 @@ export class SettingsPane implements Pane {
     this.element.className = "pane pane-settings";
     this.element.dataset.paneId = opts.paneId;
     this.element.tabIndex = -1;
-    const toolbar = document.createElement("div");
+    const toolbar = this.handle;
     toolbar.className = "editor-toolbar";
     const name = document.createElement("span");
     name.className = "editor-name";

@@ -44,6 +44,9 @@ export class EditorPane implements Pane {
   private previewEl = document.createElement("div");
   private codeEl = document.createElement("div");
   private toolbar = document.createElement("div");
+  get handle(): HTMLElement {
+    return this.toolbar;
+  }
   private status = document.createElement("span");
   private previewTimer?: ReturnType<typeof setTimeout>;
   private language = new Compartment();

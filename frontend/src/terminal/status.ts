@@ -97,8 +97,6 @@ export interface StatusHost {
 export class PaneStatusBar {
   readonly element: HTMLElement;
   private host?: StatusHost;
-  /** Set by the pane: a drag starting on the bar moves the pane. */
-  onDragStart?: (e: PointerEvent) => void;
   private sig = "";
   private originEl: HTMLElement;
   private dot: HTMLElement;
@@ -110,17 +108,9 @@ export class PaneStatusBar {
     this.element.className = "pane-bar";
     this.element.hidden = true;
     // Clicking the bar must not pull the focus out of the terminal, and a drag that starts on
-    // it is the bar's own (see the Alt+drag handler on .pane, which captures pointerdown).
+    // it is the bar's own: it is the pane's handle (Pane.handle), and the tab moves the pane.
     this.element.addEventListener("mousedown", (e) => e.preventDefault());
-    this.element.addEventListener("pointerdown", (e) => {
-      e.stopPropagation();
-      // The bar is the pane's handle: dragging it moves the pane, without having to know
-      // that Alt+drag does the same thing from anywhere on the pane. Not from the buttons
-      // on it, though — those are for pressing.
-      if (e.button !== 0) return;
-      if ((e.target as HTMLElement | null)?.closest(".pane-bar-menu")) return;
-      this.onDragStart?.(e);
-    });
+    this.element.addEventListener("pointerdown", (e) => e.stopPropagation());
 
     this.originEl = document.createElement("span");
     this.originEl.className = "pane-bar-origin";

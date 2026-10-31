@@ -18,6 +18,11 @@ export interface Pane {
   relayout(): void;
   /** While true, size changes are ignored until relayout() (divider drags). */
   setFitSuspended?(suspended: boolean): void;
+  /**
+   * The pane's header: dragging it moves the pane (the tab wires that up). A terminal's
+   * status bar, an editor's or the settings' toolbar.
+   */
+  readonly handle?: HTMLElement;
   /** Show the pane's status bar (only worth it when the tab holds more than one pane). */
   setStatusVisible?(visible: boolean): void;
   dispose(): void;
