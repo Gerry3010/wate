@@ -96,3 +96,16 @@ func TestANoteInThePromptSlotKeepsTheLastPrompt(t *testing.T) {
 		t.Errorf("message became %q", s.Message)
 	}
 }
+
+func TestTheTranscriptAHookNamesReplacesAGuess(t *testing.T) {
+	tr := NewTracker()
+	tr.Hook("p1", "t1", "SessionStart", []byte(`{"transcript_path":"/guessed.jsonl"}`))
+	tr.mu.Lock()
+	s := tr.sessions["p1"]
+	s.Title, s.ContextPercent = "somebody else's session", 70
+	tr.mu.Unlock()
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"transcript_path":"/real.jsonl","prompt":"x"}`))
+	if s := tr.List()[0]; s.Title != "" || s.ContextPercent != 0 || s.TranscriptPath != "/real.jsonl" {
+		t.Errorf("what was read from the guess survived: %+v", s)
+	}
+}

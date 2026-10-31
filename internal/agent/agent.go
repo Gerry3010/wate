@@ -106,6 +106,9 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 	if p.Transcript != "" && p.Transcript != s.TranscriptPath {
 		s.TranscriptPath = p.Transcript
 		s.transcriptSize, s.titleTried = -1, false
+		// Whatever was read from the old path was a guess (the newest transcript in the
+		// directory, which may be another session's) and must not outlive it.
+		s.Title, s.Context, s.ContextPercent = "", Context{}, 0
 	}
 	switch event {
 	case "SessionStart":
