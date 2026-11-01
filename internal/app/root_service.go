@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -27,6 +28,8 @@ const (
 	watcherStale = 15 * time.Second
 	// hintEvery spaces out the reminder to restart it: a turn has a hook on every tool call.
 	hintEvery = 2 * time.Minute
+	// spawnGrace is how long a pane the root agent opened counts before its shell is seen.
+	spawnGrace = 30 * time.Second
 )
 
 // RootService is wate's side of the root agent. It watches the session table for what deserves
@@ -43,14 +46,14 @@ type RootService struct {
 	pending  []agent.Event
 	polledAt time.Time
 	hintedAt time.Time
-	// opened are the panes the root agent opened itself, for [root] max_sessions.
-	opened map[string]bool
+	// opened are the panes the root agent opened itself, and when, for [root] max_sessions.
+	opened map[string]time.Time
 }
 
 func NewRootService(agents *AgentService, pty *PtyService, cfg func() config.Config) *RootService {
 	return &RootService{
 		agents: agents, pty: pty, cfg: cfg, watch: agent.NewWatch(), now: time.Now,
-		opened: map[string]bool{},
+		opened: map[string]time.Time{},
 	}
 }
 
@@ -131,7 +134,7 @@ func (r *RootService) sessions(list []agent.Session) []RootSession {
 		out = append(out, RootSession{
 			Session:           s,
 			UnattendedMinutes: int(s.UnattendedFor(now) / time.Minute),
-			OpenedByRoot:      r.opened[s.PaneID],
+			OpenedByRoot:      !r.opened[s.PaneID].IsZero(),
 			IsRoot:            s.PaneID == root,
 		})
 	}
@@ -146,8 +149,11 @@ func (r *RootService) mayOpen() error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for pane := range r.opened {
-		if _, alive := r.pty.TabForPane(pane); !alive {
+	now := r.now()
+	for pane, at := range r.opened {
+		// A pane only counts as gone once its shell had time to start: the window answers
+		// before the spawn is through.
+		if _, alive := r.pty.TabForPane(pane); !alive && now.Sub(at) > spawnGrace {
 			delete(r.opened, pane)
 		}
 	}
@@ -161,7 +167,7 @@ func (r *RootService) mayOpen() error {
 // Opened records a pane the root agent opened.
 func (r *RootService) Opened(pane string) {
 	r.mu.Lock()
-	r.opened[pane] = true
+	r.opened[pane] = r.now()
 	r.mu.Unlock()
 }
 
@@ -208,4 +214,18 @@ func firstLine(s string, n int) string {
 		return string(r[:n-1]) + "…"
 	}
 	return string(r)
+}
+
+// RootHost is the saved window that hosted the root agent last time, "" when none did. Its
+// tab is not saved (it is started afresh), so the window says so itself.
+func RootHost(blobs []WindowBlob) string {
+	for _, b := range blobs {
+		var w struct {
+			Root bool `json:"root"`
+		}
+		if json.Unmarshal([]byte(b.Data), &w) == nil && w.Root {
+			return b.Key
+		}
+	}
+	return ""
 }

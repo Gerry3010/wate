@@ -90,6 +90,8 @@ func TestOnlyTheRootTokenOpensTheRootCommands(t *testing.T) {
 
 func TestRootMayOpenOnlySoManySessions(t *testing.T) {
 	r, p := rootIn(t, map[string]string{"root": "t0", "a": "t1", "b": "t2"}, config.Root{Enabled: true, MaxSessions: 2})
+	now := time.Unix(1000, 0)
+	r.now = func() time.Time { return now }
 	r.Opened("a")
 	if err := r.mayOpen(); err != nil {
 		t.Fatalf("one of two: %v", err)
@@ -98,9 +100,13 @@ func TestRootMayOpenOnlySoManySessions(t *testing.T) {
 	if err := r.mayOpen(); err == nil {
 		t.Fatal("a third let through")
 	}
-	// A session that ended frees its place.
+	// A session that ended frees its place — once it had time to start at all.
 	delete(p.byPane, "b")
 	delete(p.tabOf, "b")
+	if err := r.mayOpen(); err == nil {
+		t.Fatal("a pane still spawning was taken for gone")
+	}
+	now = now.Add(time.Minute)
 	if err := r.mayOpen(); err != nil {
 		t.Fatalf("after one ended: %v", err)
 	}
@@ -164,5 +170,19 @@ func TestRootSessionIsContinuedWhileItsTranscriptIsThere(t *testing.T) {
 	third, resume, _ := rootSession(dir, exists)
 	if !resume || third != second {
 		t.Fatalf("transcript there, not resumed: %q %v", third, resume)
+	}
+}
+
+func TestRootHostIsTheWindowThatSaysSo(t *testing.T) {
+	blobs := []WindowBlob{
+		{Key: "w-1", Data: `{"key":"w-1","active":0,"tabs":[]}`},
+		{Key: "w-2", Data: `{"key":"w-2","active":0,"tabs":[],"root":true}`},
+		{Key: "w-3", Data: `not json`},
+	}
+	if got := RootHost(blobs); got != "w-2" {
+		t.Fatalf("host %q", got)
+	}
+	if got := RootHost(blobs[:1]); got != "" {
+		t.Fatalf("no window said so, got %q", got)
 	}
 }

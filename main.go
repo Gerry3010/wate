@@ -190,6 +190,14 @@ func main() {
 		restore = "empty"
 		keys = []string{"w-1"}
 	}
+	// The root agent lives in one window: the one it was in last time, else the first. Never
+	// in a secondary instance — that has its own session table and sees only its own panes.
+	rootHost := ""
+	if !cfgSvc.Secondary {
+		if rootHost = app.RootHost(stateSvc.LoadAll()); rootHost == "" {
+			rootHost = keys[0]
+		}
+	}
 	for i, key := range keys {
 		var saved *app.WindowState
 		if cfg := cfgSvc.Current(); cfg.Window.RememberSize && !cfgSvc.Secondary {
@@ -201,6 +209,7 @@ func main() {
 			Geometry: saved, Restore: restore, StateKey: key,
 			Track:   !cfgSvc.Secondary,
 			Persist: !cfgSvc.Secondary,
+			Root:    key == rootHost,
 		}
 		// The directory from the command line belongs to the first window only.
 		if i == 0 {

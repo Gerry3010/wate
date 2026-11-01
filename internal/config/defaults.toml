@@ -71,6 +71,7 @@ copy           = "ctrl+shift+c"
 paste          = "ctrl+shift+v"
 search         = "ctrl+shift+f"
 launch_claude  = "ctrl+shift+k"
+open_root      = "ctrl+shift+o"         # the root agent's tab (see [root])
 toggle_sidebar = "ctrl+shift+a"
 open_settings  = "ctrl+comma"
 editor_mode    = "ctrl+shift+p"

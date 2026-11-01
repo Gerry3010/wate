@@ -44,6 +44,8 @@ export interface TerminalPaneOptions {
   adopt?: boolean;
   /** Opened over the control socket, for an agent to run things in (no pager, see Spawn). */
   agent?: boolean;
+  /** The root agent's pane: the one whose token unlocks the commands across tabs. */
+  root?: boolean;
   /** false for panes created in a hidden tab: no GPU renderer until the tab is shown. */
   visible?: boolean;
   terminal: TerminalConfig;
@@ -382,6 +384,7 @@ export class TerminalPane implements Pane {
                 cwd: this.opts.cwd ?? "",
                 command: this.opts.command ?? [],
                 agent: this.opts.agent ?? false,
+                root: this.opts.root ?? false,
                 cols: this.term.cols,
                 rows: this.term.rows,
               }),

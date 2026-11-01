@@ -41,6 +41,9 @@ export class Tab {
   /** User-given title (overrides the focused pane's title) and tab colour. */
   customTitle = "";
   color = "";
+  /** The root agent's tab. It is not saved with the others: it is started afresh, its
+   *  Claude Code session continued, wherever the root agent lives this time. */
+  root = false;
   private view: LayoutView;
   onChange?: () => void;
 

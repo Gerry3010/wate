@@ -36,6 +36,10 @@ type Bootstrap struct {
 	// Persist is whether this window writes its tabs back. Restoring and saving are separate:
 	// a window opened fresh has nothing to restore but must still come back next time.
 	Persist bool `json:"persist"`
+	// Root says this window hosts the root agent's tab (when [root] is enabled). One window
+	// does: each restores its tabs on its own, and two asking "is there a root yet?" at the
+	// same moment would both start one.
+	Root bool `json:"root"`
 }
 
 // ActivateTab asks a window to bring a tab (and optionally a pane) to the front.
@@ -74,6 +78,8 @@ type OpenWindowOptions struct {
 	Persist bool
 	// Adopt is a tab arriving from another window, handed to the frontend on Bootstrap.
 	Adopt *TabTransfer
+	// Root makes this the window that hosts the root agent (see Bootstrap.Root).
+	Root bool
 }
 
 type winEntry struct {
@@ -153,7 +159,7 @@ func (s *WindowService) Open(o OpenWindowOptions) (WindowID, error) {
 		// Not the window id: that is minted per run and would collide with an older slot.
 		key = "win-" + randomKey()
 	}
-	boot := Bootstrap{WindowID: string(id), InitialCwd: o.Cwd, Restore: o.Restore, StateKey: key, Persist: o.Persist}
+	boot := Bootstrap{WindowID: string(id), InitialCwd: o.Cwd, Restore: o.Restore, StateKey: key, Persist: o.Persist, Root: o.Root}
 	if boot.Restore == "" {
 		boot.Restore = "empty"
 	}

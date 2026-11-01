@@ -48,6 +48,7 @@ const ACTIONS: [string, string][] = [
   ["paste", "Paste"],
   ["search", "Search"],
   ["launch_claude", "Launch Claude Code"],
+  ["open_root", "Open the root agent"],
   ["toggle_sidebar", "Toggle Claude sidebar"],
   ["open_settings", "Open settings"],
   ["editor_mode", "Editor: cycle Code / Split / Preview"],
@@ -283,6 +284,25 @@ export class SettingsPane implements Pane {
     clHint.className = "settings-hint";
     clHint.textContent = "The sidebar shows how full each session's context is (read from Claude Code's transcript). Set the window size only if the guess for your model is wrong.";
     cl.appendChild(clHint);
+    this.number(cl, "Subagent depth", "claude.subagent_depth", c.claude.subagent_depth, 0, 10, " (0 = Claude Code's default)");
+
+    const rt = this.section("Root agent", "root");
+    this.check(rt, "Run the root agent", "root.enabled", c.root.enabled);
+    this.text(rt, "Directory", "root.cwd", c.root.cwd, "~");
+    this.text(rt, "Model", "root.model", c.root.model, "empty = Claude Code's default");
+    this.number(rt, "Wake after", "root.waiting_minutes", c.root.waiting_minutes, 0, 1440, " min unanswered (0 = never)");
+    this.number(rt, "Wake at context", "root.context_percent", c.root.context_percent, 0, 100, " % (0 = never)");
+    this.number(rt, "Sessions it may open", "root.max_sessions", c.root.max_sessions, 0, 20, " at once (0 = none)");
+    this.text(rt, "Instructions file", "root.instructions", c.root.instructions, "empty = built-in");
+    const rtHint = document.createElement("p");
+    rtHint.className = "settings-hint";
+    rtHint.textContent =
+      "One long-lived Claude Code session in a tab of its own, first in the bar. wate wakes it when a session has sat on a " +
+      "permission prompt or a question for the given time, or its context is nearly full; it looks, tells you what needs you, " +
+      "and may answer sessions or open new ones itself (you get a notification each time). It runs its own tools and its " +
+      "watcher without asking; everything else asks as usual. It needs wate's hooks (wate install-hooks) to tell a prompt " +
+      "from a finished turn.";
+    rt.appendChild(rtHint);
 
     const imp = this.section("Import", "import");
     const impHint = document.createElement("p");

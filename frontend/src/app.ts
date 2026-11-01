@@ -13,7 +13,7 @@ import { perf, takePerf } from "./perf";
 import { keys, logKey, takeKeys } from "./keys-debug";
 import { boxAt, dropText, dropZone, droppedPaths, shellCommand, zoneRect, zoneSplit, type Box, type DropZone } from "./drop";
 import { DropHighlight, installDragMotion } from "./drop-overlay";
-import { neighbor, type Dir, type Direction } from "./layout/tree";
+import { leaf, neighbor, type Dir, type Direction } from "./layout/tree";
 import { moveItem } from "./tabs/order";
 import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
@@ -140,6 +140,8 @@ export class WateApp {
   persist = true;
   /** This window's slot in session.json and window.json; stable across runs. */
   stateKey = "w-1";
+  /** Whether the root agent's tab lives in this window (see Bootstrap.Root). */
+  hostsRoot = false;
 
   private saveDeadline = 0;
 
@@ -178,7 +180,7 @@ export class WateApp {
   async snapshot(immediate = false, scrollback = 0): Promise<SavedWindow> {
     const tabs: SavedTab[] = [];
     for (const t of this.tabs) {
-      if (!t.tree) continue;
+      if (!t.tree || t.root) continue;
       const panes: SavedPane[] = [];
       for (const p of t.panes.values()) {
         if (p instanceof EditorPane) panes.push({ id: p.id, kind: "editor", path: p.path });
@@ -197,7 +199,9 @@ export class WateApp {
       if (panes.length === 0) continue;
       tabs.push({ tree: t.tree, focused: t.focusedId, panes, title: t.customTitle || undefined, color: t.color || undefined });
     }
-    return { key: this.stateKey, active: this.active ? this.tabs.indexOf(this.active) : 0, tabs };
+    const kept = this.tabs.filter((t) => !t.root);
+    const active = this.active ? kept.indexOf(this.active) : 0;
+    return { key: this.stateKey, active: Math.max(active, 0), tabs, root: this.tabs.some((t) => t.root) || undefined };
   }
 
   /** Store the current tabs under a name (tab bar dropdown). */
@@ -256,13 +260,7 @@ export class WateApp {
       const tab = new Tab();
       tab.customTitle = st.title ?? "";
       tab.color = st.color ?? "";
-      tab.onChange = () => {
-        this.refreshChrome(tab);
-        if (tab === this.active) this.reportFocus();
-        this.scheduleSave();
-      };
-      tab.onLayout = (r) => this.sidebar.cutEdge(tab === this.active ? r : null);
-      this.wirePaneDrag(tab);
+      this.wireTab(tab);
       const map = new Map<string, string>();
       const panes: Pane[] = [];
       const starts: Promise<unknown>[] = [];
@@ -673,6 +671,8 @@ export class WateApp {
     this.config = config;
     this.keymap = new Keymap(config.keys, config.general.passthrough ?? []);
     await this.loadTheme();
+    // Switched on in the settings: no restart needed.
+    if (config.root.enabled) void this.ensureRoot();
     for (const p of this.allPanes()) {
       if (p instanceof TerminalPane) p.applyConfig(config.terminal, this.fontDelta, this.termTheme());
       else if (p instanceof SettingsPane) p.applyConfig(config);
@@ -736,6 +736,23 @@ export class WateApp {
   /** Create, register and activate an empty tab. */
   private createTab(): Tab {
     const tab = new Tab();
+    this.wireTab(tab);
+    this.tabs.push(tab);
+    this.activate(tab);
+    return tab;
+  }
+
+  /** Create and register a tab without showing it: the caller fills it with restore(). */
+  private hiddenTab(): Tab {
+    const tab = new Tab();
+    this.wireTab(tab);
+    this.tabs.push(tab);
+    if (!tab.element.parentElement) this.content.appendChild(tab.element);
+    return tab;
+  }
+
+  /** What every tab needs from the window, however it came about. */
+  private wireTab(tab: Tab) {
     tab.onChange = () => {
       this.refreshChrome(tab);
       if (tab === this.active) this.reportFocus();
@@ -743,9 +760,78 @@ export class WateApp {
     };
     tab.onLayout = (r) => this.sidebar.cutEdge(tab === this.active ? r : null);
     this.wirePaneDrag(tab);
-    this.tabs.push(tab);
-    this.activate(tab);
-    return tab;
+  }
+
+  // ---- the root agent ---------------------------------------------------
+
+  /** Start the root agent's tab, when this window hosts it and has none yet. It goes first in
+   *  the bar and is not brought to the front: it works in the background. */
+  async ensureRoot(): Promise<Tab | null> {
+    if (!this.hostsRoot || !this.config.root.enabled) return null;
+    const existing = this.tabs.find((t) => t.root);
+    if (existing) return existing;
+    if (this.rootStarting) return null;
+    this.rootStarting = true;
+    try {
+      const command = await ConfigService.RootArgs();
+      if (!command?.length) return null;
+      const tab = this.hiddenTab();
+      tab.root = true;
+      tab.customTitle = "Root";
+      tab.color = "violet";
+      this.tabs.splice(this.tabs.indexOf(tab), 1);
+      this.tabs.unshift(tab);
+      const pane = this.makeTerminal(tab, { cwd: this.config.root.cwd, command, visible: false, root: true });
+      tab.restore(leaf(pane.id), [pane], pane.id);
+      this.refreshChrome();
+      this.scheduleSave();
+      await pane.start();
+      return tab;
+    } catch (err) {
+      console.warn("root agent:", err);
+      return null;
+    } finally {
+      this.rootStarting = false;
+    }
+  }
+
+  private rootStarting = false;
+
+  /** Bring the root agent's tab to the front, wherever it is, starting it if there is none. */
+  async openRoot(): Promise<void> {
+    if (!this.config.root.enabled) {
+      this.openSettings("root");
+      return;
+    }
+    const running = await PtyService.RootPane().catch(() => "");
+    if (running && !this.tabOfPane(running)) {
+      // It lives in another window.
+      const s = this.agents.forPane(running);
+      if (s?.window_id) void WindowService.FocusPane(s.window_id, s.tab_id, running).catch((err) => console.warn("focus root:", err));
+      return;
+    }
+    // Asked for here, so here is where it lives from now on.
+    this.hostsRoot = true;
+    const tab = await this.ensureRoot();
+    if (tab) this.activate(tab);
+  }
+
+  /**
+   * A session the root agent opened: Claude Code in a tab of its own, in the background — the
+   * user may be typing somewhere else, and a tab that took the focus would take the keys.
+   * Answered before the shell is up: the backend stops waiting after a few seconds, and spawns
+   * queue up behind each other.
+   */
+  private openSessionFor(data: string): string {
+    const args = JSON.parse(data || "{}") as { cwd?: string; command?: string[] };
+    if (!args.command?.length) throw new Error("nothing to run");
+    const tab = this.hiddenTab();
+    const pane = this.makeTerminal(tab, { cwd: args.cwd, command: args.command, visible: false });
+    tab.restore(leaf(pane.id), [pane], pane.id);
+    this.refreshChrome();
+    this.scheduleSave();
+    void pane.start().catch((err) => console.warn("open session:", err));
+    return JSON.stringify({ tab: tab.id, pane: pane.id });
   }
 
   /**
@@ -811,6 +897,8 @@ export class WateApp {
   }
 
   private async answerPaneRequest(req: { kind: string; pane: string; data: string }): Promise<string> {
+    // Asked on the root agent's behalf, about no pane of its own.
+    if (req.kind === "open-session") return this.openSessionFor(req.data);
     const pane = this.paneById(req.pane);
     const tab = this.tabOfPane(req.pane);
     if (!pane || !tab) throw new Error(`no such pane ${req.pane}`);
@@ -1042,7 +1130,7 @@ export class WateApp {
 
   // ---- panes ------------------------------------------------------------
 
-  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean; id?: string; adopt?: boolean; agent?: boolean }): TerminalPane {
+  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean; id?: string; adopt?: boolean; agent?: boolean; root?: boolean }): TerminalPane {
     const owner = () => this.tabOfPane(pane.id) ?? tab;
     const pane: TerminalPane = new TerminalPane({
       // An adopted pane keeps its id: that is how the backend finds the shell it already has,
@@ -1050,6 +1138,7 @@ export class WateApp {
       paneId: opts.id ?? nextId("pane"),
       adopt: opts.adopt,
       agent: opts.agent,
+      root: opts.root,
       tabId: tab.id,
       cwd: opts.cwd ?? "",
       command: opts.command,
@@ -1371,6 +1460,9 @@ export class WateApp {
         break;
       case "launch_claude":
         await this.launchClaude();
+        break;
+      case "open_root":
+        await this.openRoot();
         break;
       case "toggle_sidebar":
         this.sidebar.toggle();

@@ -34,6 +34,7 @@ async function boot() {
   app.restoreMode = boot.restore;
   app.stateKey = boot.state_key;
   app.persist = boot.persist;
+  app.hostsRoot = boot.root;
   app.configPath = path;
   await app.loadTheme();
   Events.On("config:changed", (ev: { data: { config: typeof config; warning?: string } }) => {
@@ -73,6 +74,8 @@ async function boot() {
   }
   const restored = boot.restore === "session" ? await app.restoreSession() : false;
   if (boot.initial_cwd || !restored) await app.newTab({ cwd: boot.initial_cwd || undefined });
+  // After the user's own tabs, so one of those is in front.
+  await app.ensureRoot();
 }
 
 boot().catch((err) => {

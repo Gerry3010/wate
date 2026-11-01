@@ -19,6 +19,8 @@ export interface SavedWindow {
   /** Index into tabs. */
   active: number;
   tabs: SavedTab[];
+  /** This window hosted the root agent; read by the backend to put it back there. */
+  root?: boolean;
 }
 
 /** The v1 shape, kept as documentation of what parseSession still accepts on input. */
