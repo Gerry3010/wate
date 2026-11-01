@@ -109,3 +109,71 @@ func TestTheTranscriptAHookNamesReplacesAGuess(t *testing.T) {
 		t.Errorf("what was read from the guess survived: %+v", s)
 	}
 }
+
+// clock is a tracker clock the test moves by hand.
+func clock(tr *Tracker) func(time.Duration) time.Time {
+	now := time.Unix(1000, 0)
+	tr.now = func() time.Time { return now }
+	return func(d time.Duration) time.Time { now = now.Add(d); return now }
+}
+
+func TestAnIdleReminderIsNotAPermissionPrompt(t *testing.T) {
+	for _, c := range []struct {
+		name, payload string
+		want          Phase
+	}{
+		{"permission", `{"notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}`, PhasePermission},
+		{"dialog", `{"notification_type":"elicitation_dialog"}`, PhasePermission},
+		{"idle", `{"notification_type":"idle_prompt","message":"Claude is waiting for your input"}`, PhaseDone},
+		{"idle without a type", `{"message":"Claude is waiting for your input"}`, PhaseDone},
+		{"permission without a type", `{"message":"Claude needs your permission to use Bash"}`, PhasePermission},
+		{"login", `{"notification_type":"auth_success"}`, PhaseDone},
+	} {
+		tr := NewTracker()
+		tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"x"}`))
+		tr.Hook("p1", "t1", "Stop", nil)
+		tr.Hook("p1", "t1", "Notification", []byte(c.payload))
+		if s := tr.List()[0]; s.Phase != c.want || s.Status != StatusWaiting {
+			t.Errorf("%s: phase %q status %q, want phase %q", c.name, s.Phase, s.Status, c.want)
+		}
+	}
+}
+
+func TestLookingAtAPromptResetsTheClockButNotThePhase(t *testing.T) {
+	tr := NewTracker()
+	tick := clock(tr)
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"x"}`))
+	tick(time.Minute)
+	tr.Hook("p1", "t1", "Notification", []byte(`{"notification_type":"permission_prompt"}`))
+	now := tick(5 * time.Minute)
+	if got := tr.List()[0].UnattendedFor(now); got != 5*time.Minute {
+		t.Fatalf("unattended %v, want 5m", got)
+	}
+	tr.Acknowledge("p1")
+	now = tick(2 * time.Minute)
+	s := tr.List()[0]
+	if s.Phase != PhasePermission || s.UnattendedFor(now) != 2*time.Minute {
+		t.Fatalf("after a glance: phase %q, unattended %v", s.Phase, s.UnattendedFor(now))
+	}
+	// A second identical notification does not restart the clock.
+	tr.Hook("p1", "t1", "Notification", []byte(`{"notification_type":"permission_prompt"}`))
+	if got := tr.List()[0].PhaseSince; !got.Equal(time.Unix(1060, 0)) {
+		t.Fatalf("phase clock restarted: %v", got)
+	}
+}
+
+func TestAToolRunningEndsThePermissionPhase(t *testing.T) {
+	tr := NewTracker()
+	changes := 0
+	tr.OnChange = func(Session) { changes++ }
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"x"}`))
+	tr.Hook("p1", "t1", "PostToolUse", nil)
+	if changes != 1 {
+		t.Fatalf("an ordinary tool call reported a change (%d)", changes)
+	}
+	tr.Hook("p1", "t1", "Notification", []byte(`{"notification_type":"permission_prompt"}`))
+	tr.Hook("p1", "t1", "PostToolUse", nil)
+	if s := tr.List()[0]; s.Phase != PhaseWorking || s.Status != StatusRunning {
+		t.Fatalf("answered elsewhere, still blocked: %+v", s)
+	}
+}

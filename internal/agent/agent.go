@@ -22,6 +22,19 @@ const (
 	StatusDone    Status = "done"    // claude finished its turn
 )
 
+// Phase is where a session stands as far as the root agent's rules are concerned. It is finer
+// than Status where that matters: a permission prompt and Claude Code's "still waiting for your
+// input" reminder both turn Status to waiting, but only the first has somebody stuck. It is also
+// left alone when the user merely looks at the pane — a prompt glanced at is still unanswered.
+type Phase string
+
+const (
+	PhaseUnknown    Phase = ""           // only process detection sees the session
+	PhaseWorking    Phase = "working"    // a prompt is being worked on
+	PhasePermission Phase = "permission" // blocked on the user: a permission prompt, a dialog
+	PhaseDone       Phase = "done"       // the turn is over
+)
+
 // Session is the state wate keeps per pane.
 type Session struct {
 	PaneID    string `json:"pane_id"`
@@ -38,6 +51,11 @@ type Session struct {
 	Asking    bool      `json:"asking"`
 	StartedAt time.Time `json:"started_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Phase and PhaseSince come from hooks only; SeenAt is the last time the user looked at the
+	// pane. How long a session has been left alone is UnattendedFor.
+	Phase      Phase     `json:"phase"`
+	PhaseSince time.Time `json:"phase_since"`
+	SeenAt     time.Time `json:"seen_at"`
 	// Source is "hook" when hooks deliver precise events, "proc" when only process detection sees it.
 	Source string `json:"source"`
 	// WindowID is filled in when the session is handed to the frontend, not tracked here: a
@@ -92,6 +110,46 @@ type hookPayload struct {
 	HookEvent  string `json:"hook_event_name"`
 	Prompt     string `json:"prompt"`
 	Transcript string `json:"transcript_path"`
+	// NotificationType tells a prompt that blocks Claude from a reminder that it is idle.
+	NotificationType string `json:"notification_type"`
+}
+
+// notificationPhase is the phase a Notification hook leaves the session in; ok is false for a
+// notification that says nothing about it (a finished login).
+func notificationPhase(p hookPayload) (phase Phase, ok bool) {
+	switch p.NotificationType {
+	case "permission_prompt", "elicitation_dialog", "agent_needs_input":
+		return PhasePermission, true
+	case "idle_prompt", "agent_completed":
+		return PhaseDone, true
+	case "":
+		// Older Claude Code sends no type: the idle reminder is the one that says so.
+		if strings.Contains(strings.ToLower(p.Message), "waiting for your input") {
+			return PhaseDone, true
+		}
+		return PhasePermission, true
+	}
+	return "", false
+}
+
+// setPhase moves s to phase, restarting the clock only on an actual change.
+func (t *Tracker) setPhase(s *Session, phase Phase) {
+	if s.Phase != phase {
+		s.Phase = phase
+		s.PhaseSince = t.now()
+	}
+}
+
+// UnattendedFor is how long the session has sat in its phase without the user looking at it.
+func (s Session) UnattendedFor(now time.Time) time.Duration {
+	since := s.PhaseSince
+	if s.SeenAt.After(since) {
+		since = s.SeenAt
+	}
+	if since.IsZero() {
+		return 0
+	}
+	return now.Sub(since)
 }
 
 // Hook applies a Claude Code hook event to the pane's session.
@@ -126,9 +184,11 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 		s.Message = ""
 		s.Asking = false
 		s.StartedAt = t.now()
+		t.setPhase(s, PhaseWorking)
 	case "UserPromptSubmit":
 		s.Status = StatusRunning
 		s.Asking = false
+		t.setPhase(s, PhaseWorking)
 		// Something Claude Code put in the prompt slot itself, with nothing readable in it,
 		// leaves the last real prompt standing.
 		if m := promptMessage(p.Prompt); m != "" {
@@ -138,10 +198,25 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 		s.Status = StatusWaiting
 		s.Message = firstNonEmpty(p.Message, p.Title, "Claude is waiting for you")
 		s.Asking = asking
+		if phase, ok := notificationPhase(p); ok {
+			t.setPhase(s, phase)
+		}
+	case "PostToolUse":
+		// A tool ran, so whatever blocked it was answered — possibly from somewhere that never
+		// focused the pane (Remote Control). Every other tool call is none of the tracker's
+		// business: they come by the dozen and change nothing.
+		if s.Phase != PhasePermission {
+			t.mu.Unlock()
+			return
+		}
+		s.Status = StatusRunning
+		s.Message = ""
+		t.setPhase(s, PhaseWorking)
 	case "Stop":
 		s.Status = StatusDone
 		s.Message = firstNonEmpty(s.Message, "Finished")
 		s.Asking = asking
+		t.setPhase(s, PhaseDone)
 	case "SessionEnd":
 		delete(t.sessions, paneID)
 		s.Status = StatusIdle
@@ -265,10 +340,14 @@ func (t *Tracker) transcriptFor(paneID, named string) string {
 	return ""
 }
 
-// Acknowledge clears waiting/done once the user looked at the pane.
+// Acknowledge clears waiting/done once the user looked at the pane. The phase stays: a
+// permission prompt the user only glanced at is still unanswered, it has just been seen.
 func (t *Tracker) Acknowledge(paneID string) {
 	t.mu.Lock()
 	s, ok := t.sessions[paneID]
+	if ok {
+		s.SeenAt = t.now()
+	}
 	if !ok || (s.Status != StatusWaiting && s.Status != StatusDone) {
 		t.mu.Unlock()
 		return
