@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -468,13 +469,23 @@ func (c *CtlService) pane(r ctl.Request) (any, error) {
 		if err := c.access.Allow(from, target, RightWrite); err != nil {
 			return nil, err
 		}
-		text := r.Text
 		if !c.access.Submits(from, target) {
 			// Write without Read: the text lands on the prompt and the user presses Enter.
-			text = typable(text)
+			return "", c.pty.WriteToPane(target, typable(r.Text))
 		}
-		if err := c.pty.WriteToPane(target, text); err != nil {
-			return nil, err
+		line, enter := splitSubmit(r.Text)
+		if line != "" {
+			if err := c.pty.WriteToPane(target, line); err != nil {
+				return nil, err
+			}
+			if enter {
+				time.Sleep(submitDelay)
+			}
+		}
+		if enter {
+			if err := c.pty.WriteToPane(target, "\r"); err != nil {
+				return nil, err
+			}
 		}
 		return "", nil
 	}

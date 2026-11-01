@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -207,4 +208,23 @@ func typable(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// submitDelay is how long a line waits on the prompt before its Enter follows. Claude Code
+// takes a burst of input for a paste and folds whatever arrives in the next 100 ms into it, an
+// Enter included, which then stands in the text as a line break and sends nothing.
+const submitDelay = 250 * time.Millisecond
+
+// splitSubmit takes the Enter off the end of what an agent typed. A final newline is how an
+// agent says "and run it", but the Enter key sends a carriage return, and only a shell's line
+// discipline treats the two alike: a program that reads raw keys, such as Claude Code's
+// prompt, sees a line feed as a line break in the text. So the line goes first and a real
+// Enter after it.
+func splitSubmit(s string) (line string, enter bool) {
+	for _, end := range []string{"\r\n", "\n", "\r"} {
+		if line, ok := strings.CutSuffix(s, end); ok {
+			return line, true
+		}
+	}
+	return s, false
 }

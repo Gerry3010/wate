@@ -205,8 +205,9 @@ func register(s *mcp.Server) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "wate_pane_write",
 		Description: "Type text into a pane. In a pane you opened, and in one the user has given " +
-			"you both Read and Write, this is sent as it stands, so end it with a newline to run " +
-			"a command. With Write alone, newlines and control characters are dropped: the text " +
+			"you both Read and Write, this is sent as it stands. End it with a newline to press " +
+			"Enter: that runs a command at a shell prompt and sends a message to a Claude Code " +
+			"session alike. With Write alone, newlines and control characters are dropped: the text " +
 			"lands on the prompt and the user presses Enter." + scope,
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in writeIn) (*mcp.CallToolResult, any, error) {
 		if _, err := send(ctl.Request{Cmd: "pane-write", Target: in.Pane, Text: in.Text}); err != nil {

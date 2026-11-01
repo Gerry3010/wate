@@ -170,6 +170,30 @@ func TestTypableKeepsTextAndDropsTheKeysThatAct(t *testing.T) {
 	}
 }
 
+func TestTheEnterAtTheEndIsPressedOnItsOwn(t *testing.T) {
+	cases := []struct {
+		in, line string
+		enter    bool
+	}{
+		{"ls -la\n", "ls -la", true},
+		{"ls -la\r\n", "ls -la", true},
+		{"ls -la\r", "ls -la", true},
+		{"ls -la", "ls -la", false},
+		// Line breaks inside stay what they are: lines for a shell, a multi-line message for
+		// Claude Code. Only the last one is the Enter.
+		{"first\nsecond\n", "first\nsecond", true},
+		{"cat <<EOF\nx\nEOF\n\n", "cat <<EOF\nx\nEOF\n", true},
+		{"\n", "", true},
+		{"", "", false},
+	}
+	for _, c := range cases {
+		line, enter := splitSubmit(c.in)
+		if line != c.line || enter != c.enter {
+			t.Errorf("splitSubmit(%q) = %q, %v; want %q, %v", c.in, line, enter, c.line, c.enter)
+		}
+	}
+}
+
 func TestWhoIsAskingIsNotWhatIsBeingActedOn(t *testing.T) {
 	// The pane a request *names* must never become the pane it comes *from*: if it did, every
 	// rights check would pass, because a pane may always act on itself. That is exactly what

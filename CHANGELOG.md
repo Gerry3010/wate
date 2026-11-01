@@ -167,6 +167,11 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- A message an agent ends with a newline in `wate_pane_write` or `wate ctl pane-write` now
+  reaches a Claude Code session in that pane. It used to stay on the session's prompt: Claude
+  Code reads a line feed as a line break in the text, and it takes a burst of input for a paste
+  that swallows an Enter right behind it. The final newline now goes out as a carriage return
+  of its own, a quarter of a second after the text. Shell prompts behave as before.
 - A pane stays "waiting" no longer than its prompt does. When a permission prompt is answered
   somewhere that never focuses the pane (Remote Control, say), the next tool that runs puts it
   back to working.
