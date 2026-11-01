@@ -43,6 +43,8 @@ usage:
   wate ctl restart-respond go|wait [<min>] [<note>]
                                   answer, from inside the session that was asked
   wate ctl new-window [<dir>]     open another window
+  wate ctl watch [--once]         print what needs the root agent's attention, one JSON line
+                                  per event (--once: end after the first batch); root agent only
   wate ctl ping                   check the control socket
   wate theme import <file>        import a Ghostty/Alacritty/wate theme and activate it
   wate hook <event>               Claude Code hook entry point (reads JSON on stdin)
@@ -80,6 +82,9 @@ func Run(args []string) int {
 		if len(args) < 2 {
 			fmt.Fprint(os.Stderr, Usage)
 			return 2
+		}
+		if args[1] == "watch" {
+			return runWatch(args[2:])
 		}
 		req := ctl.Request{
 			Cmd:   args[1],
