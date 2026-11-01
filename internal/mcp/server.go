@@ -23,11 +23,15 @@ import (
 	"github.com/Gerry3010/wate/internal/ctl"
 )
 
-// Run speaks MCP on stdin/stdout until the client goes away.
-func Run(version string) error {
+// Run speaks MCP on stdin/stdout until the client goes away. root adds the root agent's tools;
+// wate still checks every one of their requests against the root agent's pane token.
+func Run(version string, root bool) error {
 	s := mcp.NewServer(&mcp.Implementation{Name: "wate", Version: version}, nil)
 	register(s)
 	registerRun(s)
+	if root {
+		registerRoot(s)
+	}
 	err := s.Run(context.Background(), &mcp.StdioTransport{})
 	// The client closing its end is how this ends normally, not something to report.
 	if err != nil && (errors.Is(err, io.EOF) || strings.Contains(err.Error(), "EOF")) {

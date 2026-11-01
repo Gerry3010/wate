@@ -49,7 +49,8 @@ usage:
   wate theme import <file>        import a Ghostty/Alacritty/wate theme and activate it
   wate hook <event>               Claude Code hook entry point (reads JSON on stdin)
   wate install-hooks              register wate's hooks in ~/.claude/settings.json
-  wate mcp                        Model Context Protocol server (stdio), for Claude Code
+  wate mcp [--root]               Model Context Protocol server (stdio), for Claude Code
+                                  (--root: with the root agent's tools)
 
 --pane <id> says who is asking (normally $WATE_PANE_ID); --target <id> says which pane to act
 on. A pane may always act on itself and on panes it opened; anything else has to be allowed in
@@ -189,7 +190,8 @@ func Run(args []string) int {
 		return runHook(args[1])
 	case "mcp":
 		// Model Context Protocol over stdin/stdout, for a Claude Code session in a wate pane.
-		if err := mcp.Run("dev"); err != nil {
+		// --root adds the root agent's tools.
+		if err := mcp.Run("dev", len(args) > 1 && args[1] == "--root"); err != nil {
 			fmt.Fprintln(os.Stderr, "mcp:", err)
 			return 1
 		}
