@@ -786,6 +786,9 @@ export class WateApp {
       this.refreshChrome();
       this.scheduleSave();
       await pane.start();
+      // A fresh session comes to the front once: Claude Code may first ask whether to trust
+      // the directory, and its first overview is worth seeing. A continued one stays behind.
+      if (command.includes("--session-id")) this.activate(tab);
       return tab;
     } catch (err) {
       console.warn("root agent:", err);
