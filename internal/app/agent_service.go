@@ -113,9 +113,7 @@ func (a *AgentService) onChange(s agent.Session) {
 		a.tracker.Acknowledge(s.PaneID)
 		return
 	}
-	// The root agent finishes a turn every time it has dealt with something; that it is done
-	// is the normal state, not news. It waiting for a permission still is.
-	if s.Status == agent.StatusDone && s.PaneID != "" && s.PaneID == a.pty.RootPane() {
+	if !worthNotifying(s, a.pty.RootPane()) {
 		return
 	}
 	if !a.cfg().Claude.Notify {
@@ -126,6 +124,17 @@ func (a *AgentService) onChange(s agent.Session) {
 		title = "Claude Code finished"
 	}
 	a.Notify("wate-"+s.PaneID, title, notificationBody(s.Message, s.Cwd, homeDir()), s.PaneID, s.TabID)
+}
+
+// worthNotifying says whether a waiting or finished session is news. For the root agent it
+// rarely is: it finishes a turn every time it has dealt with something, and a minute later
+// Claude Code's idle reminder turns it to waiting. Only it being stuck on a prompt of its own
+// is worth a word.
+func worthNotifying(s agent.Session, rootPane string) bool {
+	if s.PaneID == "" || s.PaneID != rootPane {
+		return true
+	}
+	return s.Status == agent.StatusWaiting && s.Phase == agent.PhasePermission
 }
 
 // InView reports whether a focused window is showing this very pane.

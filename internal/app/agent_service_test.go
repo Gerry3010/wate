@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
+
+	"github.com/Gerry3010/wate/internal/agent"
 )
 
 func TestTheNotificationSaysWhatAndWhere(t *testing.T) {
@@ -33,4 +35,22 @@ func TestAClickOnlyGoesWhereThePaneIs(t *testing.T) {
 	click(notifications.DefaultActionIdentifier, map[string]interface{}{"pane": "gone", "tab": "t1"})
 	click("snooze", map[string]interface{}{"pane": "p1"})
 	click(notifications.DefaultActionIdentifier, nil)
+}
+
+func TestTheRootAgentIsNewsOnlyWhenStuck(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		s    agent.Session
+		want bool
+	}{
+		{"another session finished", agent.Session{PaneID: "p1", Status: agent.StatusDone}, true},
+		{"another session idle", agent.Session{PaneID: "p1", Status: agent.StatusWaiting, Phase: agent.PhaseDone}, true},
+		{"root finished", agent.Session{PaneID: "root", Status: agent.StatusDone, Phase: agent.PhaseDone}, false},
+		{"root idle reminder", agent.Session{PaneID: "root", Status: agent.StatusWaiting, Phase: agent.PhaseDone}, false},
+		{"root on a prompt", agent.Session{PaneID: "root", Status: agent.StatusWaiting, Phase: agent.PhasePermission}, true},
+	} {
+		if got := worthNotifying(c.s, "root"); got != c.want {
+			t.Errorf("%s: got %v", c.name, got)
+		}
+	}
 }
