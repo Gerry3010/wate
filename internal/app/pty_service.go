@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -150,6 +151,12 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 	// a word everywhere else.
 	if cfg.Terminal.WordKeys == "ctrl" || cfg.Terminal.WordKeys == "both" {
 		env = append(env, "CLAUDE_CODE_BS_AS_CTRL_BACKSPACE=1")
+	}
+	// Subagents starting subagents of their own grow a tree nobody overlooks. The cap goes into
+	// every pane, so a claude typed by hand gets it as much as one wate starts; exec keeps the
+	// last value of a key, so it also beats one inherited from wate's own environment.
+	if cfg.Claude.SubagentDepth > 0 {
+		env = append(env, "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH="+strconv.Itoa(cfg.Claude.SubagentDepth))
 	}
 	// A pager in an agent's pane swallows the output it was meant to read: `git log` opens
 	// less on the alternate screen, and quitting it takes everything back off the screen.

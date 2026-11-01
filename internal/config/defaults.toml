@@ -105,6 +105,16 @@ context_window = 0                      # tokens; 0 = guess from the model (200k
 mcp = true                              # give sessions wate starts the pane tools (open/resize/read/write splits)
 restart_deadline = 5                    # minutes the agents get to answer before "Restart anyway" is offered
 restart_countdown = 10                  # seconds between the last agent agreeing and the restart (0 = wait for the button)
+subagent_depth = 0                      # how deep subagents may nest in sessions in wate panes (1 = they start none; 0 = Claude Code's default)
+
+[root]
+enabled = false                         # a tab with one long-lived Claude Code session that watches all the others
+cwd = "~"                               # where it runs (its auto-memory belongs to this directory)
+model = "opus"
+waiting_minutes = 10                    # a permission prompt or question left this long wakes it (0 = never)
+context_percent = 85                    # a session's context this full wakes it (0 = never)
+max_sessions = 3                        # sessions it opened itself that may run at once
+instructions = ""                       # a file that replaces its built-in instructions
 
 [editor]
 font = "JetBrainsMono Nerd Font, JetBrains Mono, Hack Nerd Font, Menlo, monospace"

@@ -21,6 +21,21 @@ func TestDefaults(t *testing.T) {
 	if !c.Terminal.Ligatures || c.Terminal.CursorStyle != "block" || c.Terminal.FontSize != 13 {
 		t.Fatalf("terminal defaults: %+v", c.Terminal)
 	}
+	home, _ := os.UserHomeDir()
+	if c.Root.Enabled || c.Root.Cwd != home || c.Root.Model != "opus" || c.Root.WaitingMinutes != 10 ||
+		c.Root.ContextPercent != 85 || c.Root.MaxSessions != 3 || c.Claude.SubagentDepth != 0 {
+		t.Fatalf("root defaults: %+v, subagent depth %d", c.Root, c.Claude.SubagentDepth)
+	}
+}
+
+func TestRootOutOfRangeFallsBack(t *testing.T) {
+	c, err := Parse([]byte("[root]\nwaiting_minutes = -5\ncontext_percent = 140\nmax_sessions = -1\n[claude]\nsubagent_depth = -2\n"), Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Root.WaitingMinutes != 0 || c.Root.ContextPercent != 100 || c.Root.MaxSessions != 0 || c.Claude.SubagentDepth != 0 {
+		t.Fatalf("got %+v, depth %d", c.Root, c.Claude.SubagentDepth)
+	}
 }
 
 func TestParseOverlay(t *testing.T) {

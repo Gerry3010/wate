@@ -31,6 +31,7 @@ type Config struct {
 	// Keys is the effective action → chord map for this platform.
 	Keys   map[string]string `toml:"-" json:"keys"`
 	Claude Claude            `toml:"claude" json:"claude"`
+	Root   Root              `toml:"root" json:"root"`
 	Editor Editor            `toml:"editor" json:"editor"`
 	Window Window            `toml:"window" json:"window"`
 }
@@ -101,6 +102,27 @@ type Claude struct {
 	// RestartCountdown is the pause between the last agent agreeing and the restart,
 	// in seconds. 0 waits for the button instead.
 	RestartCountdown int `toml:"restart_countdown" json:"restart_countdown"`
+	// SubagentDepth is how deep subagents may nest in sessions started in wate panes: 1 lets a
+	// session start subagents that start none of their own. 0 leaves Claude Code's default.
+	SubagentDepth int `toml:"subagent_depth" json:"subagent_depth"`
+}
+
+// Root is the root agent: one long-lived Claude Code session in a tab of its own that keeps
+// an eye on all the others, hears from wate when one needs attention, and may open new ones.
+type Root struct {
+	Enabled bool `toml:"enabled" json:"enabled"`
+	// Cwd is where it runs; its auto-memory belongs to that directory.
+	Cwd   string `toml:"cwd" json:"cwd"`
+	Model string `toml:"model" json:"model"`
+	// WaitingMinutes is how long a permission prompt or a question may sit unattended before
+	// the root agent hears of it (0 = never).
+	WaitingMinutes int `toml:"waiting_minutes" json:"waiting_minutes"`
+	// ContextPercent is how full a session's context may get before it hears of it (0 = never).
+	ContextPercent int `toml:"context_percent" json:"context_percent"`
+	// MaxSessions caps how many sessions it has opened itself may run at once.
+	MaxSessions int `toml:"max_sessions" json:"max_sessions"`
+	// Instructions is a file that replaces its built-in instructions ("" = built-in).
+	Instructions string `toml:"instructions" json:"instructions"`
 }
 
 // Editor is the appearance and behaviour of editor panes.
@@ -257,6 +279,12 @@ func finish(c Config) Config {
 	default:
 		c.Terminal.WordKeys = "ctrl"
 	}
+	c.Root.Cwd = ExpandHome(c.Root.Cwd)
+	c.Root.Instructions = ExpandHome(c.Root.Instructions)
+	c.Root.WaitingMinutes = max(c.Root.WaitingMinutes, 0)
+	c.Root.ContextPercent = min(max(c.Root.ContextPercent, 0), 100)
+	c.Root.MaxSessions = max(c.Root.MaxSessions, 0)
+	c.Claude.SubagentDepth = max(c.Claude.SubagentDepth, 0)
 	switch c.Editor.MarkdownDefaultMode {
 	case "code", "split", "preview":
 	default:
