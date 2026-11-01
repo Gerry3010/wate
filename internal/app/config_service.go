@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/Gerry3010/wate/internal/config"
+	"github.com/Gerry3010/wate/internal/root"
 )
 
 // ConfigService exposes the effective configuration to the frontend.
@@ -132,6 +135,55 @@ func (c *ConfigService) claudeArgs(resume, prompt, name string) []string {
 		}
 	}
 	return args
+}
+
+// RootArgs is the command line for the root agent's pane. Its session is continued when there
+// is one to continue, so restarting wate does not cost it what it knew.
+func (c *ConfigService) RootArgs() ([]string, error) {
+	cfg := c.Current()
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	id, resume, err := rootSession(config.StateDir(), func(id string) bool {
+		_, err := TranscriptPath(id)
+		return err == nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	custom := ""
+	if p := cfg.Root.Instructions; p != "" {
+		if b, err := os.ReadFile(p); err == nil {
+			custom = string(b)
+		} else {
+			slog.Warn("root: instructions not readable, using the built-in ones", "path", p, "err", err)
+		}
+	}
+	watch := watchCommand()
+	return root.Args(cfg, id, resume, root.Instructions(custom, watch), watch, mcpConfig(exe, true)), nil
+}
+
+// rootSession is the root agent's session id: the saved one while its transcript is there to
+// continue, else a fresh one, saved for next time.
+func rootSession(stateDir string, exists func(string) bool) (id string, resume bool, err error) {
+	path := filepath.Join(stateDir, "root.json")
+	var saved struct {
+		SessionID string `json:"session_id"`
+	}
+	if b, err := os.ReadFile(path); err == nil && json.Unmarshal(b, &saved) == nil &&
+		saved.SessionID != "" && exists(saved.SessionID) {
+		return saved.SessionID, true, nil
+	}
+	saved.SessionID = uuid.NewString()
+	b, _ := json.Marshal(saved)
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return "", false, err
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		return "", false, err
+	}
+	return saved.SessionID, false, nil
 }
 
 // claudeCommand is the configured command for Claude Code, split into words.

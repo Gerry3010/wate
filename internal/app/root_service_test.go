@@ -146,3 +146,23 @@ func TestShellQuote(t *testing.T) {
 		}
 	}
 }
+
+func TestRootSessionIsContinuedWhileItsTranscriptIsThere(t *testing.T) {
+	dir := t.TempDir()
+	has := map[string]bool{}
+	exists := func(id string) bool { return has[id] }
+	first, resume, err := rootSession(dir, exists)
+	if err != nil || resume || first == "" {
+		t.Fatalf("fresh: %q %v %v", first, resume, err)
+	}
+	// Started but never got as far as a transcript: start fresh again.
+	second, resume, _ := rootSession(dir, exists)
+	if resume || second == first {
+		t.Fatalf("no transcript yet, still resumed: %q %v", second, resume)
+	}
+	has[second] = true
+	third, resume, _ := rootSession(dir, exists)
+	if !resume || third != second {
+		t.Fatalf("transcript there, not resumed: %q %v", third, resume)
+	}
+}
