@@ -111,9 +111,11 @@ Outside wate the hooks are silent no-ops.
 
 ### Root agent
 
-Turn on `[root] enabled` and wate starts one more Claude Code session, in a violet tab of its
-own at the front of the bar (`Ctrl+Shift+O` brings it up). It keeps an eye on every other
-session in every window.
+Turn on `[root] enabled` and wate starts one more Claude Code session that keeps an eye on
+every other session in every window. It runs in a panel over the tabs: the Root button in the
+bottom right corner, the button in the Claude sidebar or `Ctrl+Shift+O` brings it up. `[root]
+layout` (or the panel's own pane menu) decides how it opens: as a drawer from the right, a
+centred overlay, or dropping down from the top.
 
 wate does the watching itself, without a model. A session that has sat on a permission prompt
 or ended on a question for `waiting_minutes` (10) without you looking at it goes into a queue,
@@ -123,12 +125,19 @@ arrives. Its ending is what wakes the agent, so an hour with nothing to report c
 
 Once awake it reads the session's transcript and picks one of three things: a desktop
 notification that takes you to the pane, an answer sent to the session with Claude Code's own
-SendMessage, or a new session in a background tab (at most `max_sessions` at once, 3 by
-default). Anything it does on its own, it tells you about. It cannot grant permissions.
+SendMessage, or a new session (at most `max_sessions` at once, 3 by default). Anything it does
+on its own, it tells you about. It cannot grant permissions.
 
-Its three extra tools (`wate_sessions`, `wate_session_open`, `wate_notify`) are not offered to
-other sessions, and wate answers them only for the root agent's own pane, which it recognises
-by that pane's token. Its session is continued across restarts, and its auto-memory belongs to
+New sessions go where they belong: the root agent reads the titles of your tabs and adds the
+session as a split to the one that fits, or opens a tab with a fitting name. When you asked for
+the session it takes you there; when it opened one on its own, the session stays in the
+background. A directory Claude Code does not trust yet always comes to the front, because the
+session first asks you about that. A session it finds in the wrong tab it only moves once you
+have agreed.
+
+Its extra tools (`wate_sessions`, `wate_tabs`, `wate_session_open`, `wate_session_focus`,
+`wate_session_move`, `wate_notify`) are not offered to other sessions, and wate answers them
+only for the root agent's own pane, which it recognises by that pane's token. Its session is continued across restarts, and its auto-memory belongs to
 `[root] cwd`. `[root] instructions` replaces the built-in instructions with a file of your own,
 where `{{WATCH}}` stands for the watcher command.
 

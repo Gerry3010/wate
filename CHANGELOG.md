@@ -7,15 +7,18 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
-- A root agent (`[root] enabled`): one long-lived Claude Code session in a tab of its own that
-  keeps an eye on all the others. wate does the watching without a model. A permission prompt
-  or a question left unattended for ten minutes, or a context window 85 % full, goes into a
-  queue, and the root agent waits on it with `wate ctl watch --once`, a background command
-  whose ending wakes it. It reads the transcript, then notifies you (a click leads to the pane),
-  answers the session through Claude Code's SendMessage, or opens a new session in a background
-  tab, three at most at once, and it tells you whenever it acts on its own. Its tools
-  (`wate_sessions`, `wate_session_open`, `wate_notify`) work only from its own pane, proven by
-  the pane token. Its session carries on across restarts. `Ctrl+Shift+O` brings it up.
+- A root agent (`[root] enabled`): one long-lived Claude Code session that keeps an eye on all
+  the others, in a panel over the tabs (the Root button in the corner, the Claude sidebar or
+  `Ctrl+Shift+O`; `[root] layout` makes it a drawer, a centred overlay or a drop-down). wate
+  does the watching without a model. A permission prompt or a question left unattended for ten
+  minutes, or a context window 85 % full, goes into a queue, and the root agent waits on it with
+  `wate ctl watch --once`, a background command whose ending wakes it. It reads the transcript,
+  then notifies you (a click leads to the pane), answers the session through Claude Code's
+  SendMessage, or opens a new session, three at most at once, and it tells you whenever it acts
+  on its own. New sessions go as a split into the tab whose title fits, and it takes you there
+  when you asked for them; a directory Claude Code does not trust yet always comes to the front.
+  Its tools work only from its own pane, proven by the pane token. Its session carries on across
+  restarts.
 - `[claude] subagent_depth` puts `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` into every pane. At 1,
   sessions start subagents that start none of their own.
 - Once every agent has said go, the restart happens by itself after ten seconds
