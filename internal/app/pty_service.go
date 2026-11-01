@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -43,6 +44,9 @@ type PtyService struct {
 	// sitting in by sending its token, instead of naming a pane and being believed.
 	paneOfToken map[string]string
 	tokenOfPane map[string]string
+	// rootPane is the pane the root agent runs in ("" = none). There is one at most: it is the
+	// only pane whose token unlocks the control commands that reach across tabs.
+	rootPane string
 }
 
 func NewPtyService(cfg func() config.Config, windows *WindowService) *PtyService {
@@ -100,6 +104,9 @@ type SpawnRequest struct {
 	// Agent marks a pane opened over the control socket (pane-split) — a workspace whose
 	// output is read back by a program rather than by somebody at the keyboard.
 	Agent bool `json:"agent"`
+	// Root marks the root agent's pane. Only the frontend sets it, through this binding; no
+	// control command can, so no session can promote itself.
+	Root bool `json:"root"`
 }
 
 // SpawnResult tells the frontend where to connect.
@@ -122,6 +129,11 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 			shell = pty.DefaultShell()
 		}
 		cmd = append([]string{shell}, cfg.General.ShellArgs...)
+	}
+	if req.Root {
+		if err := p.claimRoot(req.PaneID); err != nil {
+			return SpawnResult{}, err
+		}
 	}
 	cwd := req.Cwd
 	if cwd == "" {
@@ -175,6 +187,9 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 		Env:     env,
 	})
 	if err != nil {
+		if req.Root {
+			p.releaseRoot(req.PaneID)
+		}
 		return SpawnResult{}, err
 	}
 	p.mu.Lock()
@@ -201,6 +216,9 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 			delete(p.tabOf, req.PaneID)
 			delete(p.paneOfToken, p.tokenOfPane[req.PaneID])
 			delete(p.tokenOfPane, req.PaneID)
+			if p.rootPane == req.PaneID {
+				p.rootPane = ""
+			}
 		}
 		p.mu.Unlock()
 	}()
@@ -415,6 +433,44 @@ func paneToken() string { return rand.Text() }
 // can read another process' environment out of /proc. What it buys is that a caller naming
 // someone else's pane has to do so deliberately, which makes the distinction worth drawing
 // and the logs worth reading.
+// claimRoot takes the root agent's seat for pane. There is one seat: a second root is refused
+// while the first lives, but the same pane may spawn again (a retry).
+func (p *PtyService) claimRoot(pane string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.rootPane != "" && p.rootPane != pane {
+		return errors.New("a root agent is already running")
+	}
+	p.rootPane = pane
+	return nil
+}
+
+func (p *PtyService) releaseRoot(pane string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.rootPane == pane {
+		p.rootPane = ""
+	}
+}
+
+// RootPane is the pane the root agent runs in, "" when none does.
+func (p *PtyService) RootPane() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.rootPane
+}
+
+// IsRootToken reports whether token belongs to the root agent's pane. The token is the proof:
+// a pane id is just a name anybody can send.
+func (p *PtyService) IsRootToken(token string) bool {
+	if token == "" {
+		return false
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.rootPane != "" && p.paneOfToken[token] == p.rootPane
+}
+
 func (p *PtyService) PaneForToken(token string) (string, bool) {
 	if token == "" {
 		return "", false
