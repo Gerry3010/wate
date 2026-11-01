@@ -7,6 +7,17 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- A root agent (`[root] enabled`): one long-lived Claude Code session in a tab of its own that
+  keeps an eye on all the others. wate does the watching without a model. A permission prompt
+  or a question left unattended for ten minutes, or a context window 85 % full, goes into a
+  queue, and the root agent waits on it with `wate ctl watch --once`, a background command
+  whose ending wakes it. It reads the transcript, then notifies you (a click leads to the pane),
+  answers the session through Claude Code's SendMessage, or opens a new session in a background
+  tab, three at most at once, and it tells you whenever it acts on its own. Its tools
+  (`wate_sessions`, `wate_session_open`, `wate_notify`) work only from its own pane, proven by
+  the pane token. Its session carries on across restarts. `Ctrl+Shift+O` brings it up.
+- `[claude] subagent_depth` puts `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` into every pane. At 1,
+  sessions start subagents that start none of their own.
 - Once every agent has said go, the restart happens by itself after ten seconds
   (`[claude] restart_countdown`, 0 to wait for the button instead). The instruction was given
   when the round was started; there is nothing left to decide, and the button only existed to
@@ -156,6 +167,12 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- A pane stays "waiting" no longer than its prompt does. When a permission prompt is answered
+  somewhere that never focuses the pane (Remote Control, say), the next tool that runs puts it
+  back to working.
+- The restart announcement was counted as delivered on hook events whose output Claude Code
+  ignores (Notification, SessionEnd), so an agent could use up both tellings without reading
+  either. Only events whose output reaches the agent count now.
 - A pane's offer to resume its Claude session survives more than one restart. The offer lived
   only in the state file, and the save that followed a restart read the *live* sessions, found
   none for a pane that had just been restored, and wrote it out empty — so the pointer made it

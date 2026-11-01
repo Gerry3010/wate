@@ -109,6 +109,35 @@ it registers `wate hook <event>` for `SessionStart`, `UserPromptSubmit`, `Notifi
 and `SessionEnd` in `~/.claude/settings.json` (existing hooks are kept, a backup is written).
 Outside wate the hooks are silent no-ops.
 
+### Root agent
+
+Turn on `[root] enabled` and wate starts one more Claude Code session, in a violet tab of its
+own at the front of the bar (`Ctrl+Shift+O` brings it up). It keeps an eye on every other
+session in every window.
+
+wate does the watching itself, without a model. A session that has sat on a permission prompt
+or ended on a question for `waiting_minutes` (10) without you looking at it goes into a queue,
+and so does one whose context is `context_percent` (85) full. The root agent waits on that
+queue with a background command, `wate ctl watch --once`, which ends as soon as something
+arrives. Its ending is what wakes the agent, so an hour with nothing to report costs nothing.
+
+Once awake it reads the session's transcript and picks one of three things: a desktop
+notification that takes you to the pane, an answer sent to the session with Claude Code's own
+SendMessage, or a new session in a background tab (at most `max_sessions` at once, 3 by
+default). Anything it does on its own, it tells you about. It cannot grant permissions.
+
+Its three extra tools (`wate_sessions`, `wate_session_open`, `wate_notify`) are not offered to
+other sessions, and wate answers them only for the root agent's own pane, which it recognises
+by that pane's token. Its session is continued across restarts, and its auto-memory belongs to
+`[root] cwd`. `[root] instructions` replaces the built-in instructions with a file of your own,
+where `{{WATCH}}` stands for the watcher command.
+
+It needs the hooks (`wate install-hooks`). Without them wate cannot tell a permission prompt
+from a finished turn.
+
+`[claude] subagent_depth = 1` puts `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` into every pane:
+sessions may start subagents, and those start none of their own.
+
 ### Desktop integration (Linux)
 
 `make install` puts `wate` in `~/.local/bin` with a desktop entry that declares
