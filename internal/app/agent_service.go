@@ -108,34 +108,50 @@ func (a *AgentService) onChange(s agent.Session) {
 	if s.Status != agent.StatusWaiting && s.Status != agent.StatusDone {
 		return
 	}
-	a.mu.Lock()
-	// Quiet if any window has the focus and is showing this very pane.
-	quiet := false
-	for _, f := range a.focus {
-		if f.focused && f.pane == s.PaneID {
-			quiet = true
-			break
-		}
-	}
-	a.mu.Unlock()
-	if quiet {
+	if a.InView(s.PaneID) {
 		// The user is looking at it; no need to shout.
 		a.tracker.Acknowledge(s.PaneID)
 		return
 	}
-	if !a.cfg().Claude.Notify || a.notify == nil {
+	// The root agent finishes a turn every time it has dealt with something; that it is done
+	// is the normal state, not news. It waiting for a permission still is.
+	if s.Status == agent.StatusDone && s.PaneID != "" && s.PaneID == a.pty.RootPane() {
+		return
+	}
+	if !a.cfg().Claude.Notify {
 		return
 	}
 	title := "Claude Code is waiting"
 	if s.Status == agent.StatusDone {
 		title = "Claude Code finished"
 	}
+	a.Notify("wate-"+s.PaneID, title, notificationBody(s.Message, s.Cwd, homeDir()), s.PaneID, s.TabID)
+}
+
+// InView reports whether a focused window is showing this very pane.
+func (a *AgentService) InView(pane string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, f := range a.focus {
+		if f.focused && f.pane == pane {
+			return true
+		}
+	}
+	return false
+}
+
+// Notify puts up a desktop notification; a click on it leads to pane (if any). Notifications
+// with the same id replace each other.
+func (a *AgentService) Notify(id, title, body, pane, tab string) {
+	if a.notify == nil {
+		return
+	}
 	err := a.notify.SendNotification(notifications.NotificationOptions{
-		ID:    "wate-" + s.PaneID,
+		ID:    id,
 		Title: title,
-		Body:  notificationBody(s.Message, s.Cwd, homeDir()),
+		Body:  body,
 		// Read back when it is clicked, to find the pane again.
-		Data: map[string]interface{}{"pane": s.PaneID, "tab": s.TabID},
+		Data: map[string]interface{}{"pane": pane, "tab": tab},
 	})
 	if err != nil {
 		slog.Debug("notification", "err", err)
@@ -165,7 +181,7 @@ func (a *AgentService) onNotificationResponse(r notifications.NotificationResult
 	}
 	pane, _ := r.Response.UserInfo["pane"].(string)
 	tab, _ := r.Response.UserInfo["tab"].(string)
-	if pane == "" {
+	if pane == "" && !strings.HasPrefix(r.Response.ID, rootNotificationPrefix) {
 		pane = strings.TrimPrefix(r.Response.ID, "wate-")
 	}
 	if pane == "" || a.windows == nil {

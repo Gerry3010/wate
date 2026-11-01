@@ -198,3 +198,13 @@ func Send(path string, req Request) (Response, error) {
 	}
 	return resp, nil
 }
+
+// HookTellsClaude reports whether Claude Code reads a hook's stdout back as context for this
+// event. Anything said on another event is noise in a log — and must not be counted as said.
+func HookTellsClaude(event string) bool {
+	switch event {
+	case "SessionStart", "UserPromptSubmit", "PostToolUse", "Stop":
+		return true
+	}
+	return false
+}

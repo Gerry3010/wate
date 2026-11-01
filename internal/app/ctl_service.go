@@ -51,7 +51,9 @@ type CtlService struct {
 	// Restart is set after construction: the restart service needs the agent service, which
 	// needs this one.
 	Restart *RestartService
-	server  *ctl.Server
+	// Root is set after construction too, for the same reason.
+	Root   *RootService
+	server *ctl.Server
 	// OnHook is set by the agent service.
 	OnHook func(HookEvent)
 }
@@ -229,15 +231,12 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		if c.OnHook != nil {
 			c.OnHook(ev)
 		}
-		// The hook is wate's only way into a running session that does not type into its
-		// terminal, so anything wate needs to tell the agent rides back on this reply and the
-		// hook prints it as context. Usually there is nothing to say.
-		if c.Restart != nil {
-			if text := c.Restart.TellPane(r.Pane); text != "" {
-				return ctl.Response{OK: true, Data: text}
-			}
+		if text := c.tell(r); text != "" {
+			return ctl.Response{OK: true, Data: text}
 		}
 		return ctl.Response{OK: true}
+	case "sessions", "attention", "session-open", "notify":
+		return c.root(r)
 	default:
 		slog.Debug("ctl: unknown command", "cmd", r.Cmd)
 		return ctl.Response{Error: "unknown command " + r.Cmd}
@@ -245,6 +244,111 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 }
 
 var errNoPane = errors.New("no such pane")
+
+// tell is what wate has to say to the session a hook came from, "" for nothing.
+//
+// The hook is wate's only way into a running session that does not type into its terminal, so
+// anything wate needs to tell the agent rides back on this reply and the hook prints it as
+// context. Only some events have their output read; anything said on the others would be counted
+// as said and never arrive. Usually there is nothing to say.
+func (c *CtlService) tell(r ctl.Request) string {
+	if !ctl.HookTellsClaude(r.Event) {
+		return ""
+	}
+	var says []string
+	if c.Restart != nil {
+		if text := c.Restart.TellPane(r.Pane); text != "" {
+			says = append(says, text)
+		}
+	}
+	if c.Root != nil {
+		if text := c.Root.Hint(r.Token, r.Event, watchCommand()); text != "" {
+			says = append(says, text)
+		}
+	}
+	return strings.Join(says, "\n\n")
+}
+
+// watchCommand is how the root agent starts its attention watcher.
+func watchCommand() string {
+	exe, err := os.Executable()
+	if err != nil {
+		exe = "wate"
+	}
+	return shellQuote(exe) + " ctl watch --once"
+}
+
+// shellQuote quotes s for a POSIX shell when it needs quoting.
+func shellQuote(s string) string {
+	if s != "" && !strings.ContainsAny(s, " \t\n'\"\\$`!*?[]{}()<>|&;#~") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// root handles the commands only the root agent may send. The pane token is the proof — a pane
+// id is a name anybody can send, which is why caller() is not used here.
+func (c *CtlService) root(r ctl.Request) ctl.Response {
+	if c.Root == nil || !c.pty.IsRootToken(r.Token) {
+		return ctl.Response{Error: "only the root agent may ask for " + r.Cmd}
+	}
+	switch r.Cmd {
+	case "sessions":
+		return ctl.Response{OK: true, Data: c.Root.Sessions()}
+	case "attention":
+		return ctl.Response{OK: true, Data: c.Root.Attention()}
+	case "notify":
+		if strings.TrimSpace(r.Name+r.Text) == "" {
+			return ctl.Response{Error: "a notification needs a title or a body"}
+		}
+		c.Root.Notify(r.Name, r.Text, r.Target)
+		return ctl.Response{OK: true}
+	case "session-open":
+		return c.openSession(r)
+	}
+	return ctl.Response{Error: "unknown command " + r.Cmd}
+}
+
+// OpenedSession is what the frontend answers an open-session request with.
+type OpenedSession struct {
+	Tab  string `json:"tab"`
+	Pane string `json:"pane"`
+}
+
+// openSession starts Claude Code in a new tab of the root agent's window, in the background:
+// the user may be typing somewhere else, and a tab that takes the focus would take the keys.
+func (c *CtlService) openSession(r ctl.Request) ctl.Response {
+	dir := config.ExpandHome(strings.TrimSpace(r.Path))
+	if st, err := os.Stat(dir); dir == "" || err != nil || !st.IsDir() {
+		return ctl.Response{Error: "not a directory: " + r.Path}
+	}
+	if err := c.Root.mayOpen(); err != nil {
+		return ctl.Response{Error: err.Error()}
+	}
+	root := c.pty.RootPane()
+	w := c.target(root, "")
+	if w == nil {
+		return ctl.Response{Error: "the root agent's window is gone"}
+	}
+	name := filepath.Base(dir)
+	data, _ := json.Marshal(map[string]any{
+		"cwd":     dir,
+		"command": c.cfg.claudeArgs("", r.Text, name),
+		"title":   name,
+	})
+	reply, err := c.bridge.ask(w, "open-session", root, string(data))
+	if err != nil {
+		return ctl.Response{Error: err.Error()}
+	}
+	var opened OpenedSession
+	if err := json.Unmarshal([]byte(reply), &opened); err != nil || opened.Pane == "" {
+		return ctl.Response{Error: "the window opened no session"}
+	}
+	c.Root.Opened(opened.Pane)
+	body := notificationBody(firstLine(r.Text, 120), dir, homeDir())
+	c.Root.Notify("Root agent opened a session", body, opened.Pane)
+	return ctl.Response{OK: true, Data: opened}
+}
 
 // caller is the pane a request came from: its token if it sent one, else what it claims.
 //

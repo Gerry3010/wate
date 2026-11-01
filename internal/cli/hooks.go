@@ -18,15 +18,6 @@ import (
 // break Claude Code everywhere on the machine, wate's own panes included.
 var HookEvents = []string{"SessionStart", "UserPromptSubmit", "Notification", "PostToolUse", "Stop", "SessionEnd"}
 
-// tellsClaude lists the events whose stdout Claude Code reads back as context. Printing on
-// any other event is just noise in the log.
-var tellsClaude = map[string]bool{
-	"SessionStart":     true,
-	"UserPromptSubmit": true,
-	"PostToolUse":      true,
-	"Stop":             true,
-}
-
 // wateHookRe recognises our own hook commands regardless of binary path or quoting.
 // Also matches hooks installed under the project's old name (yate) so they get replaced.
 var wateHookRe = regexp.MustCompile(`[wy]ate"? hook \w+`)

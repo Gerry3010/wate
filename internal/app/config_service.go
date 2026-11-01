@@ -107,24 +107,51 @@ func (c *ConfigService) Set(values map[string]any) (ConfigResponse, error) {
 // is not offered tools that would fail. Note the absence of --strict-mcp-config: that would
 // switch off the user's own MCP servers for the session, which is not wate's call to make.
 func (c *ConfigService) ClaudeArgs(resume string) []string {
+	return c.claudeArgs(resume, "", "")
+}
+
+// claudeArgs is ClaudeArgs with a first prompt and a session name (both may be empty).
+//
+// The prompt goes straight after the command: options like --mcp-config take any number of
+// values and would swallow a prompt standing behind them.
+func (c *ConfigService) claudeArgs(resume, prompt, name string) []string {
 	cfg := c.Current()
+	args := claudeCommand(cfg)
+	if prompt != "" {
+		args = append(args, prompt)
+	}
+	if resume != "" {
+		args = append(args, "--resume", resume)
+	}
+	if name != "" {
+		args = append(args, "--name", name)
+	}
+	if cfg.Claude.MCP {
+		if exe, err := os.Executable(); err == nil {
+			args = append(args, "--mcp-config", mcpConfig(exe, false))
+		}
+	}
+	return args
+}
+
+// claudeCommand is the configured command for Claude Code, split into words.
+func claudeCommand(cfg config.Config) []string {
 	cmd := cfg.Claude.Command
 	if cmd == "" {
 		cmd = "claude"
 	}
-	args := strings.Fields(cmd)
-	if resume != "" {
-		args = append(args, "--resume", resume)
+	return strings.Fields(cmd)
+}
+
+// mcpConfig is the --mcp-config value that hands a session wate's tools: the pane tools, and
+// for the root agent its own on top.
+func mcpConfig(exe string, root bool) string {
+	args := []string{"mcp"}
+	if root {
+		args = append(args, "--root")
 	}
-	if cfg.Claude.MCP {
-		if exe, err := os.Executable(); err == nil {
-			spec := map[string]any{"mcpServers": map[string]any{
-				"wate": map[string]any{"command": exe, "args": []string{"mcp"}},
-			}}
-			if blob, err := json.Marshal(spec); err == nil {
-				args = append(args, "--mcp-config", string(blob))
-			}
-		}
-	}
-	return args
+	blob, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{
+		"wate": map[string]any{"command": exe, "args": args},
+	}})
+	return string(blob)
 }

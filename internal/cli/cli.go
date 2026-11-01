@@ -253,7 +253,7 @@ func runHook(event string) int {
 	// Anything wate wants the session to know rides back on this reply, and the only way to
 	// put it in front of the model is a hook's own stdout. Exit code stays 0: a hook that
 	// fails is a hook that gets in the way.
-	if text, ok := resp.Data.(string); ok && text != "" && tellsClaude[event] {
+	if text, ok := resp.Data.(string); ok && text != "" && ctl.HookTellsClaude(event) {
 		out, err := json.Marshal(map[string]any{
 			"hookSpecificOutput": map[string]any{
 				"hookEventName":     event,

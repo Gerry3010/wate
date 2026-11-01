@@ -102,6 +102,10 @@ func main() {
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc, winSvc)
 	restartSvc := app.NewRestartService(agentSvc, winSvc, cfgSvc.Current)
 	ctlSvc.Restart = restartSvc
+	rootSvc := app.NewRootService(agentSvc, ptySvc, cfgSvc.Current)
+	ctlSvc.Root = rootSvc
+	rootStop := make(chan struct{})
+	go rootSvc.Run(rootStop)
 	winSvc.ConfirmClose = restartSvc.ConfirmClose
 	// Quitting: hand the primary role to whoever starts next, then let Claude Code shut down
 	// before the shells get their SIGHUP.
@@ -111,6 +115,7 @@ func main() {
 		winSvc.MarkQuitting()
 		ctlSvc.Resign()
 		restartSvc.Forget()
+		close(rootStop)
 		agentSvc.StopSessions(ctx)
 	}
 	wp := &wallpaper.Handler{Path: func() string { return cfgSvc.Current().Background.Wallpaper }}
