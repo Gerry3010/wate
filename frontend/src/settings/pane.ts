@@ -2,6 +2,7 @@ import { Dialogs } from "@wailsio/runtime";
 import type { ImportedTab } from "../session";
 
 import { ConfigService, ImportService, OpenerService, ThemeService, type Config, type ImportSource, type Resolved } from "../api";
+import { ROOT_LAYOUTS } from "../root/panel";
 import { chordId, eventChord } from "../keymap/keymap";
 import type { Pane } from "../pane";
 
@@ -288,6 +289,7 @@ export class SettingsPane implements Pane {
 
     const rt = this.section("Root agent", "root");
     this.check(rt, "Run the root agent", "root.enabled", c.root.enabled);
+    this.select(rt, "Panel opens as", "root.layout", c.root.layout, ROOT_LAYOUTS);
     this.text(rt, "Directory", "root.cwd", c.root.cwd, "~");
     this.text(rt, "Model", "root.model", c.root.model, "empty = Claude Code's default");
     this.number(rt, "Wake after", "root.waiting_minutes", c.root.waiting_minutes, 0, 1440, " min unanswered (0 = never)");
@@ -297,9 +299,11 @@ export class SettingsPane implements Pane {
     const rtHint = document.createElement("p");
     rtHint.className = "settings-hint";
     rtHint.textContent =
-      "One long-lived Claude Code session in a tab of its own, first in the bar. wate wakes it when a session has sat on a " +
+      "One long-lived Claude Code session in a panel over the tabs: the Root button in the corner, the Claude sidebar or " +
+      "the open_root key bring it up. wate wakes it when a session has sat on a " +
       "permission prompt or a question for the given time, or its context is nearly full; it looks, tells you what needs you, " +
-      "and may answer sessions or open new ones itself (you get a notification each time). It runs its own tools and its " +
+      "and may answer sessions or open new ones itself, in the tab they belong in (you get a notification each time). It " +
+      "runs its own tools and its " +
       "watcher without asking; everything else asks as usual. It needs wate's hooks (wate install-hooks) to tell a prompt " +
       "from a finished turn.";
     rt.appendChild(rtHint);

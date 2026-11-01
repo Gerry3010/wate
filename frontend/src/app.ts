@@ -17,6 +17,8 @@ import { leaf, neighbor, type Dir, type Direction } from "./layout/tree";
 import { moveItem } from "./tabs/order";
 import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
+import { findTab } from "./tabs/resolve";
+import { RootPanel, ROOT_LAYOUTS, rootLayout } from "./root/panel";
 import { TabBar } from "./tabs/tabbar";
 import { TerminalPane, type PaneNotice } from "./terminal/pane";
 import { statusView, type StatusHost } from "./terminal/status";
@@ -43,6 +45,8 @@ const SESSION_SCROLLBACK = 256 * 1024;
 
 /** How long a dragged pane has to rest on a tab button before that tab comes forward. */
 const SPRING_MS = 400;
+/** Where the backend files the root agent's pane: it is in no tab, and the id is only a name. */
+const ROOT_TAB = "tab-root";
 const RESTORE_SCROLLBACK = 48 * 1024;
 
 export class WateApp {
@@ -52,6 +56,8 @@ export class WateApp {
   private content = document.createElement("div");
   private main = document.createElement("div");
   readonly agents = new AgentStore();
+  /** The root agent's panel, over the tabs (see RootPanel). */
+  readonly rootPanel: RootPanel;
   private sidebar: Sidebar;
   private keymap: Keymap;
   private fontDelta = 0;
@@ -103,11 +109,20 @@ export class WateApp {
       sendToPane: (paneId, text) => void PtyService.WriteToPane(paneId, text).catch((err) => console.warn("write to pane:", err)),
       resume: (sessionId, cwd) => void this.resumeClaude(sessionId, cwd),
       windowId: () => this.windowId,
+      openRoot: () => void this.openRoot(),
+      rootEnabled: () => this.config.root.enabled,
     });
     this.content.className = "content";
     this.main.className = "main";
     this.main.append(this.content, this.sidebar.element);
-    root.append(this.tabBar.element, this.main);
+    this.rootPanel = new RootPanel(this.keymap.label("open_root"));
+    this.rootPanel.setLayout(rootLayout(config.root.layout));
+    this.rootPanel.onVisibility = (open) => {
+      // Closing it hands the keys back to whatever was in front before.
+      if (!open) this.active?.focusPane();
+      this.reportFocus();
+    };
+    root.append(this.tabBar.element, this.main, this.rootPanel.element, this.rootPanel.fab);
     window.addEventListener("keydown", (e) => this.onKey(e), { capture: true });
     // A dropped file would otherwise navigate the WebView to file:///… — the image then covers
     // every pane and only a restart brings them back. So wate takes the drop itself (see drop.ts).
@@ -180,7 +195,7 @@ export class WateApp {
   async snapshot(immediate = false, scrollback = 0): Promise<SavedWindow> {
     const tabs: SavedTab[] = [];
     for (const t of this.tabs) {
-      if (!t.tree || t.root) continue;
+      if (!t.tree) continue;
       const panes: SavedPane[] = [];
       for (const p of t.panes.values()) {
         if (p instanceof EditorPane) panes.push({ id: p.id, kind: "editor", path: p.path });
@@ -199,9 +214,8 @@ export class WateApp {
       if (panes.length === 0) continue;
       tabs.push({ tree: t.tree, focused: t.focusedId, panes, title: t.customTitle || undefined, color: t.color || undefined });
     }
-    const kept = this.tabs.filter((t) => !t.root);
-    const active = this.active ? kept.indexOf(this.active) : 0;
-    return { key: this.stateKey, active: Math.max(active, 0), tabs, root: this.tabs.some((t) => t.root) || undefined };
+    const active = this.active ? this.tabs.indexOf(this.active) : 0;
+    return { key: this.stateKey, active: Math.max(active, 0), tabs, root: this.rootPanel.pane ? true : undefined };
   }
 
   /** Store the current tabs under a name (tab bar dropdown). */
@@ -401,6 +415,11 @@ export class WateApp {
   /** Fold a pane's standing into its status bar. The bar itself skips an unchanged repaint. */
   private refreshBars() {
     const none: Access = { read: false, write: false, manage: false };
+    const root = this.rootPanel.pane;
+    if (root) {
+      const st = this.access.get(root.id);
+      root.bar.update({ ...statusView({ openedByAgent: false, agentStatus: this.agents.forPane(root.id)?.status, command: "", access: st?.access ?? none }), label: "Root agent" });
+    }
     for (const t of this.tabs) {
       for (const p of t.panes.values()) {
         if (!(p instanceof TerminalPane)) continue;
@@ -490,6 +509,8 @@ export class WateApp {
 
   private onAgentsChanged() {
     this.tabBar.render(this.tabs, this.active);
+    const root = this.rootPanel.pane;
+    this.rootPanel.setStatus(root ? this.agents.forPane(root.id)?.status ?? "" : "");
     for (const t of this.tabs) {
       for (const p of t.panes.values()) {
         const s = this.agents.forPane(p.id);
@@ -529,7 +550,7 @@ export class WateApp {
   private lastFocusReport = "";
 
   private reportFocus() {
-    const pane = this.active?.focusedId ?? "";
+    const pane = (this.rootPanel.open ? this.rootPanel.pane?.id : this.active?.focusedId) ?? "";
     const key = `${pane}|${document.hasFocus()}`;
     // The backend answers a focus report with an agent:status event, which repaints the
     // chrome — so only report when it actually says something new.
@@ -652,6 +673,10 @@ export class WateApp {
   }
 
   private jumpToSession(s: Session) {
+    if (s.pane_id === this.rootPanel.pane?.id) {
+      this.rootPanel.show();
+      return;
+    }
     const tab = this.tabs.find((t) => t.id === s.tab_id) ?? this.tabs.find((t) => t.panes.has(s.pane_id));
     if (!tab) {
       // The sidebar lists every window's sessions, so this one may well live elsewhere.
@@ -671,6 +696,8 @@ export class WateApp {
     this.config = config;
     this.keymap = new Keymap(config.keys, config.general.passthrough ?? []);
     await this.loadTheme();
+    this.rootPanel.setLayout(rootLayout(config.root.layout));
+    this.rootPanel.pane?.applyConfig(config.terminal, this.fontDelta, this.termTheme());
     // Switched on in the settings: no restart needed.
     if (config.root.enabled) void this.ensureRoot();
     for (const p of this.allPanes()) {
@@ -764,35 +791,23 @@ export class WateApp {
 
   // ---- the root agent ---------------------------------------------------
 
-  /** Start the root agent's tab, when this window hosts it and has none yet. It goes first in
-   *  the bar and is not brought to the front: it works in the background. */
-  async ensureRoot(): Promise<Tab | null> {
-    if (!this.hostsRoot || !this.config.root.enabled) return null;
-    const existing = this.tabs.find((t) => t.root);
-    if (existing) return existing;
-    if (this.rootStarting) return null;
+  /** Start the root agent, when this window hosts it and has none yet. It runs in its panel,
+   *  hidden; a fresh session shows the panel once, because Claude Code may first ask whether
+   *  to trust the directory, and its first overview is worth seeing. */
+  async ensureRoot(): Promise<void> {
+    if (!this.hostsRoot || !this.config.root.enabled || this.rootPanel.pane || this.rootStarting) return;
     this.rootStarting = true;
     try {
       const command = await ConfigService.RootArgs();
-      if (!command?.length) return null;
-      const tab = this.hiddenTab();
-      tab.root = true;
-      tab.customTitle = "Root";
-      tab.color = "violet";
-      this.tabs.splice(this.tabs.indexOf(tab), 1);
-      this.tabs.unshift(tab);
-      const pane = this.makeTerminal(tab, { cwd: this.config.root.cwd, command, visible: false, root: true });
-      tab.restore(leaf(pane.id), [pane], pane.id);
-      this.refreshChrome();
+      if (!command?.length || this.rootPanel.pane) return;
+      const pane = this.makeRootPane(command);
+      this.rootPanel.mount(pane);
+      this.reportTabs();
       this.scheduleSave();
       await pane.start();
-      // A fresh session comes to the front once: Claude Code may first ask whether to trust
-      // the directory, and its first overview is worth seeing. A continued one stays behind.
-      if (command.includes("--session-id")) this.activate(tab);
-      return tab;
+      if (command.includes("--session-id")) this.rootPanel.show();
     } catch (err) {
       console.warn("root agent:", err);
-      return null;
     } finally {
       this.rootStarting = false;
     }
@@ -800,41 +815,164 @@ export class WateApp {
 
   private rootStarting = false;
 
-  /** Bring the root agent's tab to the front, wherever it is, starting it if there is none. */
+  /** The pane the root agent runs in. It belongs to no tab: ROOT_TAB stands in for one where
+   *  the backend wants to know where a pane lives. */
+  private makeRootPane(command: string[]): TerminalPane {
+    const pane: TerminalPane = new TerminalPane({
+      paneId: nextId("pane"),
+      tabId: ROOT_TAB,
+      root: true,
+      cwd: this.config.root.cwd,
+      command,
+      visible: false,
+      terminal: this.config.terminal,
+      theme: this.termTheme(),
+      fontDelta: this.fontDelta,
+      keyFilter: (e) => this.actionFor(e) === null,
+      onExit: () => this.rootEnded(pane),
+      onTitle: () => {},
+      onOpenFile: (t) => {
+        if (this.active) this.openTarget(this.active, t);
+      },
+    });
+    pane.bar.setHost(this.rootStatusHost());
+    pane.setStatusVisible(true);
+    return pane;
+  }
+
+  /** The root agent's session ended (it was closed, or it quit). */
+  private rootEnded(pane: TerminalPane) {
+    if (this.rootPanel.pane !== pane) return;
+    AgentService.Forget(pane.id).catch(() => {});
+    AccessService.Forget(pane.id).catch(() => {});
+    this.rootPanel.unmount();
+    pane.dispose();
+    this.reportTabs();
+    this.scheduleSave();
+    this.active?.focusPane();
+  }
+
+  /** The root agent's pane menu: how the panel opens, and hiding it. */
+  private rootStatusHost(): StatusHost {
+    const host = this.statusHost();
+    return {
+      ...host,
+      closePane: () => {
+        const pane = this.rootPanel.pane;
+        if (pane) this.rootEnded(pane);
+      },
+      paneEntries: () => {
+        const current = rootLayout(this.config.root.layout);
+        return [
+          { header: "Panel" },
+          ...ROOT_LAYOUTS.map(([layout, label]): MenuEntry => ({
+            label,
+            checked: layout === current,
+            onSelect: () => void ConfigService.Set({ "root.layout": layout }).catch((err) => console.warn("root layout:", err)),
+          })),
+          { label: "Hide panel", hint: this.keymap.label("open_root"), onSelect: () => this.rootPanel.hide() },
+        ];
+      },
+    };
+  }
+
+  /** Show or hide the root agent's panel, wherever the agent lives, starting it if need be. */
   async openRoot(): Promise<void> {
     if (!this.config.root.enabled) {
       this.openSettings("root");
       return;
     }
+    if (this.rootPanel.pane) {
+      this.rootPanel.toggle();
+      return;
+    }
     const running = await PtyService.RootPane().catch(() => "");
-    if (running && !this.tabOfPane(running)) {
-      // It lives in another window.
+    if (running) {
+      // It lives in another window: that one shows its panel (see activateTab).
       const s = this.agents.forPane(running);
-      if (s?.window_id) void WindowService.FocusPane(s.window_id, s.tab_id, running).catch((err) => console.warn("focus root:", err));
+      if (s?.window_id) void WindowService.FocusPane(s.window_id, ROOT_TAB, running).catch((err) => console.warn("focus root:", err));
       return;
     }
     // Asked for here, so here is where it lives from now on.
     this.hostsRoot = true;
-    const tab = await this.ensureRoot();
-    if (tab) this.activate(tab);
+    await this.ensureRoot();
+    this.rootPanel.show();
   }
 
   /**
-   * A session the root agent opened: Claude Code in a tab of its own, in the background — the
-   * user may be typing somewhere else, and a tab that took the focus would take the keys.
-   * Answered before the shell is up: the backend stops waiting after a few seconds, and spawns
-   * queue up behind each other.
+   * A session the root agent opened: Claude Code as a split in the tab it named, or in a new tab
+   * (titled as named, when it named one nobody has). In the background unless it asked to go
+   * there — the user may be typing somewhere else, and a pane that took the focus would take
+   * the keys. Answered before the shell is up: the backend stops waiting after a few seconds,
+   * and spawns queue up behind each other.
    */
   private openSessionFor(data: string): string {
-    const args = JSON.parse(data || "{}") as { cwd?: string; command?: string[] };
+    const args = JSON.parse(data || "{}") as { cwd?: string; command?: string[]; tab?: string; focus?: boolean };
     if (!args.command?.length) throw new Error("nothing to run");
-    const tab = this.hiddenTab();
-    const pane = this.makeTerminal(tab, { cwd: args.cwd, command: args.command, visible: false });
-    tab.restore(leaf(pane.id), [pane], pane.id);
+    const spec = (args.tab ?? "").trim();
+    const at = findTab(this.tabs.map((t) => ({ id: t.id, title: t.title })), spec);
+    const existing = at >= 0 ? this.tabs[at] : undefined;
+    const tab = existing ?? this.hiddenTab();
+    if (!existing && spec) tab.customTitle = spec;
+    const pane = this.makeTerminal(tab, { cwd: args.cwd, command: args.command, visible: tab === this.active });
+    if (existing) {
+      // Into the tab beside what is there; the focus inside it stays put unless asked.
+      const before = tab.focusedId;
+      tab.add(pane, "row", before ?? undefined);
+      if (!args.focus && before) tab.setFocus(before);
+    } else {
+      tab.restore(leaf(pane.id), [pane], pane.id);
+    }
     this.refreshChrome();
     this.scheduleSave();
-    void pane.start().catch((err) => console.warn("open session:", err));
-    return JSON.stringify({ tab: tab.id, pane: pane.id });
+    const started = pane.start().catch((err) => console.warn("open session:", err));
+    if (args.focus) {
+      this.rootPanel.hide();
+      this.activate(tab);
+      tab.setFocus(pane.id);
+      void started.then(() => pane.focus());
+    }
+    return JSON.stringify({ tab: tab.id, tab_title: tab.title, pane: pane.id, new_tab: !existing });
+  }
+
+  /** Every tab of this window, for the root agent to see what belongs where. */
+  private listTabsFor(): string {
+    return JSON.stringify(
+      this.tabs.map((t, i) => ({
+        id: t.id,
+        title: t.title,
+        index: i + 1,
+        active: t === this.active,
+        panes: [...t.panes.values()].map((p) => ({
+          id: p.id,
+          kind: p.kind,
+          cwd: p instanceof TerminalPane ? p.lastKnownCwd() : "",
+          command: p instanceof TerminalPane ? p.running : "",
+          session: this.agents.forPane(p.id)?.title ?? "",
+        })),
+      })),
+    );
+  }
+
+  /** Move a pane into the tab the root agent named; a title nobody has yet makes a new tab. */
+  private async moveForRoot(paneId: string, data: string): Promise<string> {
+    const spec = String((JSON.parse(data || "{}") as { tab?: string }).tab ?? "").trim();
+    const from = this.tabOfPane(paneId);
+    if (!from) throw new Error(`no such pane ${paneId}`);
+    const at = findTab(this.tabs.map((t) => ({ id: t.id, title: t.title })), spec);
+    let to = at >= 0 ? this.tabs[at] : undefined;
+    if (to === from) return JSON.stringify({ tab: from.id, tab_title: from.title, moved: false });
+    if (!to) {
+      if (!(await this.movePaneToNewTab(paneId))) throw new Error("a pane on its own is already a tab");
+      to = this.tabOfPane(paneId);
+      if (to && spec) {
+        to.customTitle = spec;
+        to.onChange?.();
+      }
+    } else if (!(await this.movePane(paneId, to))) {
+      throw new Error("that pane is already there");
+    }
+    return JSON.stringify({ tab: to?.id ?? "", tab_title: to?.title ?? "", moved: true });
   }
 
   /**
@@ -900,8 +1038,10 @@ export class WateApp {
   }
 
   private async answerPaneRequest(req: { kind: string; pane: string; data: string }): Promise<string> {
-    // Asked on the root agent's behalf, about no pane of its own.
+    // Asked on the root agent's behalf, about no pane in particular.
     if (req.kind === "open-session") return this.openSessionFor(req.data);
+    if (req.kind === "tabs") return this.listTabsFor();
+    if (req.kind === "move-to") return this.moveForRoot(req.pane, req.data);
     const pane = this.paneById(req.pane);
     const tab = this.tabOfPane(req.pane);
     if (!pane || !tab) throw new Error(`no such pane ${req.pane}`);
@@ -1100,6 +1240,11 @@ export class WateApp {
   private reportTabs() {
     const tabs = this.tabs.map((t) => t.id);
     const panes = this.tabs.flatMap((t) => [...t.panes.keys()]);
+    // The root agent's pane is in no tab, but the backend has to find its window all the same.
+    if (this.rootPanel.pane) {
+      tabs.push(ROOT_TAB);
+      panes.push(this.rootPanel.pane.id);
+    }
     const sig = tabs.join(",") + "|" + panes.join(",");
     if (sig === this.lastTabReport) return;
     this.lastTabReport = sig;
@@ -1108,10 +1253,15 @@ export class WateApp {
 
   /** Bring a tab (and optionally one of its panes) to the front — see window:activate-tab. */
   activateTab(tabId: string, paneId?: string) {
+    if (paneId && paneId === this.rootPanel.pane?.id) {
+      this.rootPanel.show();
+      return;
+    }
     // The pane first: it may have moved tab since whoever asked last looked (a notification
     // clicked minutes after it went out).
     const tab = (paneId ? this.tabOfPane(paneId) : undefined) ?? this.tabs.find((t) => t.id === tabId);
     if (!tab) return;
+    this.rootPanel.hide();
     this.activate(tab);
     if (paneId && tab.panes.has(paneId)) {
       tab.setFocus(paneId);
@@ -1133,7 +1283,7 @@ export class WateApp {
 
   // ---- panes ------------------------------------------------------------
 
-  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean; id?: string; adopt?: boolean; agent?: boolean; root?: boolean }): TerminalPane {
+  private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean; id?: string; adopt?: boolean; agent?: boolean }): TerminalPane {
     const owner = () => this.tabOfPane(pane.id) ?? tab;
     const pane: TerminalPane = new TerminalPane({
       // An adopted pane keeps its id: that is how the backend finds the shell it already has,
@@ -1141,7 +1291,6 @@ export class WateApp {
       paneId: opts.id ?? nextId("pane"),
       adopt: opts.adopt,
       agent: opts.agent,
-      root: opts.root,
       tabId: tab.id,
       cwd: opts.cwd ?? "",
       command: opts.command,

@@ -17,6 +17,9 @@ export interface SidebarHost {
   toggleLabel?: string;
   /** Called after the panel was shown or hidden (panes need a re-fit). */
   onVisibility?(): void;
+  /** Show the root agent's panel; offered while [root] is on. */
+  openRoot?(): void;
+  rootEnabled?(): boolean;
   /** Type into a live session's pane, as if the keys had been pressed. */
   sendToPane(paneId: string, text: string): void;
   /** Open a pane running `claude --resume <id>` in `cwd`. */
@@ -51,6 +54,7 @@ export class Sidebar {
   private view: View = loadView();
   private controls = document.createElement("div");
   private chips = new Map<StatusFilter, HTMLButtonElement>();
+  private rootButton = document.createElement("button");
 
   constructor(private store: AgentStore, private host: SidebarHost) {
     this.element.className = "sidebar";
@@ -69,10 +73,15 @@ export class Sidebar {
     launch.textContent = "+ New session";
     launch.title = host.launchLabel;
     launch.addEventListener("click", () => host.launch());
+    this.rootButton.className = "sidebar-launch sidebar-root";
+    this.rootButton.textContent = "Root agent";
+    this.rootButton.title = "Show the root agent's panel";
+    this.rootButton.addEventListener("click", () => host.openRoot?.());
+    this.rootButton.hidden = !host.rootEnabled?.();
     this.list.className = "sidebar-list";
     this.edge.className = "sidebar-edge";
     this.buildControls();
-    this.element.append(this.edge, head, this.controls, this.list, launch);
+    this.element.append(this.edge, head, this.controls, this.list, this.rootButton, launch);
     store.subscribe(() => this.render());
     void this.reload();
   }
@@ -134,6 +143,7 @@ export class Sidebar {
   private ticking?: ReturnType<typeof setInterval>;
 
   render() {
+    this.rootButton.hidden = !this.host.rootEnabled?.();
     // The store fires on every status tick; a hidden panel has nothing to show for it.
     if (!this.visible) return;
     const { favorites, others } = groupSessions(this.store.list(), this.saved);

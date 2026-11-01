@@ -674,3 +674,42 @@ html, body {
 .confirm-button.primary:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .confirm-button.danger { border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red); }
 .confirm-button.danger:hover { background: color-mix(in srgb, var(--red) 16%, transparent); }
+
+/* The root agent's panel lies over the tabs ([root] layout picks how); the button in the corner
+   brings it up. Violet, like the root agent's notifications. */
+.root-panel {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid color-mix(in srgb, #785cd4 60%, var(--border));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.root-panel[hidden] { display: none; }
+.root-panel.root-drawer { top: 38px; right: 0; bottom: 0; width: max(45vw, 420px); border-width: 0 0 0 1px; }
+.root-panel.root-overlay { top: 9vh; left: 14vw; width: 72vw; height: 78vh; border-radius: 10px; overflow: hidden; }
+.root-panel.root-top { top: 38px; left: 0; right: 0; height: 50vh; border-width: 0 0 1px 0; }
+.root-panel-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.root-panel-body > .pane { border-radius: 0; outline: none; }
+.root-fab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 61;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid #785cd4;
+  background: var(--tabbar-bg);
+  color: var(--fg);
+  font: 12px var(--font-ui);
+  opacity: 0.8;
+  cursor: pointer;
+}
+.root-fab:hover, .root-fab.open { opacity: 1; }
+.root-fab.open { background: color-mix(in srgb, #785cd4 35%, var(--tabbar-bg)); }
+.root-fab[hidden], .root-fab .status-dot[hidden] { display: none; }
+.root-fab .status-dot { width: 7px; height: 7px; margin: 0; }
