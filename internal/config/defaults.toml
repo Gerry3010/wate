@@ -71,7 +71,7 @@ copy           = "ctrl+shift+c"
 paste          = "ctrl+shift+v"
 search         = "ctrl+shift+f"
 launch_claude  = "ctrl+shift+k"
-open_root      = "ctrl+shift+o"         # the root agent's tab (see [root])
+open_root      = "ctrl+shift+o"         # show or hide the root agent's panel (see [root])
 toggle_sidebar = "ctrl+shift+a"
 open_settings  = "ctrl+comma"
 editor_mode    = "ctrl+shift+p"
@@ -109,7 +109,8 @@ restart_countdown = 10                  # seconds between the last agent agreein
 subagent_depth = 0                      # how deep subagents may nest in sessions in wate panes (1 = they start none; 0 = Claude Code's default)
 
 [root]
-enabled = false                         # a tab with one long-lived Claude Code session that watches all the others
+enabled = false                         # one long-lived Claude Code session that watches all the others
+layout = "drawer"                       # how its panel opens: "drawer" (from the right), "overlay" (centred), "top"
 cwd = "~"                               # where it runs (its auto-memory belongs to this directory)
 model = "opus"
 waiting_minutes = 10                    # a permission prompt or question left this long wakes it (0 = never)

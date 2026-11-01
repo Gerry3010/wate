@@ -17,7 +17,8 @@ func TestArgs(t *testing.T) {
 		"--session-id", "11111111-2222-3333-4444-555555555555",
 		"--name", "root", "--model", "opus",
 		"--append-system-prompt", "INSTR",
-		"--allowedTools", "mcp__wate__wate_sessions", "mcp__wate__wate_session_open", "mcp__wate__wate_notify",
+		"--allowedTools", "mcp__wate__wate_sessions", "mcp__wate__wate_tabs", "mcp__wate__wate_session_open",
+		"mcp__wate__wate_session_focus", "mcp__wate__wate_session_move", "mcp__wate__wate_notify",
 		"Bash(/bin/wate ctl watch --once)", "Read(~/.claude/projects/**)",
 		"--mcp-config", "MCP",
 	}

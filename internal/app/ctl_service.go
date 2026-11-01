@@ -15,6 +15,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/Gerry3010/wate/internal/ctl"
+	rootpkg "github.com/Gerry3010/wate/internal/root"
 	"github.com/Gerry3010/wate/internal/theme"
 )
 
@@ -236,7 +237,7 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 			return ctl.Response{OK: true, Data: text}
 		}
 		return ctl.Response{OK: true}
-	case "sessions", "attention", "session-open", "notify":
+	case "sessions", "attention", "session-open", "notify", "tabs", "session-focus", "session-move":
 		return c.root(r)
 	default:
 		slog.Debug("ctl: unknown command", "cmd", r.Cmd)
@@ -306,22 +307,55 @@ func (c *CtlService) root(r ctl.Request) ctl.Response {
 		return ctl.Response{OK: true}
 	case "session-open":
 		return c.openSession(r)
+	case "tabs":
+		return c.listTabs()
+	case "session-focus":
+		return c.focusSession(r.Target)
+	case "session-move":
+		return c.moveSession(r.Target, r.Name)
 	}
 	return ctl.Response{Error: "unknown command " + r.Cmd}
 }
 
 // OpenedSession is what the frontend answers an open-session request with.
 type OpenedSession struct {
-	Tab  string `json:"tab"`
-	Pane string `json:"pane"`
+	Tab      string `json:"tab"`
+	TabTitle string `json:"tab_title"`
+	Pane     string `json:"pane"`
+	// NewTab is false when the session went into a tab that was already there.
+	NewTab  bool `json:"new_tab"`
+	Focused bool `json:"focused"`
+	// Trusted is false when Claude Code will first ask whether to trust the directory.
+	Trusted bool `json:"trusted"`
 }
 
-// openSession starts Claude Code in a new tab of the root agent's window, in the background:
-// the user may be typing somewhere else, and a tab that takes the focus would take the keys.
+// sessionOpen is what the root agent asks for: a directory, a first prompt, the tab to put the
+// session in (an id or a title; empty or unknown makes a new tab, titled as given), and whether
+// to go there.
+type sessionOpen struct {
+	Cwd    string `json:"cwd"`
+	Prompt string `json:"prompt"`
+	Tab    string `json:"tab"`
+	Focus  bool   `json:"focus"`
+}
+
+// openSession starts Claude Code in the root agent's window. In the background unless asked
+// otherwise: the user may be typing somewhere else, and a tab that takes the focus takes the
+// keys. A directory Claude Code does not trust yet is the exception — the session would sit on
+// that question where nobody sees it, before any hook could tell wate.
 func (c *CtlService) openSession(r ctl.Request) ctl.Response {
-	dir := config.ExpandHome(strings.TrimSpace(r.Path))
+	var args sessionOpen
+	if len(r.Data) > 0 {
+		if err := json.Unmarshal(r.Data, &args); err != nil {
+			return ctl.Response{Error: "session-open: " + err.Error()}
+		}
+	}
+	if args.Cwd == "" {
+		args.Cwd, args.Prompt = r.Path, firstNonEmpty(args.Prompt, r.Text)
+	}
+	dir := config.ExpandHome(strings.TrimSpace(args.Cwd))
 	if st, err := os.Stat(dir); dir == "" || err != nil || !st.IsDir() {
-		return ctl.Response{Error: "not a directory: " + r.Path}
+		return ctl.Response{Error: "not a directory: " + args.Cwd}
 	}
 	if err := c.Root.mayOpen(); err != nil {
 		return ctl.Response{Error: err.Error()}
@@ -331,11 +365,14 @@ func (c *CtlService) openSession(r ctl.Request) ctl.Response {
 	if w == nil {
 		return ctl.Response{Error: "the root agent's window is gone"}
 	}
+	trusted := rootpkg.Trusted(dir)
+	focus := args.Focus || !trusted
 	name := filepath.Base(dir)
 	data, _ := json.Marshal(map[string]any{
 		"cwd":     dir,
-		"command": c.cfg.claudeArgs("", r.Text, name),
-		"title":   name,
+		"command": c.cfg.claudeArgs("", args.Prompt, name),
+		"tab":     strings.TrimSpace(args.Tab),
+		"focus":   focus,
 	})
 	reply, err := c.bridge.ask(w, "open-session", root, string(data))
 	if err != nil {
@@ -345,10 +382,94 @@ func (c *CtlService) openSession(r ctl.Request) ctl.Response {
 	if err := json.Unmarshal([]byte(reply), &opened); err != nil || opened.Pane == "" {
 		return ctl.Response{Error: "the window opened no session"}
 	}
+	opened.Focused, opened.Trusted = focus, trusted
 	c.Root.Opened(opened.Pane)
-	body := notificationBody(firstLine(r.Text, 120), dir, homeDir())
-	c.Root.Notify("Root agent opened a session", body, opened.Pane)
+	where := notificationBody(firstLine(args.Prompt, 120), dir, homeDir())
+	switch {
+	case !trusted:
+		c.Root.Notify("Claude Code asks whether to trust a folder", where, opened.Pane)
+	case !focus:
+		c.Root.Notify("Root agent opened a session in "+opened.TabTitle, where, opened.Pane)
+	}
 	return ctl.Response{OK: true, Data: opened}
+}
+
+// listTabs asks every window for its tabs: their titles say what belongs together.
+func (c *CtlService) listTabs() ctl.Response {
+	type windowTabs struct {
+		Window string          `json:"window"`
+		Index  int             `json:"index"`
+		Tabs   json.RawMessage `json:"tabs"`
+	}
+	out := []windowTabs{}
+	if c.windows == nil {
+		return ctl.Response{OK: true, Data: out}
+	}
+	for _, info := range c.windows.Windows() {
+		win, ok := c.windows.byID(WindowID(info.ID))
+		if !ok {
+			continue
+		}
+		reply, err := c.bridge.ask(win, "tabs", "", "")
+		if err != nil || !json.Valid([]byte(reply)) {
+			slog.Debug("root: a window did not list its tabs", "window", info.ID, "err", err)
+			continue
+		}
+		out = append(out, windowTabs{Window: info.ID, Index: info.Index, Tabs: json.RawMessage(reply)})
+	}
+	return ctl.Response{OK: true, Data: out}
+}
+
+// focusSession brings a session's pane to the front, in whichever window it is.
+func (c *CtlService) focusSession(pane string) ctl.Response {
+	tab, ok := c.pty.TabForPane(pane)
+	if !ok || c.windows == nil {
+		return ctl.Response{Error: "no such pane: " + pane}
+	}
+	win := c.windows.windowForTab(tab, pane)
+	if win == "" {
+		return ctl.Response{Error: "no window shows pane " + pane}
+	}
+	if err := c.windows.FocusPane(string(win), tab, pane); err != nil {
+		return ctl.Response{Error: err.Error()}
+	}
+	return ctl.Response{OK: true}
+}
+
+// moveSession moves a session's pane into another tab of its window, by id or title; a title
+// no tab has yet makes a new tab of that name.
+func (c *CtlService) moveSession(pane, tab string) ctl.Response {
+	if pane == "" || strings.TrimSpace(tab) == "" {
+		return ctl.Response{Error: "session-move needs a pane and a tab"}
+	}
+	if pane == c.pty.RootPane() {
+		return ctl.Response{Error: "the root agent does not live in a tab"}
+	}
+	if _, ok := c.pty.TabForPane(pane); !ok {
+		return ctl.Response{Error: "no such pane: " + pane}
+	}
+	w := c.target(pane, "")
+	if w == nil {
+		return ctl.Response{Error: "no window shows pane " + pane}
+	}
+	data, _ := json.Marshal(map[string]string{"tab": strings.TrimSpace(tab)})
+	reply, err := c.bridge.ask(w, "move-to", pane, string(data))
+	if err != nil {
+		return ctl.Response{Error: err.Error()}
+	}
+	if !json.Valid([]byte(reply)) {
+		return ctl.Response{OK: true, Data: reply}
+	}
+	return ctl.Response{OK: true, Data: json.RawMessage(reply)}
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, s := range v {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // caller is the pane a request came from: its token if it sent one, else what it claims.

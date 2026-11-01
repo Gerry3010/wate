@@ -111,6 +111,9 @@ type Claude struct {
 // an eye on all the others, hears from wate when one needs attention, and may open new ones.
 type Root struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
+	// Layout is how its panel opens over the tabs: "drawer" (from the right), "overlay"
+	// (centred) or "top" (dropping down).
+	Layout string `toml:"layout" json:"layout"`
 	// Cwd is where it runs; its auto-memory belongs to that directory.
 	Cwd   string `toml:"cwd" json:"cwd"`
 	Model string `toml:"model" json:"model"`
@@ -278,6 +281,11 @@ func finish(c Config) Config {
 	case "ctrl", "alt", "both", "off":
 	default:
 		c.Terminal.WordKeys = "ctrl"
+	}
+	switch c.Root.Layout {
+	case "drawer", "overlay", "top":
+	default:
+		c.Root.Layout = "drawer"
 	}
 	c.Root.Cwd = ExpandHome(c.Root.Cwd)
 	c.Root.Instructions = ExpandHome(c.Root.Instructions)

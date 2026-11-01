@@ -78,6 +78,10 @@ func TestOnlyTheRootTokenOpensTheRootCommands(t *testing.T) {
 		{Cmd: "attention", Pane: "root", Token: "tok-p1"},
 		{Cmd: "sessions", Token: "root"},
 		{Cmd: "notify", Name: "x", Token: "tok-p1"},
+		{Cmd: "tabs", Token: "tok-p1"},
+		{Cmd: "session-focus", Target: "p1", Pane: "root"},
+		{Cmd: "session-move", Target: "p1", Name: "Other", Token: "tok-p1"},
+		{Cmd: "session-open", Path: "/tmp", Token: "tok-p1"},
 	} {
 		if resp := c.handle(req); resp.OK || !strings.Contains(resp.Error, "only the root agent") {
 			t.Errorf("%+v let through: %+v", req, resp)

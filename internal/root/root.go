@@ -58,7 +58,8 @@ func Args(cfg config.Config, sessionID string, resume bool, instructions, watch,
 	// Its own tools and its watcher run without asking: a root agent stuck on its own
 	// permission prompts would watch nothing. Everything else asks as usual.
 	args = append(args, "--allowedTools",
-		"mcp__wate__wate_sessions", "mcp__wate__wate_session_open", "mcp__wate__wate_notify",
+		"mcp__wate__wate_sessions", "mcp__wate__wate_tabs", "mcp__wate__wate_session_open",
+		"mcp__wate__wate_session_focus", "mcp__wate__wate_session_move", "mcp__wate__wate_notify",
 		"Bash("+watch+")", "Read(~/.claude/projects/**)")
 	args = append(args, "--mcp-config", mcpConfig)
 	return args

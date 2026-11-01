@@ -29,11 +29,11 @@ func TestDefaults(t *testing.T) {
 }
 
 func TestRootOutOfRangeFallsBack(t *testing.T) {
-	c, err := Parse([]byte("[root]\nwaiting_minutes = -5\ncontext_percent = 140\nmax_sessions = -1\n[claude]\nsubagent_depth = -2\n"), Defaults())
+	c, err := Parse([]byte("[root]\nlayout = \"sideways\"\nwaiting_minutes = -5\ncontext_percent = 140\nmax_sessions = -1\n[claude]\nsubagent_depth = -2\n"), Defaults())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Root.WaitingMinutes != 0 || c.Root.ContextPercent != 100 || c.Root.MaxSessions != 0 || c.Claude.SubagentDepth != 0 {
+	if c.Root.WaitingMinutes != 0 || c.Root.ContextPercent != 100 || c.Root.MaxSessions != 0 || c.Claude.SubagentDepth != 0 || c.Root.Layout != "drawer" {
 		t.Fatalf("got %+v, depth %d", c.Root, c.Claude.SubagentDepth)
 	}
 }

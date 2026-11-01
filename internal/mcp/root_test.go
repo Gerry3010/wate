@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"testing"
 
@@ -44,7 +45,7 @@ func toolNames(t *testing.T, cs *mcp.ClientSession) []string {
 }
 
 func TestOnlyTheRootServerOffersTheRootTools(t *testing.T) {
-	rootTools := []string{"wate_sessions", "wate_session_open", "wate_notify"}
+	rootTools := []string{"wate_sessions", "wate_tabs", "wate_session_open", "wate_session_focus", "wate_session_move", "wate_notify"}
 	plain := toolNames(t, connect(t, false))
 	withRoot := toolNames(t, connect(t, true))
 	for _, name := range rootTools {
@@ -69,7 +70,7 @@ func TestRootToolsSendWhatWateExpects(t *testing.T) {
 	ctx := context.Background()
 	for _, call := range []mcp.CallToolParams{
 		{Name: "wate_sessions", Arguments: map[string]any{}},
-		{Name: "wate_session_open", Arguments: map[string]any{"cwd": " ~/work ", "prompt": "fix the build"}},
+		{Name: "wate_session_open", Arguments: map[string]any{"cwd": " ~/work ", "prompt": "fix the build", "tab": "Hakerl", "focus": true}},
 		{Name: "wate_notify", Arguments: map[string]any{"title": "Stuck", "body": "needs a password", "pane": "p7"}},
 	} {
 		res, err := cs.CallTool(ctx, &call)
@@ -84,8 +85,10 @@ func TestRootToolsSendWhatWateExpects(t *testing.T) {
 	if got[0].Cmd != "sessions" || got[0].Token != "tok-root" {
 		t.Errorf("sessions: %+v", got[0])
 	}
-	if got[1].Cmd != "session-open" || got[1].Path != "~/work" || got[1].Text != "fix the build" {
-		t.Errorf("session-open: %+v", got[1])
+	var open sessionOpenIn
+	if got[1].Cmd != "session-open" || json.Unmarshal(got[1].Data, &open) != nil ||
+		open != (sessionOpenIn{Cwd: "~/work", Prompt: "fix the build", Tab: "Hakerl", Focus: true}) {
+		t.Errorf("session-open: %+v %s", got[1], got[1].Data)
 	}
 	if got[2].Cmd != "notify" || got[2].Name != "Stuck" || got[2].Text != "needs a password" || got[2].Target != "p7" {
 		t.Errorf("notify: %+v", got[2])
