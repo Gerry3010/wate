@@ -77,6 +77,15 @@ type Session struct {
 	titleTriedSize int64
 	// transcriptTriedAt keeps the search for a missing transcript off every tick.
 	transcriptTriedAt time.Time
+	// transcriptGuessed is set while TranscriptPath is a guess rather than a hook's word.
+	transcriptGuessed bool
+}
+
+// setTranscript points s at path and forgets whatever was read from the previous one.
+func (s *Session) setTranscript(path string, guessed bool) {
+	s.TranscriptPath, s.transcriptGuessed = path, guessed
+	s.transcriptSize, s.titleTried = -1, false
+	s.Title, s.Context, s.ContextPercent = "", Context{}, 0
 }
 
 // Transcript re-reads are paced: an active session appends constantly, and the sidebar's
@@ -110,6 +119,8 @@ type hookPayload struct {
 	HookEvent  string `json:"hook_event_name"`
 	Prompt     string `json:"prompt"`
 	Transcript string `json:"transcript_path"`
+	// Source says why a session started: startup, resume, clear or compact.
+	Source string `json:"source"`
 	// NotificationType tells a prompt that blocks Claude from a reminder that it is idle.
 	NotificationType string `json:"notification_type"`
 }
@@ -171,20 +182,31 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 	if p.Cwd != "" {
 		s.Cwd = p.Cwd
 	}
-	if p.Transcript != "" && p.Transcript != s.TranscriptPath {
-		s.TranscriptPath = p.Transcript
-		s.transcriptSize, s.titleTried = -1, false
-		// Whatever was read from the old path was a guess (the newest transcript in the
-		// directory, which may be another session's) and must not outlive it.
-		s.Title, s.Context, s.ContextPercent = "", Context{}, 0
+	var emit []Session
+	if p.Transcript != "" {
+		if p.Transcript != s.TranscriptPath {
+			// Whatever was read from the old path was a guess (the newest transcript in the
+			// directory, which may be another session's) and must not outlive it.
+			s.setTranscript(p.Transcript, false)
+		}
+		s.transcriptGuessed = false
+		emit = t.dropGuesses(paneID, p.Transcript)
 	}
+	changed := true
 	switch event {
 	case "SessionStart":
+		// A compaction starts the session over in Claude Code's terms only; mid-turn, the
+		// turn goes on.
+		if p.Source == "compact" {
+			break
+		}
 		s.Status = StatusRunning
 		s.Message = ""
 		s.Asking = false
 		s.StartedAt = t.now()
-		t.setPhase(s, PhaseWorking)
+		// A session that has just started sits at its prompt, and so does every session wate
+		// resumes after a restart: it is working only once a prompt comes in.
+		t.setPhase(s, PhaseDone)
 	case "UserPromptSubmit":
 		s.Status = StatusRunning
 		s.Asking = false
@@ -206,8 +228,8 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 		// focused the pane (Remote Control). Every other tool call is none of the tracker's
 		// business: they come by the dozen and change nothing.
 		if s.Phase != PhasePermission {
-			t.mu.Unlock()
-			return
+			changed = false
+			break
 		}
 		s.Status = StatusRunning
 		s.Message = ""
@@ -221,15 +243,34 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 		delete(t.sessions, paneID)
 		s.Status = StatusIdle
 	default:
-		t.mu.Unlock()
-		return
+		changed = false
 	}
-	s.UpdatedAt = t.now()
-	snapshot := *s
+	if changed {
+		s.UpdatedAt = t.now()
+		emit = append(emit, *s)
+	}
 	t.mu.Unlock()
 	if t.OnChange != nil {
-		t.OnChange(snapshot)
+		for _, c := range emit {
+			t.OnChange(c)
+		}
 	}
+}
+
+// dropGuesses takes path away from every session but paneID's that only guessed it: a hook has
+// just said whose it is. They have to wait before guessing again.
+func (t *Tracker) dropGuesses(paneID, path string) []Session {
+	var out []Session
+	for id, s := range t.sessions {
+		if id == paneID || !s.transcriptGuessed || s.TranscriptPath != path {
+			continue
+		}
+		s.setTranscript("", false)
+		s.transcriptTriedAt = t.now()
+		s.UpdatedAt = t.now()
+		out = append(out, *s)
+	}
+	return out
 }
 
 // RefreshContexts reads each session's transcript: its title once, and the context usage
@@ -238,7 +279,7 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 func (t *Tracker) RefreshContexts(home string, window int) {
 	t.mu.Lock()
 	var changed []Session
-	now := time.Now()
+	now := t.now()
 	for _, s := range t.sessions {
 		if s.TranscriptPath == "" {
 			// Scanning the project directory for a transcript that is not there yet is not
@@ -247,11 +288,11 @@ func (t *Tracker) RefreshContexts(home string, window int) {
 				continue
 			}
 			s.transcriptTriedAt = now
-			s.TranscriptPath = FindTranscript(home, s.Cwd)
-			s.transcriptSize, s.titleTried = -1, false
-			if s.TranscriptPath == "" {
+			path := t.guessTranscript(home, s)
+			if path == "" {
 				continue
 			}
+			s.setTranscript(path, true)
 		}
 		st, err := os.Stat(s.TranscriptPath)
 		if err != nil {
@@ -292,6 +333,30 @@ func (t *Tracker) RefreshContexts(home string, window int) {
 	}
 }
 
+// guessTranscript looks for the transcript of a session no hook has named one for. A wrong
+// guess shows another session's title and context in the sidebar and tells the root agent
+// about another session's context window, so this only guesses where it can hardly go wrong:
+//   - never a transcript another session already has, whether a hook named it or a guess took it;
+//   - never while another session in the same directory has none either, since nothing tells
+//     the two apart;
+//   - only a file written since the session was first seen. Anything older belongs to a
+//     session that is not running, or to one that has not said anything yet.
+//
+// Called with t.mu held.
+func (t *Tracker) guessTranscript(home string, s *Session) string {
+	taken := map[string]bool{}
+	for _, o := range t.sessions {
+		switch {
+		case o == s:
+		case o.TranscriptPath != "":
+			taken[o.TranscriptPath] = true
+		case o.Cwd == s.Cwd:
+			return ""
+		}
+	}
+	return FindTranscript(home, s.Cwd, s.StartedAt, taken)
+}
+
 // Observe reports process-based detection: claude is (not) running in the pane.
 // It never downgrades a hook-driven status while the process is still alive.
 func (t *Tracker) Observe(paneID, tabID string, running bool, cwd string) {
@@ -306,6 +371,10 @@ func (t *Tracker) Observe(paneID, tabID string, running bool, cwd string) {
 		s.Cwd = cwd
 		s.StartedAt = t.now()
 		s.UpdatedAt = s.StartedAt
+		// No guess before the session's own hook has had time to name its transcript: after a
+		// wate restart every pane resumes at once, and a guess in the first seconds took a
+		// neighbour's transcript.
+		s.transcriptTriedAt = s.StartedAt
 		changed = s
 	case running && exists && s.Cwd == "" && cwd != "":
 		s.Cwd = cwd

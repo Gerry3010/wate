@@ -170,6 +170,19 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- After a restart, the root agent saw every resumed session as working. Resuming a session
+  starts it, and wate took the start for a prompt. A session that has just started or been
+  resumed now counts as done until a prompt comes in, and compacting in the middle of a turn
+  leaves it working.
+- A Claude Code session that wate knows only from its process, with no hook events, could show
+  another session's title and context usage, and the root agent heard about that other
+  session's context window. wate took the newest transcript in the session's directory, which
+  was often the one of the session next to it. Right after a restart, when every pane resumes
+  at once, three sessions picked up a fourth one's transcript and reported it 99 % full. A
+  guess now waits 30 seconds for the session's own hook to name its transcript. It never takes
+  a transcript another session has, gives up while two such sessions share a directory, and
+  only considers files written since the session started. When a hook later names a guessed
+  transcript as another session's, the guess is dropped.
 - A message an agent ends with a newline in `wate_pane_write` or `wate ctl pane-write` now
   reaches a Claude Code session in that pane. It used to stay on the session's prompt: Claude
   Code reads a line feed as a line break in the text, and it takes a burst of input for a paste

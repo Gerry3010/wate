@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Context is how full a Claude Code session's context window is, read from its transcript.
@@ -111,8 +112,9 @@ func WindowFor(model string, configured, observed int) int {
 }
 
 // FindTranscript guesses the transcript of a session without hook information: the newest
-// `.jsonl` in Claude Code's project directory for cwd (`~/.claude/projects/<cwd with / → ->`).
-func FindTranscript(home, cwd string) string {
+// `.jsonl` in Claude Code's project directory for cwd (`~/.claude/projects/<cwd with / → ->`)
+// that was written after since and is not taken.
+func FindTranscript(home, cwd string, since time.Time, taken map[string]bool) string {
 	if cwd == "" {
 		return ""
 	}
@@ -122,17 +124,18 @@ func FindTranscript(home, cwd string) string {
 	if err != nil {
 		return ""
 	}
-	best, bestTime := "", int64(0)
+	best, bestTime := "", since
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+		path := filepath.Join(dir, e.Name())
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") || taken[path] {
 			continue
 		}
 		info, err := e.Info()
 		if err != nil {
 			continue
 		}
-		if t := info.ModTime().UnixNano(); t > bestTime {
-			best, bestTime = filepath.Join(dir, e.Name()), t
+		if t := info.ModTime(); t.After(bestTime) {
+			best, bestTime = path, t
 		}
 	}
 	return best

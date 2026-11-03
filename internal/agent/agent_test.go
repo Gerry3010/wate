@@ -177,3 +177,41 @@ func TestAToolRunningEndsThePermissionPhase(t *testing.T) {
 		t.Fatalf("answered elsewhere, still blocked: %+v", s)
 	}
 }
+
+func TestASessionIsWorkingOnlyOnceAPromptComesIn(t *testing.T) {
+	tr := NewTracker()
+	tick := clock(tr)
+	phase := func() Phase { return tr.List()[0].Phase }
+	// What every pane does after a wate restart: Claude Code is resumed and waits for a prompt.
+	tr.Hook("p1", "t1", "SessionStart", []byte(`{"source":"resume","session_id":"abc"}`))
+	if s := tr.List()[0]; s.Phase != PhaseDone || s.Status != StatusRunning {
+		t.Fatalf("resumed: phase %q status %q", s.Phase, s.Status)
+	}
+	tick(time.Hour)
+	if ev := NewWatch().Check(tr.List(), tr.now(), Rules{Waiting: time.Minute, ContextPercent: 90}, nil); len(ev) != 0 {
+		t.Errorf("a resumed session left alone is not news: %+v", ev)
+	}
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"x"}`))
+	if phase() != PhaseWorking {
+		t.Fatalf("prompted: %q", phase())
+	}
+	// Compacting mid-turn starts the session over in name only.
+	since := tr.List()[0].PhaseSince
+	tick(time.Minute)
+	tr.Hook("p1", "t1", "SessionStart", []byte(`{"source":"compact"}`))
+	if s := tr.List()[0]; s.Phase != PhaseWorking || !s.PhaseSince.Equal(since) {
+		t.Fatalf("compacted: phase %q since %v", s.Phase, s.PhaseSince)
+	}
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"y"}`))
+	tr.Hook("p1", "t1", "SessionStart", []byte(`{"source":"clear"}`))
+	if phase() != PhaseDone {
+		t.Fatalf("cleared: %q", phase())
+	}
+	tr.Hook("p2", "t1", "SessionStart", []byte(`{"source":"startup"}`))
+	tr.Hook("p3", "t1", "SessionStart", []byte(`{}`))
+	for _, s := range tr.List()[1:] {
+		if s.Phase != PhaseDone {
+			t.Errorf("%s started: %q", s.PaneID, s.Phase)
+		}
+	}
+}
