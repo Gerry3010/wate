@@ -1096,6 +1096,10 @@ export class WateApp {
         if (!(pane instanceof TerminalPane)) throw new Error(`pane ${req.pane} is not a terminal`);
         return pane.snapshot(args.lines || undefined);
       }
+      case "claude-input": {
+        if (!(pane instanceof TerminalPane)) throw new Error(`pane ${req.pane} is not a terminal`);
+        return pane.claudeInput();
+      }
       case "split": {
         const dir: Dir = args.dir === "col" ? "col" : "row";
         const made = await this.addTerminal(tab, dir, { agent: true }, { target: req.pane, ratio: args.ratio || undefined });

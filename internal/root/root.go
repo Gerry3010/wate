@@ -60,6 +60,7 @@ func Args(cfg config.Config, sessionID string, resume bool, instructions, watch,
 	args = append(args, "--allowedTools",
 		"mcp__wate__wate_sessions", "mcp__wate__wate_tabs", "mcp__wate__wate_session_open",
 		"mcp__wate__wate_session_focus", "mcp__wate__wate_session_move", "mcp__wate__wate_notify",
+		"mcp__wate__wate_session_remote_control",
 		"Bash("+watch+")", "Read(~/.claude/projects/**)")
 	args = append(args, "--mcp-config", mcpConfig)
 	return args

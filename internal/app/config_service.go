@@ -110,14 +110,15 @@ func (c *ConfigService) Set(values map[string]any) (ConfigResponse, error) {
 // is not offered tools that would fail. Note the absence of --strict-mcp-config: that would
 // switch off the user's own MCP servers for the session, which is not wate's call to make.
 func (c *ConfigService) ClaudeArgs(resume string) []string {
-	return c.claudeArgs(resume, "", "")
+	return c.claudeArgs(resume, "", "", "")
 }
 
-// claudeArgs is ClaudeArgs with a first prompt and a session name (both may be empty).
+// claudeArgs is ClaudeArgs with a first prompt, a session name and a Remote Control name (all
+// may be empty; a Remote Control name switches Remote Control on).
 //
 // The prompt goes straight after the command: options like --mcp-config take any number of
 // values and would swallow a prompt standing behind them.
-func (c *ConfigService) claudeArgs(resume, prompt, name string) []string {
+func (c *ConfigService) claudeArgs(resume, prompt, name, remote string) []string {
 	cfg := c.Current()
 	args := claudeCommand(cfg)
 	if prompt != "" {
@@ -128,6 +129,9 @@ func (c *ConfigService) claudeArgs(resume, prompt, name string) []string {
 	}
 	if name != "" {
 		args = append(args, "--name", name)
+	}
+	if remote != "" {
+		args = append(args, "--remote-control", remote)
 	}
 	if cfg.Claude.MCP {
 		if exe, err := os.Executable(); err == nil {

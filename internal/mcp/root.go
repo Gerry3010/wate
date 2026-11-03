@@ -11,10 +11,17 @@ import (
 )
 
 type sessionOpenIn struct {
-	Cwd    string `json:"cwd" jsonschema:"the project directory to start Claude Code in (absolute, or starting with ~)"`
-	Prompt string `json:"prompt,omitempty" jsonschema:"the first prompt for the new session: what it should do, with everything it needs to know, since it starts with none of your context"`
-	Tab    string `json:"tab,omitempty" jsonschema:"the tab the session belongs in, by id or title (see wate_tabs); it is added there as a split. A title no tab has yet makes a new tab of that name; empty makes a new tab named after the directory"`
-	Focus  bool   `json:"focus,omitempty" jsonschema:"bring the new session to the front (and close your panel); true when the user asked you for the session, false when you open it on your own"`
+	Cwd               string `json:"cwd" jsonschema:"the project directory to start Claude Code in (absolute, or starting with ~)"`
+	Prompt            string `json:"prompt,omitempty" jsonschema:"the first prompt for the new session: what it should do, with everything it needs to know, since it starts with none of your context"`
+	Tab               string `json:"tab,omitempty" jsonschema:"the tab the session belongs in, by id or title (see wate_tabs); it is added there as a split. A title no tab has yet makes a new tab of that name; empty makes a new tab named after the directory"`
+	Focus             bool   `json:"focus,omitempty" jsonschema:"bring the new session to the front (and close your panel); true when the user asked you for the session, false when you open it on your own"`
+	RemoteControl     bool   `json:"remote_control,omitempty" jsonschema:"start the session with Remote Control on, so the user can continue it in the Claude app or at claude.ai/code; only when the user asked for it"`
+	RemoteControlName string `json:"remote_control_name,omitempty" jsonschema:"the name the session shows under in Remote Control; empty for the directory's name. Setting it switches Remote Control on"`
+}
+
+type remoteControlIn struct {
+	Pane string `json:"pane" jsonschema:"the session's pane id (see wate_sessions)"`
+	Name string `json:"name,omitempty" jsonschema:"the name the session shows under in Remote Control; empty leaves it to Claude Code"`
 }
 
 type notifyIn struct {
@@ -40,8 +47,9 @@ func registerRoot(s *mcp.Server) {
 		Description: "List every Claude Code session running in wate, in all tabs and windows: pane, " +
 			"tab, directory, title, status and phase (working, permission = blocked on the user, done), " +
 			"whether it ended on a question, context usage, how many minutes it has sat unattended, " +
-			"its session id and transcript path, and whether you opened it. Read a transcript's last " +
-			"lines to see what a session is up to.",
+			"its session id and transcript path, whether you opened it, and whether Remote Control is " +
+			"on (with the URL it can be continued at). Read a transcript's last lines to see what a " +
+			"session is up to.",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, any, error) {
 		return call(ctl.Request{Cmd: "sessions"})
 	})
@@ -61,10 +69,24 @@ func registerRoot(s *mcp.Server) {
 			"tab it belongs in (or a new tab). It stays in the background unless you set focus. A " +
 			"directory Claude Code does not trust yet always comes to the front, because the session " +
 			"first asks the user whether to trust it. The user is notified when it opens in the " +
-			"background, and the number you may have running at once is limited. Returns pane and tab.",
+			"background, and the number you may have running at once is limited. With remote_control " +
+			"it starts with Remote Control on. Returns pane and tab.",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in sessionOpenIn) (*mcp.CallToolResult, any, error) {
-		data, _ := json.Marshal(sessionOpenIn{Cwd: strings.TrimSpace(in.Cwd), Prompt: in.Prompt, Tab: in.Tab, Focus: in.Focus})
+		in.Cwd = strings.TrimSpace(in.Cwd)
+		data, _ := json.Marshal(in)
 		return call(ctl.Request{Cmd: "session-open", Data: data})
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "wate_session_remote_control",
+		Description: "Switch Remote Control on in a running session, so the user can continue it in the " +
+			"Claude app or at claude.ai/code: wate enters /remote-control at its prompt, as the " +
+			"sidebar's menu does. Only while the session waits at an empty prompt; otherwise it " +
+			"refuses with busy, waiting (a dialog is open) or input not empty (the user may be " +
+			"typing), and nothing is typed. Returns the URL once it is connected; a session that " +
+			"has it on already just reports its URL.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in remoteControlIn) (*mcp.CallToolResult, any, error) {
+		return call(ctl.Request{Cmd: "session-remote-control", Target: in.Pane, Name: in.Name})
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

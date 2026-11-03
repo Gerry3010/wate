@@ -18,6 +18,7 @@ import { logData } from "../keys-debug";
 import { ligatureJoiner } from "./ligatures";
 import { CLAUDE_LOGO, PLAY } from "../ui/icons";
 import { SNAPSHOT_LINES, clampTail, snapshotRange, trimTrailingBlanks } from "./snapshot";
+import { claudeInput, type ClaudeInput, type InputCell } from "./prompt";
 import { PaneStatusBar } from "./status";
 
 /** A call-to-action block drawn across the pane between the restored history and the prompt. */
@@ -593,6 +594,25 @@ export class TerminalPane implements Pane {
     const out: string[] = [];
     for (let i = start; i <= end; i++) out.push(buf.getLine(i)?.translateToString(true) ?? "");
     return clampTail(trimTrailingBlanks(out).join("\n"));
+  }
+
+  /** What Claude Code's input box on this screen holds (see claudeInput). */
+  claudeInput(): ClaudeInput {
+    const buf = this.term.buffer.active;
+    const cell = buf.getNullCell();
+    const rows: InputCell[][] = [];
+    for (let y = 0; y < this.term.rows; y++) {
+      const line = buf.getLine(buf.baseY + y);
+      const row: InputCell[] = [];
+      for (let x = 0; line && x < line.length; x++) {
+        const c = line.getCell(x, cell);
+        // The right half of a wide character is a cell of its own, with nothing in it.
+        if (!c || c.getWidth() === 0) continue;
+        row.push({ ch: c.getChars() || " ", dim: c.isDim() !== 0, inverse: c.isInverse() !== 0 });
+      }
+      rows.push(row);
+    }
+    return claudeInput(rows, buf.cursorY);
   }
 
   /**

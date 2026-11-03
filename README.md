@@ -138,9 +138,16 @@ background. A directory Claude Code does not trust yet always comes to the front
 session first asks you about that. A session it finds in the wrong tab it only moves once you
 have agreed.
 
+Ask it for Remote Control and it switches it on. In a running session wate enters
+`/remote-control` at the prompt, as the sidebar's menu does, but only while the session waits
+at an empty prompt line; if it is busy, shows a dialog or has text on the prompt, nothing is
+typed and the agent tells you. A session it opens can start with Remote Control on, and its
+session list shows which sessions have it on, with the link to continue them at.
+
 Its extra tools (`wate_sessions`, `wate_tabs`, `wate_session_open`, `wate_session_focus`,
-`wate_session_move`, `wate_notify`) are not offered to other sessions, and wate answers them
-only for the root agent's own pane, which it recognises by that pane's token. Its session is continued across restarts, and its auto-memory belongs to
+`wate_session_move`, `wate_session_remote_control`, `wate_notify`) are not offered to other
+sessions, and wate answers them only for the root agent's own pane, which it recognises by that
+pane's token. Its session is continued across restarts, and its auto-memory belongs to
 `[root] cwd`. `[root] instructions` replaces the built-in instructions with a file of your own,
 where `{{WATCH}}` stands for the watcher command.
 

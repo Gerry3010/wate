@@ -237,7 +237,7 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 			return ctl.Response{OK: true, Data: text}
 		}
 		return ctl.Response{OK: true}
-	case "sessions", "attention", "session-open", "notify", "tabs", "session-focus", "session-move":
+	case "sessions", "attention", "session-open", "notify", "tabs", "session-focus", "session-move", "session-remote-control":
 		return c.root(r)
 	default:
 		slog.Debug("ctl: unknown command", "cmd", r.Cmd)
@@ -313,6 +313,8 @@ func (c *CtlService) root(r ctl.Request) ctl.Response {
 		return c.focusSession(r.Target)
 	case "session-move":
 		return c.moveSession(r.Target, r.Name)
+	case "session-remote-control":
+		return c.switchRemoteControl(r.Target, r.Name)
 	}
 	return ctl.Response{Error: "unknown command " + r.Cmd}
 }
@@ -330,13 +332,16 @@ type OpenedSession struct {
 }
 
 // sessionOpen is what the root agent asks for: a directory, a first prompt, the tab to put the
-// session in (an id or a title; empty or unknown makes a new tab, titled as given), and whether
-// to go there.
+// session in (an id or a title; empty or unknown makes a new tab, titled as given), whether
+// to go there, and whether to switch Remote Control on (under the session's name unless it
+// names another; a name alone switches it on).
 type sessionOpen struct {
-	Cwd    string `json:"cwd"`
-	Prompt string `json:"prompt"`
-	Tab    string `json:"tab"`
-	Focus  bool   `json:"focus"`
+	Cwd               string `json:"cwd"`
+	Prompt            string `json:"prompt"`
+	Tab               string `json:"tab"`
+	Focus             bool   `json:"focus"`
+	RemoteControl     bool   `json:"remote_control"`
+	RemoteControlName string `json:"remote_control_name"`
 }
 
 // openSession starts Claude Code in the root agent's window. In the background unless asked
@@ -357,6 +362,10 @@ func (c *CtlService) openSession(r ctl.Request) ctl.Response {
 	if st, err := os.Stat(dir); dir == "" || err != nil || !st.IsDir() {
 		return ctl.Response{Error: "not a directory: " + args.Cwd}
 	}
+	remote, err := remoteControlName(args.RemoteControlName)
+	if err != nil {
+		return ctl.Response{Error: err.Error()}
+	}
 	if err := c.Root.mayOpen(); err != nil {
 		return ctl.Response{Error: err.Error()}
 	}
@@ -368,9 +377,12 @@ func (c *CtlService) openSession(r ctl.Request) ctl.Response {
 	trusted := rootpkg.Trusted(dir)
 	focus := args.Focus || !trusted
 	name := filepath.Base(dir)
+	if remote == "" && args.RemoteControl {
+		remote = name
+	}
 	data, _ := json.Marshal(map[string]any{
 		"cwd":     dir,
-		"command": c.cfg.claudeArgs("", args.Prompt, name),
+		"command": c.cfg.claudeArgs("", args.Prompt, name, remote),
 		"tab":     strings.TrimSpace(args.Tab),
 		"focus":   focus,
 	})

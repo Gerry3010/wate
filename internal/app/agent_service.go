@@ -228,6 +228,32 @@ func (a *AgentService) StopSessions(ctx context.Context) {
 	slog.Info("claude sessions stopped", "signalled", signalled, "still_running", left)
 }
 
+// ClaudePid is the Claude Code process running in a pane, 0 when there is none.
+func (a *AgentService) ClaudePid(pane string) int {
+	if a.pty == nil {
+		return 0
+	}
+	pid, ok := a.pty.PidForPane(pane)
+	if !ok {
+		return 0
+	}
+	if pids := agent.ClaudePidsUnder(pid); len(pids) > 0 {
+		return pids[0]
+	}
+	return 0
+}
+
+// ProcState is what Claude Code says about itself in a pane; false when nothing runs there or
+// it says nothing.
+func (a *AgentService) ProcState(pane string) (agent.ProcState, bool) {
+	pid := a.ClaudePid(pane)
+	if pid == 0 {
+		return agent.ProcState{}, false
+	}
+	s, err := agent.ReadProcState(homeDir(), pid)
+	return s, err == nil
+}
+
 // List returns all known sessions, from every window (sidebar initial state).
 func (a *AgentService) List() []agent.Session {
 	list := a.tracker.List()

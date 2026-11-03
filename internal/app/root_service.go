@@ -41,6 +41,8 @@ type RootService struct {
 	cfg    func() config.Config
 	watch  *agent.Watch
 	now    func() time.Time
+	// procState is what Claude Code says about itself in a pane (AgentService.ProcState).
+	procState func(pane string) (agent.ProcState, bool)
 
 	mu       sync.Mutex
 	pending  []agent.Event
@@ -53,7 +55,7 @@ type RootService struct {
 func NewRootService(agents *AgentService, pty *PtyService, cfg func() config.Config) *RootService {
 	return &RootService{
 		agents: agents, pty: pty, cfg: cfg, watch: agent.NewWatch(), now: time.Now,
-		opened: map[string]time.Time{},
+		procState: agents.ProcState, opened: map[string]time.Time{},
 	}
 }
 
@@ -117,6 +119,9 @@ type RootSession struct {
 	UnattendedMinutes int  `json:"unattended_minutes"`
 	OpenedByRoot      bool `json:"opened_by_root"`
 	IsRoot            bool `json:"is_root"`
+	// RemoteControl is on when the session can be continued at RemoteControlURL as well.
+	RemoteControl    bool   `json:"remote_control"`
+	RemoteControlURL string `json:"remote_control_url,omitempty"`
 }
 
 // Sessions is the session table, every window's, for the root agent.
@@ -131,12 +136,17 @@ func (r *RootService) sessions(list []agent.Session) []RootSession {
 	defer r.mu.Unlock()
 	out := make([]RootSession, 0, len(list))
 	for _, s := range list {
-		out = append(out, RootSession{
+		rs := RootSession{
 			Session:           s,
 			UnattendedMinutes: int(s.UnattendedFor(now) / time.Minute),
 			OpenedByRoot:      !r.opened[s.PaneID].IsZero(),
 			IsRoot:            s.PaneID == root,
-		})
+		}
+		if st, ok := r.procState(s.PaneID); ok {
+			rs.RemoteControlURL = st.RemoteControlURL()
+			rs.RemoteControl = rs.RemoteControlURL != ""
+		}
+		out = append(out, rs)
 	}
 	return out
 }

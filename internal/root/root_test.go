@@ -19,6 +19,7 @@ func TestArgs(t *testing.T) {
 		"--append-system-prompt", "INSTR",
 		"--allowedTools", "mcp__wate__wate_sessions", "mcp__wate__wate_tabs", "mcp__wate__wate_session_open",
 		"mcp__wate__wate_session_focus", "mcp__wate__wate_session_move", "mcp__wate__wate_notify",
+		"mcp__wate__wate_session_remote_control",
 		"Bash(/bin/wate ctl watch --once)", "Read(~/.claude/projects/**)",
 		"--mcp-config", "MCP",
 	}

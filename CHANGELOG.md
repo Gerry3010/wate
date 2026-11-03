@@ -26,6 +26,13 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   edge, the overlay by any edge or corner, and it stays centred. The size is kept in `[root]`
   (`drawer_width`, `top_height`, `overlay_width`, `overlay_height`, in percent of the window)
   and stays between 320 × 160 pixels and 85 % of the window.
+- The root agent can switch Remote Control on in a session (`wate_session_remote_control`). wate
+  enters `/remote-control` at the session's prompt, as the sidebar's menu does, and only while
+  Claude Code reports the session idle and the prompt line is empty, so the command cannot land
+  in your typing or in a dialog. Otherwise the tool answers busy, waiting or input not empty and
+  types nothing. A session that has Remote Control on already just reports its link.
+  `wate_session_open` takes `remote_control` (and `remote_control_name`) to start a session with
+  it on, and `wate_sessions` lists which sessions have it on, with the link.
 - `[claude] subagent_depth` puts `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` into every pane. At 1,
   sessions start subagents that start none of their own.
 - Once every agent has said go, the restart happens by itself after ten seconds
