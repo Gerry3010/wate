@@ -38,6 +38,22 @@ func TestRootOutOfRangeFallsBack(t *testing.T) {
 	}
 }
 
+func TestRootPanelSizes(t *testing.T) {
+	d := Defaults().Root
+	if d.Docked || d.DrawerWidth != 45 || d.TopHeight != 50 || d.OverlayWidth != 72 || d.OverlayHeight != 78 {
+		t.Fatalf("defaults: %+v", d)
+	}
+	// What dragging writes (a whole number comes out as a TOML integer), and what a hand might.
+	c, err := Parse([]byte("[root]\ndocked = true\ndrawer_width = 30\ntop_height = 62.5\noverlay_width = 99\noverlay_height = -1\n"), Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := c.Root
+	if !r.Docked || r.DrawerWidth != 30 || r.TopHeight != 62.5 || r.OverlayWidth != MaxPanelPercent || r.OverlayHeight != 78 {
+		t.Fatalf("got %+v", r)
+	}
+}
+
 func TestParseOverlay(t *testing.T) {
 	c, err := Parse([]byte(`
 [terminal]

@@ -18,7 +18,7 @@ import { moveItem } from "./tabs/order";
 import type { Pane } from "./pane";
 import { Tab, nextId } from "./tabs/tab";
 import { findTab } from "./tabs/resolve";
-import { RootPanel, ROOT_LAYOUTS, rootLayout } from "./root/panel";
+import { dockable, RootPanel, ROOT_LAYOUTS, rootLayout } from "./root/panel";
 import { TabBar } from "./tabs/tabbar";
 import { TerminalPane, type PaneNotice } from "./terminal/pane";
 import { statusView, type StatusHost } from "./terminal/status";
@@ -116,13 +116,22 @@ export class WateApp {
     this.main.className = "main";
     this.main.append(this.content, this.sidebar.element);
     this.rootPanel = new RootPanel(this.keymap.label("open_root"));
-    this.rootPanel.setLayout(rootLayout(config.root.layout));
+    this.rootPanel.setLayout(rootLayout(config.root.layout), config.root.docked);
+    this.rootPanel.setSizes(config.root);
     this.rootPanel.onVisibility = (open) => {
       // Closing it hands the keys back to whatever was in front before.
       if (!open) this.active?.focusPane();
       this.reportFocus();
     };
+    this.rootPanel.onResize = (sizes) => {
+      const values = Object.fromEntries(Object.entries(sizes).map(([k, v]) => [`root.${k}`, v]));
+      void ConfigService.Set(values).catch((err) => console.warn("root panel size:", err));
+    };
     root.append(this.tabBar.element, this.main, this.rootPanel.element, this.rootPanel.fab);
+    this.placeRootPanel();
+    // Docked, the root panel and the terminals are on screen together, and moving between them
+    // need not change any tab's focus: only the DOM's focus says which one has the keys.
+    document.addEventListener("focusin", () => this.reportFocus());
     window.addEventListener("keydown", (e) => this.onKey(e), { capture: true });
     // A dropped file would otherwise navigate the WebView to file:///… — the image then covers
     // every pane and only a restart brings them back. So wate takes the drop itself (see drop.ts).
@@ -550,7 +559,9 @@ export class WateApp {
   private lastFocusReport = "";
 
   private reportFocus() {
-    const pane = (this.rootPanel.open ? this.rootPanel.pane?.id : this.active?.focusedId) ?? "";
+    const panel = this.rootPanel;
+    const inPanel = panel.open && (!panel.docked || panel.element.contains(document.activeElement));
+    const pane = (inPanel ? panel.pane?.id : this.active?.focusedId) ?? "";
     const key = `${pane}|${document.hasFocus()}`;
     // The backend answers a focus report with an agent:status event, which repaints the
     // chrome — so only report when it actually says something new.
@@ -696,7 +707,9 @@ export class WateApp {
     this.config = config;
     this.keymap = new Keymap(config.keys, config.general.passthrough ?? []);
     await this.loadTheme();
-    this.rootPanel.setLayout(rootLayout(config.root.layout));
+    this.rootPanel.setLayout(rootLayout(config.root.layout), config.root.docked);
+    this.rootPanel.setSizes(config.root);
+    this.placeRootPanel();
     this.rootPanel.pane?.applyConfig(config.terminal, this.fontDelta, this.termTheme());
     // Switched on in the settings: no restart needed.
     if (config.root.enabled) void this.ensureRoot();
@@ -870,10 +883,41 @@ export class WateApp {
             checked: layout === current,
             onSelect: () => void ConfigService.Set({ "root.layout": layout }).catch((err) => console.warn("root layout:", err)),
           })),
+          {
+            label: "Docked",
+            hint: dockable(current) ? "beside the terminals" : "not for the overlay",
+            checked: this.config.root.docked && dockable(current),
+            disabled: !dockable(current),
+            onSelect: () => void ConfigService.Set({ "root.docked": !this.config.root.docked }).catch((err) => console.warn("root docked:", err)),
+          },
           { label: "Hide panel", hint: this.keymap.label("open_root"), onSelect: () => this.rootPanel.hide() },
         ];
       },
     };
+  }
+
+  /**
+   * Put the root panel where its layout wants it. Floating, it lies over everything; docked, it
+   * is a flex item that takes its room from the terminals: in .main after the sidebar (so at the
+   * window's right edge, where the floating drawer appears too) or between the tab bar and .main.
+   */
+  private placeRootPanel() {
+    const el = this.rootPanel.element;
+    const app = this.main.parentElement;
+    if (!app) return;
+    const had = el.contains(document.activeElement);
+    switch (this.rootPanel.dockedAt) {
+      case "side":
+        if (el.parentElement !== this.main || el.nextElementSibling) this.main.append(el);
+        break;
+      case "top":
+        if (el.nextElementSibling !== this.main) app.insertBefore(el, this.main);
+        break;
+      default:
+        if (el.nextElementSibling !== this.rootPanel.fab) app.insertBefore(el, this.rootPanel.fab);
+    }
+    // Moving an element takes the focus out of it.
+    if (had && !el.contains(document.activeElement)) this.rootPanel.pane?.focus();
   }
 
   /** Show or hide the root agent's panel, wherever the agent lives, starting it if need be. */
@@ -927,7 +971,8 @@ export class WateApp {
     this.scheduleSave();
     const started = pane.start().catch((err) => console.warn("open session:", err));
     if (args.focus) {
-      this.rootPanel.hide();
+      // Docked, the panel covers nothing and may stay.
+      if (!this.rootPanel.docked) this.rootPanel.hide();
       this.activate(tab);
       tab.setFocus(pane.id);
       void started.then(() => pane.focus());
@@ -1261,7 +1306,7 @@ export class WateApp {
     // clicked minutes after it went out).
     const tab = (paneId ? this.tabOfPane(paneId) : undefined) ?? this.tabs.find((t) => t.id === tabId);
     if (!tab) return;
-    this.rootPanel.hide();
+    if (!this.rootPanel.docked) this.rootPanel.hide();
     this.activate(tab);
     if (paneId && tab.panes.has(paneId)) {
       tab.setFocus(paneId);

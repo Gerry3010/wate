@@ -115,7 +115,10 @@ Turn on `[root] enabled` and wate starts one more Claude Code session that keeps
 every other session in every window. It runs in a panel over the tabs: the Root button in the
 bottom right corner, the button in the Claude sidebar or `Ctrl+Shift+O` brings it up. `[root]
 layout` (or the panel's own pane menu) decides how it opens: as a drawer from the right, a
-centred overlay, or dropping down from the top.
+centred overlay, or dropping down from the top. With `[root] docked` the drawer and the
+drop-down sit beside the terminals, which make room for them while they are open. Drag the
+panel's free edge to resize it; the overlay takes any edge or corner and stays centred. wate
+keeps the size in `[root]`, in percent of the window, between 320 × 160 pixels and 85 %.
 
 wate does the watching itself, without a model. A session that has sat on a permission prompt
 or ended on a question for `waiting_minutes` (10) without you looking at it goes into a queue,

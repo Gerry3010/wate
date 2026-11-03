@@ -19,6 +19,13 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   when you asked for them; a directory Claude Code does not trust yet always comes to the front.
   Its tools work only from its own pane, proven by the pane token. Its session carries on across
   restarts.
+- The root agent's panel can be docked (`[root] docked`, or Docked in its pane menu and in the
+  settings). The drawer and the drop-down then sit beside the terminals, which make room while
+  the panel is open and get it back when it closes. The centred overlay always floats. Each
+  layout can be resized by dragging: the drawer by its left edge, the drop-down by its bottom
+  edge, the overlay by any edge or corner, and it stays centred. The size is kept in `[root]`
+  (`drawer_width`, `top_height`, `overlay_width`, `overlay_height`, in percent of the window)
+  and stays between 320 × 160 pixels and 85 % of the window.
 - `[claude] subagent_depth` puts `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` into every pane. At 1,
   sessions start subagents that start none of their own.
 - Once every agent has said go, the restart happens by itself after ten seconds

@@ -111,6 +111,11 @@ subagent_depth = 0                      # how deep subagents may nest in session
 [root]
 enabled = false                         # one long-lived Claude Code session that watches all the others
 layout = "drawer"                       # how its panel opens: "drawer" (from the right), "overlay" (centred), "top"
+docked = false                          # drawer and top: beside the terminals, which make room, instead of over them
+drawer_width = 45                       # panel size in % of the window (at most 85); dragging its edge sets these
+top_height = 50
+overlay_width = 72
+overlay_height = 78
 cwd = "~"                               # where it runs (its auto-memory belongs to this directory)
 model = "opus"
 waiting_minutes = 10                    # a permission prompt or question left this long wakes it (0 = never)

@@ -114,6 +114,14 @@ type Root struct {
 	// Layout is how its panel opens over the tabs: "drawer" (from the right), "overlay"
 	// (centred) or "top" (dropping down).
 	Layout string `toml:"layout" json:"layout"`
+	// Docked puts the drawer or the drop-down beside the terminals, which then make room for it,
+	// instead of over them. The centred overlay always floats.
+	Docked bool `toml:"docked" json:"docked"`
+	// The panel's size in percent of the window, one per layout; dragging its edge sets them.
+	DrawerWidth   float64 `toml:"drawer_width" json:"drawer_width"`
+	TopHeight     float64 `toml:"top_height" json:"top_height"`
+	OverlayWidth  float64 `toml:"overlay_width" json:"overlay_width"`
+	OverlayHeight float64 `toml:"overlay_height" json:"overlay_height"`
 	// Cwd is where it runs; its auto-memory belongs to that directory.
 	Cwd   string `toml:"cwd" json:"cwd"`
 	Model string `toml:"model" json:"model"`
@@ -249,6 +257,18 @@ func clamp01(v float64) float64 {
 	return v
 }
 
+// MaxPanelPercent is the most of the window the root agent's panel may take: the terminals
+// always keep a strip.
+const MaxPanelPercent = 85
+
+// panelPercent keeps a panel size inside 0..MaxPanelPercent; nothing usable means fallback.
+func panelPercent(v, fallback float64) float64 {
+	if v <= 0 {
+		return fallback
+	}
+	return min(v, MaxPanelPercent)
+}
+
 func finish(c Config) Config {
 	c.Keys = effectiveKeys(c.KeysRaw, runtime.GOOS)
 	c.Background.Wallpaper = ExpandHome(c.Background.Wallpaper)
@@ -287,6 +307,10 @@ func finish(c Config) Config {
 	default:
 		c.Root.Layout = "drawer"
 	}
+	c.Root.DrawerWidth = panelPercent(c.Root.DrawerWidth, 45)
+	c.Root.TopHeight = panelPercent(c.Root.TopHeight, 50)
+	c.Root.OverlayWidth = panelPercent(c.Root.OverlayWidth, 72)
+	c.Root.OverlayHeight = panelPercent(c.Root.OverlayHeight, 78)
 	c.Root.Cwd = ExpandHome(c.Root.Cwd)
 	c.Root.Instructions = ExpandHome(c.Root.Instructions)
 	c.Root.WaitingMinutes = max(c.Root.WaitingMinutes, 0)

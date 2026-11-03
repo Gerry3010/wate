@@ -2,7 +2,7 @@ import { Dialogs } from "@wailsio/runtime";
 import type { ImportedTab } from "../session";
 
 import { ConfigService, ImportService, OpenerService, ThemeService, type Config, type ImportSource, type Resolved } from "../api";
-import { ROOT_LAYOUTS } from "../root/panel";
+import { dockable, ROOT_LAYOUTS, rootLayout } from "../root/panel";
 import { chordId, eventChord } from "../keymap/keymap";
 import type { Pane } from "../pane";
 
@@ -290,6 +290,8 @@ export class SettingsPane implements Pane {
     const rt = this.section("Root agent", "root");
     this.check(rt, "Run the root agent", "root.enabled", c.root.enabled);
     this.select(rt, "Panel opens as", "root.layout", c.root.layout, ROOT_LAYOUTS);
+    const docked = this.check(rt, "Docked", "root.docked", c.root.docked, " beside the terminals, not over them");
+    docked.disabled = !dockable(rootLayout(c.root.layout));
     this.text(rt, "Directory", "root.cwd", c.root.cwd, "~");
     this.text(rt, "Model", "root.model", c.root.model, "empty = Claude Code's default");
     this.number(rt, "Wake after", "root.waiting_minutes", c.root.waiting_minutes, 0, 1440, " min unanswered (0 = never)");
@@ -649,12 +651,13 @@ export class SettingsPane implements Pane {
     r.querySelector(".settings-control")!.appendChild(out);
   }
 
-  private check(parent: HTMLElement, label: string, key: string, value: boolean) {
+  private check(parent: HTMLElement, label: string, key: string, value: boolean, suffix = ""): HTMLInputElement {
     const i = document.createElement("input");
     i.type = "checkbox";
     i.checked = !!value;
     i.addEventListener("change", () => void this.set({ [key]: i.checked }));
-    this.row(parent, label, i);
+    this.row(parent, label, i, suffix);
+    return i;
   }
 
   private select(

@@ -675,8 +675,9 @@ html, body {
 .confirm-button.danger { border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red); }
 .confirm-button.danger:hover { background: color-mix(in srgb, var(--red) 16%, transparent); }
 
-/* The root agent's panel lies over the tabs ([root] layout picks how); the button in the corner
-   brings it up. Violet, like the root agent's notifications. */
+/* The root agent's panel lies over the tabs ([root] layout picks how), or beside them when
+   docked; the button in the corner brings it up. Violet, like the root agent's notifications.
+   Its size comes from [root] in percent of the window, kept between a floor in pixels and 85 %. */
 .root-panel {
   position: fixed;
   z-index: 60;
@@ -687,9 +688,38 @@ html, body {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 .root-panel[hidden] { display: none; }
-.root-panel.root-drawer { top: 38px; right: 0; bottom: 0; width: max(45vw, 420px); border-width: 0 0 0 1px; }
-.root-panel.root-overlay { top: 9vh; left: 14vw; width: 72vw; height: 78vh; border-radius: 10px; overflow: hidden; }
-.root-panel.root-top { top: 38px; left: 0; right: 0; height: 50vh; border-width: 0 0 1px 0; }
+.root-panel.root-drawer { top: 38px; right: 0; bottom: 0; width: clamp(320px, var(--root-drawer-w), 85vw); border-width: 0 0 0 1px; }
+.root-panel.root-overlay {
+  --w: clamp(320px, var(--root-overlay-w), 85vw);
+  --h: clamp(160px, var(--root-overlay-h), 85vh);
+  left: calc((100vw - var(--w)) / 2);
+  top: calc((100vh - var(--h)) / 2);
+  width: var(--w);
+  height: var(--h);
+  border-radius: 10px;
+}
+/* The rounding is clipped inside, so the resize handles can reach over the edge. */
+.root-panel.root-overlay .root-panel-body { border-radius: 9px; overflow: hidden; }
+.root-panel.root-top { top: 38px; left: 0; right: 0; height: clamp(160px, var(--root-top-h), 85vh); border-width: 0 0 1px 0; }
+/* Docked it is one more flex item: right of the content and the sidebar in .main, or between
+   the tab bar and .main. Hidden, it takes no room at all. */
+.root-panel.docked { position: relative; inset: auto; z-index: auto; flex: none; box-shadow: none; }
+.root-resize { position: absolute; z-index: 2; touch-action: none; }
+.root-resize[hidden] { display: none; }
+/* Handles straddle the edge, so little of them lies over the panel: the pane menu's button sits
+   in the top right corner. */
+.root-resize[data-edge="w"] { left: -4px; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
+.root-resize[data-edge="e"] { right: -4px; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
+.root-resize[data-edge="n"] { top: -4px; left: 0; right: 0; height: 8px; cursor: ns-resize; }
+.root-resize[data-edge="s"] { bottom: -4px; left: 0; right: 0; height: 8px; cursor: ns-resize; }
+.root-resize[data-edge="nw"] { top: -4px; left: -4px; width: 10px; height: 10px; cursor: nwse-resize; }
+.root-resize[data-edge="se"] { bottom: -4px; right: -4px; width: 10px; height: 10px; cursor: nwse-resize; }
+.root-resize[data-edge="ne"] { top: -4px; right: -4px; width: 10px; height: 10px; cursor: nesw-resize; }
+.root-resize[data-edge="sw"] { bottom: -4px; left: -4px; width: 10px; height: 10px; cursor: nesw-resize; }
+.root-resize:hover, .root-resize.active { background: color-mix(in srgb, #785cd4 45%, transparent); }
+/* While dragging, the terminal underneath must not take the pointer or start a selection. */
+.root-panel.resizing { user-select: none; }
+.root-panel.resizing .root-panel-body { pointer-events: none; }
 .root-panel-body { flex: 1 1 auto; min-height: 0; display: flex; }
 .root-panel-body > .pane { border-radius: 0; outline: none; }
 .root-fab {
