@@ -2,6 +2,7 @@ import { Terminal, type IDecoration, type IMarker, type ITerminalOptions } from 
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon, type ISerializeOptions } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { ImageAddon } from "@xterm/addon-image";
 import "@xterm/xterm/css/xterm.css";
 
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -190,12 +191,18 @@ export class TerminalPane implements Pane {
       // macOS has no Shift-drag override, so Option+drag is what selects text while a
       // program (Claude Code, vim, htop) has mouse reporting on.
       macOptionClickForcesSelection: true,
+      // Programs that draw pictures (terminal-browser, image viewers) size them in pixels and
+      // ask the terminal how big a cell is (CSI 16 t) and the whole screen (CSI 14 t).
+      windowOptions: { getCellSizePixels: true, getWinSizePixels: true },
       theme: opts.theme,
     };
     this.term = new Terminal(termOpts);
     this.term.loadAddon(this.fit);
     this.term.loadAddon(this.serializer);
     this.term.open(this.body);
+    // Pictures in the terminal: the kitty graphics protocol (which terminal-browser draws its
+    // pages with), SIXEL and iTerm's inline images.
+    this.term.loadAddon(new ImageAddon());
     this.setPadding(t.padding);
     this.wantVisible = opts.visible !== false;
     if (this.wantVisible) this.enableWebgl();
@@ -492,15 +499,32 @@ export class TerminalPane implements Pane {
     setTimeout(() => this.term.paste(text), 30);
   }
 
+  /**
+   * Input waiting for the end of the current task, so that what the terminal answers in one go
+   * reaches the program in one read. A program that asks two things at once (terminal-browser
+   * asks about graphics and for the device attributes) stops reading at the answer it waited
+   * for; an answer that arrives in a second read is left over for the shell, which then shows
+   * it as typed text.
+   */
+  private unsent = "";
+
   private send(data: string, binary = false) {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     if (binary) {
+      this.flushInput();
       const bytes = new Uint8Array(data.length);
       for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i) & 0xff;
       this.ws.send(bytes);
-    } else {
-      this.ws.send(ENCODER.encode(data));
+      return;
     }
+    if (!this.unsent) queueMicrotask(() => this.flushInput());
+    this.unsent += data;
+  }
+
+  private flushInput() {
+    const data = this.unsent;
+    this.unsent = "";
+    if (data && this.ws?.readyState === WebSocket.OPEN) this.ws.send(ENCODER.encode(data));
   }
 
   private sendResize(cols: number, rows: number) {
@@ -594,6 +618,11 @@ export class TerminalPane implements Pane {
     const out: string[] = [];
     for (let i = start; i <= end; i++) out.push(buf.getLine(i)?.translateToString(true) ?? "");
     return clampTail(trimTrailingBlanks(out).join("\n"));
+  }
+
+  /** Paste text as the user would: bracketed when the program asked for that. */
+  paste(text: string) {
+    this.term.paste(text);
   }
 
   /** What Claude Code's input box on this screen holds (see claudeInput). */

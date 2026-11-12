@@ -33,6 +33,8 @@ type Session struct {
 	ID   string
 	cmd  *exec.Cmd
 	file *os.File
+	// tty is the terminal device the process sees ("/dev/pts/3"), "" when it could not be told.
+	tty string
 
 	done     chan struct{}
 	exitCode int
@@ -50,6 +52,9 @@ func (s *Session) File() *os.File { return s.file }
 
 // Pid is the process id of the spawned child (the shell).
 func (s *Session) Pid() int { return s.cmd.Process.Pid }
+
+// TTY is the terminal device the process sees ("/dev/pts/3"), "" when it could not be told.
+func (s *Session) TTY() string { return s.tty }
 
 // Done is closed once the child has exited.
 func (s *Session) Done() <-chan struct{} { return s.done }
@@ -132,7 +137,7 @@ func (m *Manager) Spawn(opts SpawnOptions) (*Session, error) {
 		return nil, fmt.Errorf("spawn %v: %w", argv, err)
 	}
 
-	s := &Session{ID: uuid.NewString(), cmd: cmd, file: f, done: make(chan struct{})}
+	s := &Session{ID: uuid.NewString(), cmd: cmd, file: f, tty: ttyName(f, cmd.Process.Pid), done: make(chan struct{})}
 	s.startPump()
 	m.mu.Lock()
 	m.sessions[s.ID] = s

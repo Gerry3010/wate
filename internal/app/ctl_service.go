@@ -16,6 +16,7 @@ import (
 
 	"github.com/Gerry3010/wate/internal/ctl"
 	rootpkg "github.com/Gerry3010/wate/internal/root"
+	"github.com/Gerry3010/wate/internal/tbsock"
 	"github.com/Gerry3010/wate/internal/theme"
 )
 
@@ -56,6 +57,9 @@ type CtlService struct {
 	// Root is set after construction too, for the same reason.
 	Root   *RootService
 	server *ctl.Server
+	// browser answers terminal-browser on a socket of its own (see terminalBrowser).
+	browser       *terminalBrowser
+	browserServer *tbsock.Server
 	// OnHook is set by the agent service.
 	OnHook func(HookEvent)
 }
@@ -82,6 +86,13 @@ func (c *CtlService) ServiceStartup(context.Context, application.ServiceOptions)
 	}
 	c.server = s
 	c.pty.SetSocketPath(s.Path())
+	c.browser = newTerminalBrowser(c.terminalBrowserOps())
+	if tb, err := tbsock.Listen(tbsock.SocketPath(filepath.Dir(s.Path()), os.Getpid()), c.browser.handle); err == nil {
+		c.browserServer = tb
+		c.pty.SetTerminalBrowserSocket(tb.Path())
+	} else {
+		slog.Warn("terminal-browser socket", "err", err)
+	}
 	// Record the socket for later starts with the same config (see ctl.FindPrimary). A secondary
 	// window must not take that role over from the instance that owns the session.
 	if !c.cfg.Secondary {
@@ -94,6 +105,9 @@ func (c *CtlService) ServiceStartup(context.Context, application.ServiceOptions)
 
 func (c *CtlService) ServiceShutdown() error {
 	c.Resign()
+	if c.browserServer != nil {
+		_ = c.browserServer.Close()
+	}
 	if c.server != nil {
 		return c.server.Close()
 	}

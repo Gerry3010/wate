@@ -75,3 +75,26 @@ func TestCwdAndResize(t *testing.T) {
 		t.Fatal("shutdown did not terminate session")
 	}
 }
+
+func TestTTYIsTheOneTheProcessSees(t *testing.T) {
+	m := NewManager()
+	s, err := m.Spawn(SpawnOptions{Command: []string{"/bin/sh", "-c", "tty; sleep 5"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Kill()
+	if !strings.HasPrefix(s.TTY(), "/dev/") {
+		t.Fatalf("tty %q", s.TTY())
+	}
+	out, unsubscribe := s.Subscribe()
+	defer unsubscribe()
+	var seen strings.Builder
+	for !strings.Contains(seen.String(), s.TTY()+"\r\n") {
+		select {
+		case chunk := <-out.C:
+			seen.Write(chunk)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("the process says %q, the session %q", seen.String(), s.TTY())
+		}
+	}
+}

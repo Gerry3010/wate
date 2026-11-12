@@ -147,8 +147,21 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 - Programs can put text on the clipboard with OSC 52 (`[terminal] osc52`, on by default): copying
   inside Claude Code, tmux or vim over ssh now actually reaches the system clipboard. Reading the
   clipboard is never answered.
+- terminal-browser works in wate. `terminal-browser open --split right <url>` opens its browser
+  as a wate pane beside the one it was run in. Every pane carries
+  `TERMINAL_BROWSER_TERMINAL_SOCKET`, the socket terminal-browser asks instead of guessing the
+  terminal from its list, and wate answers which pane a tty belongs to, opens the split and
+  names a pane's neighbours. The page arrives as pictures over the kitty graphics protocol, and
+  the terminal draws those now, SIXEL and iTerm's inline images as well. Programs may ask for
+  the size of a cell and of the screen in pixels. When you send an element from the page to the
+  agent, the browser pastes it into the pane it was opened from, and into no other.
 
 ### Changed
+- wate runs on xterm.js 6.1 beta (6.1.0-beta.336 and the addons released with it, pinned
+  exactly), the first version with the kitty graphics protocol.
+- What the terminal answers in one go reaches the program in one read. terminal-browser asks
+  about graphics and for the device attributes together and stops reading after the answer it
+  waits for; the other one used to end up at the shell prompt as typed text (`62;4;9;22c`).
 - The Claude sidebar spans windows: a session running in another window is listed with
   "other window", and clicking it raises that window and focuses the pane instead of doing
   nothing. Notification suppression is now per window too — with two open, one window losing

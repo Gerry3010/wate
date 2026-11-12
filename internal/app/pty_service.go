@@ -18,6 +18,7 @@ import (
 	"github.com/Gerry3010/wate/internal/config"
 	"github.com/Gerry3010/wate/internal/pty"
 	"github.com/Gerry3010/wate/internal/shell"
+	"github.com/Gerry3010/wate/internal/tbsock"
 	"github.com/Gerry3010/wate/internal/wsbridge"
 )
 
@@ -37,6 +38,8 @@ type PtyService struct {
 
 	mu     sync.RWMutex
 	socket string
+	// browserSocket is $TERMINAL_BROWSER_TERMINAL_SOCKET in every pane (see terminalBrowser).
+	browserSocket string
 	// byPane maps WATE_PANE_ID → session id so the control socket can address panes.
 	byPane map[string]string
 	tabOf  map[string]string
@@ -143,7 +146,7 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 		cwd, _ = os.UserHomeDir()
 	}
 	p.mu.RLock()
-	socket := p.socket
+	socket, browserSocket := p.socket, p.browserSocket
 	p.mu.RUnlock()
 	token := paneToken()
 	env := []string{
@@ -157,6 +160,11 @@ func (p *PtyService) Spawn(req SpawnRequest) (SpawnResult, error) {
 		"WATE_PANE_TOKEN=" + token,
 		// The shell integration binds the word-wise keys according to this.
 		"WATE_WORD_KEYS=" + cfg.Terminal.WordKeys,
+	}
+	// terminal-browser asks wate which pane it is in and how to open one beside it, instead of
+	// guessing the terminal from a list wate is not on.
+	if browserSocket != "" {
+		env = append(env, tbsock.Env+"="+browserSocket)
 	}
 	// Ctrl+Backspace arrives as 0x08, which Claude Code reads as a plain backspace on Linux
 	// and macOS unless this is set — so the key would delete a character there while deleting
@@ -277,6 +285,14 @@ func (p *PtyService) Kill(id string) {
 	}
 }
 
+// SetTerminalBrowserSocket records the socket terminal-browser asks about panes, for new
+// shells' environment.
+func (p *PtyService) SetTerminalBrowserSocket(path string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.browserSocket = path
+}
+
 // SetSocketPath records the control socket for new shells' environment.
 func (p *PtyService) SetSocketPath(path string) {
 	p.mu.Lock()
@@ -325,6 +341,8 @@ type PaneInfo struct {
 	TabID     string
 	SessionID string
 	Pid       int
+	// TTY is the terminal device the pane's processes see ("/dev/pts/3").
+	TTY string
 }
 
 // Panes lists every pane with a live shell.
@@ -337,7 +355,7 @@ func (p *PtyService) Panes() []PaneInfo {
 		if !ok {
 			continue
 		}
-		out = append(out, PaneInfo{PaneID: paneID, TabID: p.tabOf[paneID], SessionID: sid, Pid: s.Pid()})
+		out = append(out, PaneInfo{PaneID: paneID, TabID: p.tabOf[paneID], SessionID: sid, Pid: s.Pid(), TTY: s.TTY()})
 	}
 	return out
 }

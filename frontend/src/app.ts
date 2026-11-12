@@ -1090,7 +1090,16 @@ export class WateApp {
     const pane = this.paneById(req.pane);
     const tab = this.tabOfPane(req.pane);
     if (!pane || !tab) throw new Error(`no such pane ${req.pane}`);
-    const args = JSON.parse(req.data || "{}") as { lines?: number; dir?: Dir; ratio?: number };
+    const args = JSON.parse(req.data || "{}") as {
+      lines?: number;
+      dir?: Dir;
+      ratio?: number;
+      before?: boolean;
+      command?: string[];
+      plain?: boolean;
+      direction?: Direction;
+      text?: string;
+    };
     switch (req.kind) {
       case "read": {
         if (!(pane instanceof TerminalPane)) throw new Error(`pane ${req.pane} is not a terminal`);
@@ -1101,9 +1110,21 @@ export class WateApp {
         return pane.claudeInput();
       }
       case "split": {
+        // An agent's split gets a shell set up for it; terminal-browser's (plain) runs its own
+        // command, and may go left of or above the pane.
         const dir: Dir = args.dir === "col" ? "col" : "row";
-        const made = await this.addTerminal(tab, dir, { agent: true }, { target: req.pane, ratio: args.ratio || undefined });
+        const opts = args.plain ? { command: args.command?.length ? args.command : undefined } : { agent: true };
+        const made = await this.addTerminal(tab, dir, opts, { target: req.pane, ratio: args.ratio || undefined, before: !!args.before });
         return made.id;
+      }
+      case "neighbor": {
+        if (!args.direction) throw new Error("neighbor needs a direction");
+        return neighbor(tab.rects(), req.pane, args.direction) ?? "";
+      }
+      case "paste": {
+        if (!(pane instanceof TerminalPane)) throw new Error(`pane ${req.pane} is not a terminal`);
+        pane.paste(args.text ?? "");
+        return "";
       }
       case "ratio": {
         const dir: Dir = args.dir === "col" ? "col" : "row";

@@ -34,6 +34,8 @@ notifications, session sidebar) without any AI of its own.
 - [x] Session restore: tabs, splits, directories and open files come back on the next start
 - [x] Settings pane (`Ctrl+,`) with theme preview cards and a keybinding recorder
 - [x] Claude Code: launcher, tab badge, "waiting for input" notifications, session sidebar
+- [x] Pictures in the terminal (kitty graphics, SIXEL, iTerm inline images); terminal-browser
+      opens beside the pane it was run in
 
 ## Keybindings (defaults)
 
@@ -108,6 +110,15 @@ Process detection works out of the box. For precise states run **`wate install-h
 it registers `wate hook <event>` for `SessionStart`, `UserPromptSubmit`, `Notification`, `Stop`
 and `SessionEnd` in `~/.claude/settings.json` (existing hooks are kept, a backup is written).
 Outside wate the hooks are silent no-ops.
+
+### terminal-browser
+
+`terminal-browser open --split right <url>` opens a browser in a wate pane beside the one it
+was run in, so an agent can show you a page next to the conversation. Every pane carries
+`TERMINAL_BROWSER_TERMINAL_SOCKET`, and terminal-browser asks wate through it which pane it is
+in and where the split goes. The page arrives as pictures over the kitty graphics protocol,
+which wate draws. An element you pick in the page and send to the agent is pasted into the pane
+the browser was opened from; the browser cannot type into any other pane.
 
 ### Root agent
 
