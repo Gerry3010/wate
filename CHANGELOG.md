@@ -147,6 +147,8 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 - Programs can put text on the clipboard with OSC 52 (`[terminal] osc52`, on by default): copying
   inside Claude Code, tmux or vim over ssh now actually reaches the system clipboard. Reading the
   clipboard is never answered.
+- The Claude sidebar can sort sessions by context use (Context used in its sort menu). The
+  fullest context comes first, and sessions with none known yet come last.
 
 ### Changed
 - The Claude sidebar spans windows: a session running in another window is listed with
@@ -184,6 +186,13 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- wate took the context window of Opus 5.5 to be 200k until a session grew past it, and the
+  same for every other model that Claude Code runs with 1M from the start. The sidebar showed
+  177k as 89 %, and the root agent was woken at 85 % for sessions that were far from full:
+  six times in one night. wate now sizes the window from Claude Code's own model table: 1M
+  for Opus 4.7 and later, Sonnet 5, Haiku 5, Fable and Mythos, 200k for older models unless
+  they were picked with `[1m]` or grow past it. With `CLAUDE_CODE_DISABLE_1M_CONTEXT` set,
+  set `[claude] context_window = 200000` to match.
 - After a restart, the root agent saw every resumed session as working. Resuming a session
   starts it, and wate took the start for a prompt. A session that has just started or been
   resumed now counts as done until a prompt comes in, and compacting in the middle of a turn

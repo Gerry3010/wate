@@ -10,7 +10,7 @@ import { rowCwd, rowTitle, type Row } from "./groups";
  * questions: Claude's last word was a question for you — answered or not, until the next prompt.
  */
 export type StatusFilter = "all" | "input" | "questions" | "working" | "done";
-export type SortKey = "started" | "name" | "id" | "dir";
+export type SortKey = "started" | "name" | "id" | "dir" | "context";
 
 export interface View {
   filter: StatusFilter;
@@ -34,6 +34,7 @@ export const SORTS: [SortKey, string][] = [
   ["name", "Name"],
   ["id", "Session id"],
   ["dir", "Directory"],
+  ["context", "Context used"],
 ];
 
 export function matchesFilter(r: Row, f: StatusFilter): boolean {
@@ -72,10 +73,23 @@ function byStart(rows: Row[]): Row[] {
   });
 }
 
-/** By start time, or by name, id or directory with ties broken by name. */
+/** How full the session's context window is, in percent; -1 for none known (an ended favourite). */
+function contextUsed(r: Row): number {
+  const s = r.live;
+  if (s?.context_percent) return s.context_percent;
+  const tokens = s?.context?.tokens ?? 0;
+  const window = s?.context?.window ?? 0;
+  return tokens && window ? (tokens * 100) / window : -1;
+}
+
+/**
+ * By start time; by name, id or directory with ties broken by name; or fullest context first,
+ * so the session closest to a compact is on top.
+ */
 export function sortRows(rows: Row[], key: SortKey): Row[] {
   if (key === "started") return byStart(rows);
-  const by: Record<Exclude<SortKey, "started">, (r: Row) => string> = {
+  if (key === "context") return [...rows].sort((a, b) => contextUsed(b) - contextUsed(a) || collator.compare(rowTitle(a, rowCwd(a)), rowTitle(b, rowCwd(b))));
+  const by: Record<Exclude<SortKey, "started" | "context">, (r: Row) => string> = {
     name: (r) => rowTitle(r, rowCwd(r)),
     id: (r) => r.id,
     dir: (r) => rowCwd(r),

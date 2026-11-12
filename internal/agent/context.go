@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -14,7 +16,7 @@ import (
 type Context struct {
 	// Tokens currently in the context (input + cache read + cache creation of the latest turn).
 	Tokens int `json:"tokens"`
-	// Window is the model's context size in tokens (best guess, see WindowFor).
+	// Window is the model's context size in tokens (see WindowFor).
 	Window int    `json:"window"`
 	Model  string `json:"model"`
 	// The latest turn's usage: what Tokens is made of, plus what the model wrote.
@@ -89,16 +91,13 @@ func ReadContext(path string) (c Context, ok bool) {
 	return c, false
 }
 
-// WindowFor guesses the context window: the configured size wins; otherwise 200k, or 1M for
-// models known to have it — and never less than what the transcript already shows in use.
+// WindowFor is the context window a session has: the configured size wins; otherwise the one
+// Claude Code gives the model (NativeWindow), and never less than what the transcript already
+// shows in use.
 func WindowFor(model string, configured, observed int) int {
 	w := configured
 	if w <= 0 {
-		w = 200_000
-		m := strings.ToLower(model)
-		if strings.Contains(m, "fable") || strings.Contains(m, "mythos") || strings.Contains(m, "[1m]") || strings.HasSuffix(m, "-1m") {
-			w = 1_000_000
-		}
+		w = NativeWindow(model)
 	}
 	for observed > w {
 		// Beyond the assumed window: the model must have a bigger one.
@@ -109,6 +108,41 @@ func WindowFor(model string, configured, observed int) int {
 		}
 	}
 	return w
+}
+
+// modelVersion splits a model id such as claude-opus-4-7 or claude-haiku-4-5-20251001 into family,
+// major and minor version; a date is no minor version.
+var modelVersion = regexp.MustCompile(`^claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d{1,2}))?(?:$|[-\[])`)
+
+// NativeWindow is the context window Claude Code opens a model with, after its own model table
+// (Claude Code 2.1.322): Opus from 4.7, Sonnet and Haiku from 5, and every Fable and Mythos have
+// 1M from the first turn. They do not start at 200k and switch over. The older models have 200k
+// unless picked with the [1m] suffix, which the transcript does not record, so such a session
+// only shows its 1M by growing past 200k (see WindowFor). With
+// CLAUDE_CODE_DISABLE_1M_CONTEXT set, Claude Code keeps every model at 200k; [claude]
+// context_window = 200000 tells wate so.
+func NativeWindow(model string) int {
+	m := strings.ToLower(model)
+	if strings.Contains(m, "[1m]") || strings.HasSuffix(m, "-1m") || strings.Contains(m, "fable") || strings.Contains(m, "mythos") {
+		return 1_000_000
+	}
+	g := modelVersion.FindStringSubmatch(m)
+	if g == nil {
+		return 200_000
+	}
+	major, _ := strconv.Atoi(g[2])
+	minor, _ := strconv.Atoi(g[3])
+	switch g[1] {
+	case "opus":
+		if major > 4 || major == 4 && minor >= 7 {
+			return 1_000_000
+		}
+	case "sonnet", "haiku":
+		if major >= 5 {
+			return 1_000_000
+		}
+	}
+	return 200_000
 }
 
 // FindTranscript guesses the transcript of a session without hook information: the newest

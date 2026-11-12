@@ -98,7 +98,11 @@ No AI inside wate — just a good seat for Claude Code:
 - `Ctrl+Shift+K` starts `claude` in a new pane in the current directory (`[claude] command`).
 - Any pane running Claude gets a status dot in its tab: blue = working, yellow = waiting for
   you, green = finished. The pane frame lights up while Claude waits.
-- `Ctrl+Shift+A` opens the session sidebar (directory, state, last message); click a row to jump.
+- `Ctrl+Shift+A` opens the session sidebar (directory, state, last message, how full the context
+  window is); click a row to jump. The sort menu can put the fullest context on top.
+  wate sizes the window as Claude Code does: 1M from the first turn for Opus 4.7 and later,
+  Sonnet 5, Haiku 5, Fable and Mythos, 200k for older models. `[claude] context_window` overrides
+  it, which is needed only with `CLAUDE_CODE_DISABLE_1M_CONTEXT` set.
 - Copying out of Claude Code works: it hands the text to the terminal with OSC 52, and wate puts
   it on the clipboard (`[terminal] osc52 = false` turns that off; a program can never *read* the
   clipboard). Claude Code owns the mouse, so drag with `Shift` held to select text yourself.

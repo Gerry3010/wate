@@ -102,7 +102,7 @@ tab_9 = "cmd+9"
 [claude]
 command = "claude"
 notify = true
-context_window = 0                      # tokens; 0 = guess from the model (200k, 1M for 1M models)
+context_window = 0                      # tokens; 0 = as Claude Code sizes the model (1M from Opus 4.7, Sonnet 5 on)
 mcp = true                              # give sessions wate starts the pane tools (open/resize/read/write splits)
 restart_deadline = 5                    # minutes the agents get to answer before "Restart anyway" is offered
 restart_countdown = 10                  # seconds between the last agent agreeing and the restart (0 = wait for the button)

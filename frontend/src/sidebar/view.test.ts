@@ -56,6 +56,20 @@ describe("sorting and grouping", () => {
     expect(ids(sortRows(rows, "started"))).toEqual(["a-wait", "c-work", "b-ask", "d-done"]);
   });
 
+  it("puts the fullest context first, and sessions without one last", () => {
+    const ctx = [
+      row("low", { title: "Low", context_percent: 12, context: { tokens: 120_000, window: 1_000_000 } }),
+      // No percent from Go yet: worked out from tokens and window.
+      row("high", { title: "High", context: { tokens: 170_000, window: 200_000 } }),
+      row("none", { title: "None" }),
+      row("mid", { title: "Mid", context_percent: 40 }),
+      row("also-none", { title: "Also none" }),
+    ];
+    expect(ids(sortRows(ctx, "context"))).toEqual(["high", "mid", "low", "also-none", "none"]);
+    expect(ids(applyView(ctx, { ...DEFAULT_VIEW, sort: "context", filter: "working" }))[0]).toBe("high");
+    expect(parseView(JSON.stringify({ sort: "context" })).sort).toBe("context");
+  });
+
   it("groups by directory, keeping the order inside each group", () => {
     const g = groupByDir(sortRows(rows, "name"));
     expect(g.map((x) => [x.dir, ids(x.rows)])).toEqual([

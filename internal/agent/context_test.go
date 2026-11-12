@@ -40,10 +40,30 @@ func TestWindowFor(t *testing.T) {
 		configured, seen int
 		want             int
 	}{
-		{"claude-sonnet-5", 0, 50_000, 200_000},
+		// Claude Code gives these 1M from the first turn: 177k is 18 %, not 89 %.
+		{"claude-opus-5-5", 0, 177_000, 1_000_000},
+		{"claude-opus-5", 0, 50_000, 1_000_000},
+		{"claude-opus-4-7", 0, 50_000, 1_000_000},
+		{"claude-opus-4-8", 0, 50_000, 1_000_000},
+		{"claude-sonnet-5", 0, 50_000, 1_000_000},
+		{"claude-sonnet-5-5", 0, 50_000, 1_000_000},
+		{"claude-haiku-5-5", 0, 50_000, 1_000_000},
 		{"claude-fable-5-1", 0, 50_000, 1_000_000},
+		{"claude-mythos-5", 0, 50_000, 1_000_000},
+		// These start at 200k.
+		{"claude-opus-4-6", 0, 50_000, 200_000},
+		{"claude-opus-4-5", 0, 50_000, 200_000},
+		{"claude-opus-4-20250514", 0, 50_000, 200_000},
+		{"claude-sonnet-4-6", 0, 50_000, 200_000},
+		{"claude-sonnet-4-5-20250929", 0, 50_000, 200_000},
+		{"claude-haiku-4-5-20251001", 0, 50_000, 200_000},
+		{"claude-3-5-sonnet-20241022", 0, 50_000, 200_000},
+		{"some-gateway-model", 0, 50_000, 200_000},
+		// ... unless picked with [1m], or grown past 200k anyway.
 		{"claude-sonnet-4-5[1m]", 0, 0, 1_000_000},
-		{"claude-sonnet-5", 0, 291_768, 1_000_000},
+		{"claude-sonnet-4-6", 0, 291_768, 1_000_000},
+		// The setting wins.
+		{"claude-opus-5-5", 200_000, 150_000, 200_000},
 		{"claude-sonnet-5", 400_000, 10, 400_000},
 		{"claude-fable-5-1", 0, 1_200_000, 2_000_000},
 	}
