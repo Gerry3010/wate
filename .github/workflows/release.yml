@@ -26,8 +26,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: System deps
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev libfuse2 rpm
+          sudo apt-get -o Acquire::Retries=0 update
+          sudo apt-get -o Acquire::Retries=0 install -y libgtk-4-dev libwebkitgtk-6.0-dev libfuse2 rpm
       - name: Install wails3
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
       - name: Version
