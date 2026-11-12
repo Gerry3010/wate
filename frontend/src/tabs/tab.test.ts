@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Pane } from "../pane";
-import { Tab } from "./tab";
+import { Tab, nextId, noteId } from "./tab";
 
 beforeAll(() => {
   // jsdom has no layout. The view only uses this to redraw its dividers, Alt+drag only to find
@@ -86,5 +86,28 @@ describe("a pane's handle", () => {
     moveTo(200, 10);
     release();
     expect(movedBy).toBe("to");
+  });
+});
+
+describe("the pane bar", () => {
+  it("shows on a pane alone in its tab as well", () => {
+    // It carries the number agents name the pane by.
+    const tab = new Tab();
+    const shown: boolean[] = [];
+    tab.add({ ...pane("p1", "terminal"), setStatusVisible: (on: boolean) => void shown.push(on) });
+    tab.render();
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.every(Boolean)).toBe(true);
+  });
+});
+
+describe("pane ids", () => {
+  it("count on past an id the window took over", () => {
+    noteId("pane-500-abcde");
+    expect(nextId("pane")).toMatch(/^pane-501-/);
+    // A lower one, or one without a number, changes nothing.
+    noteId("pane-3-zzzzz");
+    noteId("imp-pane-x");
+    expect(nextId("tab")).toMatch(/^tab-502-/);
   });
 });

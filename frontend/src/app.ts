@@ -16,7 +16,7 @@ import { DropHighlight, installDragMotion } from "./drop-overlay";
 import { leaf, neighbor, type Dir, type Direction } from "./layout/tree";
 import { moveItem } from "./tabs/order";
 import type { Pane } from "./pane";
-import { Tab, nextId } from "./tabs/tab";
+import { Tab, nextId, noteId } from "./tabs/tab";
 import { findTab } from "./tabs/resolve";
 import { dockable, RootPanel, ROOT_LAYOUTS, rootLayout } from "./root/panel";
 import { TabBar } from "./tabs/tabbar";
@@ -1334,6 +1334,7 @@ export class WateApp {
 
   private makeTerminal(tab: Tab, opts: { cwd?: string; command?: string[]; replay?: string; visible?: boolean; id?: string; adopt?: boolean; agent?: boolean }): TerminalPane {
     const owner = () => this.tabOfPane(pane.id) ?? tab;
+    if (opts.id) noteId(opts.id);
     const pane: TerminalPane = new TerminalPane({
       // An adopted pane keeps its id: that is how the backend finds the shell it already has,
       // and it is what the shell's own WATE_PANE_ID says.

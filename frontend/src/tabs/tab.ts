@@ -27,6 +27,16 @@ const DRAG_THRESHOLD = 4;
 let seq = 0;
 export const nextId = (prefix: string) => `${prefix}-${++seq}-${Math.random().toString(36).slice(2, 7)}`;
 
+/**
+ * Count past an id this window did not hand out (a pane adopted from another window keeps its
+ * own), so the next one gets a higher number. The number is what the pane's bar shows and what
+ * agents call it by, and two panes in one window showing the same one would be no help.
+ */
+export function noteId(id: string): void {
+  const n = Number(/^[a-z]+-(\d+)-/.exec(id)?.[1]);
+  if (n > seq) seq = n;
+}
+
 /** A tab owns a split tree of panes. */
 export class Tab {
   readonly id = nextId("tab");
@@ -414,10 +424,9 @@ export class Tab {
     return !this.tree || leaves(this.tree).length === 0;
   }
 
-  /** A pane that is alone in its tab needs no label: it is the tab. */
+  /** Every pane shows its bar, a pane alone in its tab too: the bar carries its number. */
   private updateBars(): void {
-    const many = this.panes.size > 1;
-    for (const p of this.panes.values()) p.setStatusVisible?.(many);
+    for (const p of this.panes.values()) p.setStatusVisible?.(true);
   }
 
   render(): void {

@@ -1,10 +1,11 @@
 /**
- * The strip along the top of a pane, shown only while the pane shares its tab with another.
+ * The strip along the top of every pane.
  *
- * A single pane needs no label: it *is* the tab. Two or more, and it stops being obvious which
- * one is running what, which one an agent opened, and which one has been opened up to it. That
- * last part is the reason the bar exists at all — a pane the user has allowed an agent to read
- * or type into has to say so without anyone opening a menu.
+ * It says which pane is running what, which one an agent opened, and which one has been opened
+ * up to it. That last part is why the bar exists at all: a pane the user has allowed an agent
+ * to read or type into has to say so without anyone opening a menu. It also carries the pane's
+ * number, which is how agents name panes ("pane-50"), so it shows on a pane alone in its tab
+ * as well.
  */
 
 import type { Access } from "../api";
@@ -48,6 +49,11 @@ const RIGHTS: [keyof Access, string, string][] = [
  */
 export function writeMeans(access: Access): string {
   return access.read ? "type and run" : "type, no Enter";
+}
+
+/** The number in a pane id ("pane-50-o7ur9" → "50"), "" for an id without one. */
+export function paneNumber(id: string): string {
+  return /^pane-(\d+)(?:-|$)/.exec(id)?.[1] ?? "";
 }
 
 export function statusView(in_: StatusInput): StatusView {
@@ -112,6 +118,13 @@ export class PaneStatusBar {
     this.element.addEventListener("mousedown", (e) => e.preventDefault());
     this.element.addEventListener("pointerdown", (e) => e.stopPropagation());
 
+    const num = document.createElement("span");
+    num.className = "pane-bar-num";
+    const n = paneNumber(paneId);
+    // "#" keeps it apart from the tab's own number in the tab bar.
+    num.textContent = n ? `#${n}` : "";
+    num.title = `${paneId}: agents call this pane pane-${n}`;
+    num.hidden = !n;
     this.originEl = document.createElement("span");
     this.originEl.className = "pane-bar-origin";
     this.dot = document.createElement("span");
@@ -130,7 +143,7 @@ export class PaneStatusBar {
       this.openMenu(menu.getBoundingClientRect());
     });
 
-    this.element.append(this.originEl, this.dot, this.labelEl, this.chipsEl, menu);
+    this.element.append(num, this.originEl, this.dot, this.labelEl, this.chipsEl, menu);
   }
 
   setHost(host: StatusHost) {

@@ -584,7 +584,12 @@ html, body {
   user-select: none;
 }
 .pane.focused > .pane-bar { color: var(--fg); }
-.pane-bar-origin[hidden], .pane-bar-chips[hidden], .pane-bar .status-dot[hidden] { display: none; }
+.pane-bar-num[hidden], .pane-bar-origin[hidden], .pane-bar-chips[hidden], .pane-bar .status-dot[hidden] { display: none; }
+.pane-bar-num {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+}
 .pane-bar-origin {
   flex: 0 0 auto;
   padding: 0 4px;

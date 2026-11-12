@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { afterToggle, statusView, writeMeans } from "./status";
+import { afterToggle, paneNumber, statusView, writeMeans } from "./status";
 
 const none = { read: false, write: false, manage: false };
 
@@ -85,5 +85,18 @@ describe("writeMeans", () => {
 
   it("promises the whole pane once Read is on", () => {
     expect(writeMeans({ read: true, write: false, manage: false })).toBe("type and run");
+  });
+});
+
+describe("paneNumber", () => {
+  it("is the number agents name a pane by", () => {
+    expect(paneNumber("pane-50-o7ur9")).toBe("50");
+    expect(paneNumber("pane-7")).toBe("7");
+  });
+
+  it("is empty for an id without one", () => {
+    expect(paneNumber("imp-pane-3")).toBe("");
+    expect(paneNumber("tab-4-abcde")).toBe("");
+    expect(paneNumber("")).toBe("");
   });
 });

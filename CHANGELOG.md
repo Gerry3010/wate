@@ -74,16 +74,16 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   `wate ctl pane-move new|<n>`. An agent may only move a pane it opened itself; ownership
   survives the move, but reach does not while the pane sits in another tab, because the tab is
   the boundary.
-- A pane sharing its tab with another gets a thin bar along its top: what it is running, an
-  orange mark if an agent opened it, letters for anything the user has opened it up to, and a
-  menu. A pane on its own keeps the uncluttered look — it is the tab, so there is nothing to
-  tell apart. The bar's menu is where an agent is let into a pane that is not its own: Read,
-  Write, Manage, each a tick, with "Revoke all" once something is on. Ticking Manage ticks the
-  other two as well — managing a pane you may neither see nor type into is not a halfway house
-  anybody would pick — and unticking it leaves them, because losing the right to close a pane
-  is no reason to stop reading it. Nothing else implies anything, least of all Read: whatever
-  is on that screen is whatever you typed. The letters are there so that a pane which has been
-  opened up says so without anyone opening the menu.
+- Every pane gets a thin bar along its top: its number (`#50` for `pane-50-o7ur9`, the name
+  agents give it), what it is running, an orange mark if an agent opened it, letters for
+  anything the user has opened it up to, and a menu. A pane alone in its tab has the bar too, so
+  the number an agent reports can always be found. The bar's menu is where an agent is let into
+  a pane that is not its own: Read, Write, Manage, each a tick, with "Revoke all" once something
+  is on. Ticking Manage ticks the other two as well — managing a pane you may neither see nor
+  type into is not a halfway house anybody would pick — and unticking it leaves them, because
+  losing the right to close a pane is no reason to stop reading it. Nothing else implies
+  anything, least of all Read: whatever is on that screen is whatever you typed. The letters are
+  there so that a pane which has been opened up says so without anyone opening the menu.
   The grid moved into a box of its own underneath the bar, because FitAddon measures the
   terminal's parent and would otherwise have counted the bar's height as usable rows and let
   the pane clip the last one.
