@@ -72,7 +72,7 @@ async function boot() {
       return;
     }
   }
-  const restored = boot.restore === "session" ? await app.restoreSession() : false;
+  const restored = boot.restore === "session" || boot.restore === "backup" ? await app.restoreSession() : false;
   if (boot.initial_cwd || !restored) await app.newTab({ cwd: boot.initial_cwd || undefined });
   // After the user's own tabs, so one of those is in front.
   await app.ensureRoot();

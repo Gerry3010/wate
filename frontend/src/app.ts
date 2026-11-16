@@ -1,7 +1,7 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
 import { AccessService, AgentService, ConfigService, OpenerService, PaneBridge, RestartService, PtyService, SessionService, StateService, ThemeService, WindowService, type Access, type AccessState, type Config, type Resolved, type Session, type Target } from "./api";
-import { fromImported, parseWindow, remapTree, ResumeOffers, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
+import { backupOf, fromImported, parseWindow, remapTree, ResumeOffers, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
 import { closeMenu, type MenuEntry } from "./ui/menu";
@@ -95,6 +95,9 @@ export class WateApp {
       saveSession: (name) => void this.saveNamedSession(name),
       openSession: (id) => void this.openNamedSession(id),
       deleteSession: (id) => void SessionService.Delete(id).catch((err) => console.warn("delete session:", err)),
+      listBackups: async () => (await StateService.Backups().catch(() => null)) ?? [],
+      restoreBackup: (key) => void StateService.RestoreBackup(key).catch((err) => console.warn("restore backup:", err)),
+      deleteBackup: (key) => void StateService.DeleteBackup(key).catch((err) => console.warn("delete backup:", err)),
       openImport: () => this.openSettings("import"),
       agentStatus: (t) => this.agents.forTab(t.id),
     });
@@ -158,7 +161,8 @@ export class WateApp {
   /** Set for windows opened while another wate runs: they neither restore nor save the session. */
   /** This window's name, as Wails and the backend know it. */
   windowId = "";
-  /** "session" restores this window's saved tabs; "empty" starts clean. */
+  /** "session" restores this window's saved tabs, "backup" the ones a backup put in its slot;
+   *  "empty" starts clean. */
   restoreMode = "session";
   /** Whether this window writes its tabs back — separate from whether it restored any. */
   persist = true;
@@ -196,7 +200,18 @@ export class WateApp {
     perf.saves++;
     const state = await this.snapshot(immediate, RESTORE_SCROLLBACK);
     await StateService.Save(JSON.stringify(state)).catch((err) => console.warn("session save:", err));
+    // The window's backup, which outlives it (tab bar dropdown). Written only when it changed:
+    // most saves are about terminal text, which the backup leaves out.
+    const backup = backupOf(state);
+    const json = backup && JSON.stringify(backup);
+    if (json && json !== this.lastBackup) {
+      this.lastBackup = json;
+      await StateService.SaveBackup(json).catch((err) => console.warn("backup save:", err));
+    }
   }
+
+  /** The backup last written, so an unchanged one is not written again. */
+  private lastBackup = "";
 
   /** Serialise this window's tabs (layout, cwds, open files, titles, colours, and — with
    *  scrollback — the terminal text). Each window saves only itself; the backend keeps the
@@ -260,7 +275,8 @@ export class WateApp {
 
   /** Rebuild tabs from the saved state; returns false when nothing was restored. */
   async restoreSession(): Promise<boolean> {
-    if (this.restoreMode !== "session" || !this.config.general.restore_session) return false;
+    const asked = this.restoreMode === "backup" || (this.restoreMode === "session" && this.config.general.restore_session);
+    if (!asked) return false;
     const saved = parseWindow(await StateService.Load().catch(() => ""));
     if (!saved) return false;
     this.restoring = true;
@@ -279,6 +295,10 @@ export class WateApp {
   /** Create tabs from saved descriptions (session restore, named sessions, imports). */
   private async openTabs(saved: SavedTab[]): Promise<Tab[]> {
     const opened: Tab[] = [];
+    // A session that runs right now, in this window or another, is not offered again: a window
+    // brought back from a backup, or a named session, can name one, and a second
+    // `claude --resume` of it would have two Claudes writing one transcript.
+    const live = await this.liveSessionIds();
     for (const st of saved) {
       const tab = new Tab();
       tab.customTitle = st.title ?? "";
@@ -298,7 +318,7 @@ export class WateApp {
           }));
         } else {
           const pane = this.makeTerminal(tab, { cwd: sp.cwd, replay: sp.replay, visible: false });
-          if (sp.claude) {
+          if (sp.claude && !(sp.claude.sessionId && live.has(sp.claude.sessionId))) {
             this.offers.remember(pane.id, sp.claude);
             pane.setNotice(this.claudeNotice(pane, sp.claude));
           }
@@ -326,6 +346,12 @@ export class WateApp {
   }
 
   // ---- Claude Code --------------------------------------------------------
+
+  /** The Claude Code sessions running in any wate window now. */
+  private async liveSessionIds(): Promise<Set<string>> {
+    const all = (await AgentService.List().catch(() => null)) ?? [];
+    return new Set(all.filter((s) => s.status !== "idle" && s.session_id).map((s) => s.session_id));
+  }
 
   /** The Claude Code session running in a pane, in the shape the session file keeps. */
   private claudeOf(p: TerminalPane): SavedClaude | undefined {
@@ -384,7 +410,7 @@ export class WateApp {
     const n = waiting.length;
     showConfirm(
       n === 1 ? "Reopen the agent?" : `Reopen ${n} agents?`,
-      `Claude Code was running in ${n === 1 ? "one pane" : `${n} panes`} when wate closed:\n` +
+      `Claude Code was running in ${n === 1 ? "one pane" : `${n} panes`} of this window:\n` +
         waiting.map(([, c]) => `· ${c.title}`).join("\n"),
       [
         { label: "Not now", onSelect: () => {} },

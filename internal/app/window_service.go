@@ -27,8 +27,9 @@ type Bootstrap struct {
 	WindowID string `json:"window_id"`
 	// InitialCwd is the directory given on the command line, for this window's first tab.
 	InitialCwd string `json:"initial_cwd"`
-	// Restore is "session" (load this window's saved tabs), "empty", or "adopt" (a tab is
-	// arriving from another window).
+	// Restore is "session" (load this window's saved tabs), "empty", "adopt" (a tab is
+	// arriving from another window), or "backup" (the saved tabs come from a window backup and
+	// are loaded even when restore_session is off).
 	Restore string `json:"restore"`
 	// StateKey indexes this window's slot in the session and geometry files. It is stable
 	// across runs, unlike WindowID, which is minted per process.
@@ -506,6 +507,17 @@ func (s *WindowService) Windows() []WindowInfo {
 			title = e.win.Name()
 		}
 		out = append(out, WindowInfo{ID: string(id), Title: title, Index: i + 1})
+	}
+	return out
+}
+
+// openKeys are the state keys of the windows that are open.
+func (s *WindowService) openKeys() map[string]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]bool, len(s.windows))
+	for _, e := range s.windows {
+		out[e.boot.StateKey] = true
 	}
 	return out
 }

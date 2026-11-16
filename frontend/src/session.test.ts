@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { leaf, leaves, splitLeaf } from "./layout/tree";
-import { parseSession, parseWindow, remapTree, ResumeOffers } from "./session";
+import { backupOf, describeBackup, parseSession, parseWindow, remapTree, ResumeOffers, type SavedWindow } from "./session";
 
 describe("session", () => {
   it("rejects garbage and old versions", () => {
@@ -129,5 +129,49 @@ describe("ResumeOffers", () => {
     o.remember("pane-1", offer);
     o.forget("pane-1");
     expect(o.forSave("pane-1", undefined)).toBeUndefined();
+  });
+});
+
+describe("window backups", () => {
+  const window: SavedWindow = {
+    key: "win-1",
+    active: 1,
+    root: true,
+    tabs: [
+      {
+        tree: leaf("a"),
+        focused: "a",
+        title: "Homepage",
+        panes: [{ id: "a", kind: "terminal", cwd: "/home/gerry/Sync-Projekte/Homepage", replay: "\x1b[1mlots of text", claude: { title: "Fix the footer", sessionId: "s1" } }],
+      },
+      { tree: leaf("b"), focused: "b", panes: [{ id: "b", kind: "terminal", cwd: "/home/gerry/Sync-Projekte/GO-Projekte/yate", claude: { title: "x" } }] },
+      { tree: leaf("c"), focused: "c", panes: [{ id: "c", kind: "terminal", cwd: "/home/gerry/" }] },
+      { tree: leaf("d"), focused: "d", panes: [{ id: "d", kind: "editor", path: "/etc/hosts" }] },
+      { tree: leaf("e"), focused: "e", panes: [{ id: "e", kind: "terminal", cwd: "/home/gerry/Sync-Projekte/GO-Projekte/yate" }] },
+    ],
+  };
+
+  it("keeps the tabs and their Claude sessions, not the terminal text or the root agent", () => {
+    const b = backupOf(window)!;
+    const json = JSON.stringify(b);
+    expect(json).not.toContain("lots of text");
+    expect(json).not.toContain("root");
+    expect(b.tabs).toHaveLength(5);
+    expect(b.active).toBe(1);
+    const first = b.tabs[0].panes[0];
+    expect(first.kind === "terminal" && first.claude?.sessionId).toBe("s1");
+    // The window it was taken from is left as it was.
+    expect(window.tabs[0].panes[0]).toHaveProperty("replay", "\x1b[1mlots of text");
+  });
+
+  it("is never taken of a window without tabs", () => {
+    expect(backupOf({ key: "w", active: 0, tabs: [] })).toBeNull();
+  });
+
+  it("names a backup after its first tabs and counts its agents", () => {
+    const s = describeBackup(JSON.stringify(backupOf(window)));
+    expect(s).toEqual({ label: "Homepage, yate, ~ +1", tabs: 5, agents: 2 });
+    expect(describeBackup("")).toBeNull();
+    expect(describeBackup("{broken")).toBeNull();
   });
 });

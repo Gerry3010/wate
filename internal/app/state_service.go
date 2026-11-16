@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/Gerry3010/wate/internal/config"
 )
@@ -20,6 +21,10 @@ import (
 type StateService struct {
 	windows *WindowService
 	mu      sync.Mutex
+
+	// clock and openWindow stand in for time.Now and WindowService.Open in tests.
+	clock      func() time.Time
+	openWindow func(OpenWindowOptions) (WindowID, error)
 }
 
 func NewStateService(windows *WindowService) *StateService { return &StateService{windows: windows} }

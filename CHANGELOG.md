@@ -149,6 +149,14 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   clipboard is never answered.
 - The Claude sidebar can sort sessions by context use (Context used in its sort menu). The
   fullest context comes first, and sessions with none known yet come last.
+- Window backups. wate keeps one per window in `backups.json`, next to `session.json`: the
+  window's tabs with their layouts, directories, open files, titles, colours and the Claude Code
+  session in each pane, without the scrollback. It follows the window as it changes and stays
+  when the window is closed, so a window closed by mistake, or one a start did not bring back,
+  can still be reopened. The `⌄` menu in the tab bar lists them under Window backups. A click
+  opens the backup in a new window, where the usual dialog offers to reopen its agents and
+  leaves out any session that is running right now, so none runs twice. Backups of closed
+  windows go after 30 days, and at most 20 are kept.
 
 ### Changed
 - The Claude sidebar spans windows: a session running in another window is listed with
@@ -186,6 +194,10 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- The dialog that offers to reopen the agents after a start grew with its list. With 30 agents
+  it filled the window from top to bottom, and a few more would have pushed its title and
+  buttons out of sight. The list now scrolls inside the dialog. The `⌄` menu scrolls as well
+  once saved sessions and backups make it taller than the window.
 - wate took the context window of Opus 5.5 to be 200k until a session grew past it, and the
   same for every other model that Claude Code runs with 1M from the start. The sidebar showed
   177k as 89 %, and the root agent was woken at 85 % for sessions that were far from full:

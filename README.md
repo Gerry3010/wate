@@ -242,6 +242,13 @@ a name and reopens saved sessions later (the scrollback comes back as dimmed his
 prompt). Sessions are plain JSON in `~/.config/wate/sessions/`. Double-click a tab to
 rename it; right-click for colours.
 
+The same menu lists **window backups**. wate keeps one per window, in
+`~/.local/state/wate/backups.json`: the tabs with their layouts, directories, open files, titles,
+colours and the Claude Code session of each pane, without the scrollback. A backup follows its
+window as it changes and stays after the window is closed. A click opens it in a new window, and
+the dialog that follows offers to reopen its agents, leaving out any session that is running
+right now. Backups of closed windows go after 30 days; at most 20 are kept.
+
 A tab names itself after the shell prompt: the working directory with `~` for home, parent
 directories shortened when the path grows long (`~/Sy/GO-Projekte/wate`), and `ssh <host>` while an
 ssh session is running in the focused pane. Hovering the tab shows the shell's own title and the

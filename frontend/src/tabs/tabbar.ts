@@ -1,6 +1,7 @@
 import type { Tab } from "./tab";
 import { showMenu, closeMenu, type MenuEntry } from "../ui/menu";
-import type { SessionInfo } from "../api";
+import type { SessionInfo, WindowBackup } from "../api";
+import { describeBackup } from "../session";
 import { perf } from "../perf";
 import { dropIndex, insertionIndex } from "./order";
 
@@ -43,6 +44,11 @@ export interface TabBarHost {
   saveSession(name: string): void;
   openSession(id: string): void;
   deleteSession(id: string): void;
+  /** Window backups (one per window, kept when it closes), newest first. */
+  listBackups(): Promise<WindowBackup[]>;
+  /** Open a backup's tabs in a new window. */
+  restoreBackup(key: string): void;
+  deleteBackup(key: string): void;
   openImport(): void;
 }
 
@@ -418,7 +424,10 @@ export class TabBar {
   private paneHint?: HTMLElement;
 
   private async showSessionMenu(x: number, y: number, alignRight: boolean) {
-    const sessions = await this.host.listSessions().catch(() => [] as SessionInfo[]);
+    const [sessions, backups] = await Promise.all([
+      this.host.listSessions().catch(() => [] as SessionInfo[]),
+      this.host.listBackups().catch(() => [] as WindowBackup[]),
+    ]);
     const entries: MenuEntry[] = [
       { header: "Save current tabs as" },
       { input: { placeholder: "session name", button: "Save", onSubmit: (name) => this.host.saveSession(name) } },
@@ -431,6 +440,24 @@ export class TabBar {
           hint: `${s.tabs} tab${s.tabs === 1 ? "" : "s"}, ${s.panes} pane${s.panes === 1 ? "" : "s"}`,
           onSelect: () => this.host.openSession(s.id),
           action: { label: "×", title: "Delete session", onSelect: () => this.host.deleteSession(s.id) },
+        });
+      }
+    }
+    const restorable = backups.flatMap((b) => {
+      const s = describeBackup(b.data);
+      return s ? [{ b, s }] : [];
+    });
+    if (restorable.length) {
+      entries.push("separator", { header: "Window backups" });
+      for (const { b, s } of restorable) {
+        const where = b.current ? "this window" : b.open ? "open" : savedAt(b.saved_at);
+        const count = [plural(s.tabs, "tab"), s.agents ? plural(s.agents, "agent") : ""].filter(Boolean).join(", ");
+        entries.push({
+          label: s.label,
+          hint: `${count} · ${where}`,
+          onSelect: () => this.host.restoreBackup(b.key),
+          // An open window's backup is rewritten with its next change; deleting it gains nothing.
+          action: b.open ? undefined : { label: "×", title: "Delete backup", onSelect: () => this.host.deleteBackup(b.key) },
         });
       }
     }
@@ -450,4 +477,17 @@ export class TabBar {
   closeMenus() {
     closeMenu();
   }
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** When a closed window's backup was taken: the time today, else the day and time. */
+function savedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "closed";
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return time;
+  return `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${time}`;
 }

@@ -207,3 +207,60 @@ function clampRatio(r: number | undefined): number {
   if (typeof r !== "number" || !Number.isFinite(r)) return 0.5;
   return Math.min(0.9, Math.max(0.1, r));
 }
+
+/**
+ * What a window backup keeps (see StateService.SaveBackup): the window's tabs with their
+ * layout, directories and Claude sessions, without the terminal text, which is only there for
+ * the next start. Nothing about the root agent either: a window brought back from a backup is
+ * a new one and does not take the root agent over. Null for a window without tabs, so a window
+ * on its way out cannot empty its backup.
+ */
+export function backupOf(w: SavedWindow): SavedWindow | null {
+  if (w.tabs.length === 0) return null;
+  return {
+    key: w.key,
+    active: w.active,
+    tabs: w.tabs.map((t) => ({
+      ...t,
+      panes: t.panes.map((p) => (p.kind === "terminal" && p.replay !== undefined ? { ...p, replay: undefined } : p)),
+    })),
+  };
+}
+
+/** A backup as the tab bar's dropdown names it. */
+export interface BackupSummary {
+  /** The first tabs' names: their own title, else the directory they are in. */
+  label: string;
+  tabs: number;
+  /** Panes that had a Claude Code session in them. */
+  agents: number;
+}
+
+export function describeBackup(raw: string): BackupSummary | null {
+  const w = parseWindow(raw);
+  if (!w) return null;
+  const names: string[] = [];
+  let agents = 0;
+  for (const t of w.tabs) {
+    for (const p of t.panes) if (p.kind === "terminal" && p.claude) agents++;
+    const name = tabName(t);
+    if (name && !names.includes(name)) names.push(name);
+  }
+  const shown = names.slice(0, 3).join(", ");
+  const label = names.length > 3 ? `${shown} +${names.length - 3}` : shown || "Window";
+  return { label, tabs: w.tabs.length, agents };
+}
+
+function tabName(t: SavedTab): string {
+  if (t.title) return t.title;
+  const p = t.panes.find((p) => p.id === t.focused) ?? t.panes[0];
+  if (!p) return "";
+  return lastPart(p.kind === "editor" ? p.path : p.cwd);
+}
+
+/** The last part of a path; a home directory is "~". */
+function lastPart(path: string): string {
+  const p = path.replace(/\/+$/, "");
+  if (/^\/(?:home|Users)\/[^/]+$/.test(p)) return "~";
+  return p.slice(p.lastIndexOf("/") + 1) || p;
+}
