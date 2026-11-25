@@ -58,9 +58,8 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   The answers appear in the Claude panel as they come in, with two buttons. The deadline only
   changes what the panel says — nothing is ever ended without you pressing the button, which is
   why an estimate is worth asking for in the first place.
-  The question reaches a session through wate's own hooks, which is the only way into a running
-  agent that does not type into its terminal, and each session is told once and reminded once as
-  the deadline comes up. `PostToolUse` joins the installed hooks for this: it is the one event
+  A busy session hears the question through wate's own hooks, an idle one has it typed at its
+  prompt, and each session is told once and reminded once as the deadline comes up. `PostToolUse` joins the installed hooks for this: it is the one event
   that fires while an agent is busy, and a busy agent is exactly the one worth asking.
   Restarting means quitting and starting again, with the session restored — so the new build is
   the one that comes back. `[claude] restart_deadline` sets how long the agents get.
@@ -194,6 +193,16 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- "Wait, then close" and "Prepare restart…" now reach the agents that sit idle at their prompt.
+  The question went out only through wate's hooks, at an agent's next tool call or at the end of
+  its turn. An agent that had finished and was waiting for input never heard of it, and the round
+  showed "no answer yet" until its deadline. wate now types the question into such a session
+  itself, the way the sidebar enters `/remote-control`: only while Claude Code reports it at its
+  prompt with an empty input box. While you are typing there or a dialog is open, it tries again
+  a moment later. The session answers in a short turn of its own, and says wait if something of
+  its own still runs in the background. Busy agents are still asked through the hooks. In the
+  Claude panel a row reads "asked, no answer yet" once the question has gone out, and "not asked
+  yet" before that.
 - The dialog that offers to reopen the agents after a start grew with its list. With 30 agents
   it filled the window from top to bottom, and a few more would have pushed its title and
   buttons out of sight. The list now scrolls inside the dialog. The `⌄` menu scrolls as well

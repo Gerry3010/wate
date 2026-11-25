@@ -102,6 +102,7 @@ func main() {
 	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc, winSvc)
 	restartSvc := app.NewRestartService(agentSvc, winSvc, cfgSvc.Current)
 	ctlSvc.Restart = restartSvc
+	app.AskAtPrompts(restartSvc, ctlSvc)
 	rootSvc := app.NewRootService(agentSvc, ptySvc, cfgSvc.Current)
 	ctlSvc.Root = rootSvc
 	rootStop := make(chan struct{})

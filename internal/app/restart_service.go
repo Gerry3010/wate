@@ -54,6 +54,8 @@ type RestartRow struct {
 	Verdict string `json:"verdict"`
 	Minutes int    `json:"minutes"`
 	Note    string `json:"note"`
+	// Asked is set once the question has reached the agent, by a hook or typed at its prompt.
+	Asked bool `json:"asked"`
 }
 
 // RestartStatus is the whole picture, for the dialog.
@@ -101,7 +103,20 @@ type RestartService struct {
 	// countdown runs once every agent has agreed; goAt is when it will fire.
 	countdown *time.Timer
 	goAt      time.Time
+	// asking is set while the loop that types the question at idle prompts runs (keepAsking).
+	asking bool
+
+	// recMu serialises changes to the record on disk: the hook path, the answers and the
+	// asking loop all read it, change it and write it back.
+	recMu sync.Mutex
+	// prompt types at a session's prompt (AskAtPrompts). Without it only the hook path asks.
+	prompt promptOps
+	// listSessions stands in for the running sessions in tests.
+	listSessions func() []agent.Session
 }
+
+// askEvery is how often a pending round looks for agents that sit idle at their prompt.
+const askEvery = 2 * time.Second
 
 func NewRestartService(agents *AgentService, windows *WindowService, cfg func() config.Config) *RestartService {
 	return &RestartService{agents: agents, windows: windows, cfg: cfg, allowClose: map[WindowID]bool{}}
@@ -158,7 +173,21 @@ func (s *RestartService) clear() {
 	_ = os.Remove(restartPath())
 }
 
-// Announce starts the round: every running agent is told at its next hook.
+// AskAtPrompts lets the round type its question at the prompt of agents that sit idle, through
+// the panes c reaches. Without it they would only hear of it at their next hook, and an idle
+// agent has none: it calls no tool and ends no turn.
+//
+// A function rather than a method: every exported method of a bound service becomes a
+// frontend binding, and this one is wiring.
+func AskAtPrompts(s *RestartService, c *CtlService) {
+	if s == nil || s.agents == nil || c == nil {
+		return
+	}
+	s.prompt = c.promptOps(s.agents.ClaudePid)
+}
+
+// Announce starts the round: busy agents are told at their next hook, idle ones at their
+// prompt.
 func (s *RestartService) Announce(reason string, minutes int, relaunch bool) RestartStatus {
 	return s.start(reason, minutes, relaunch, "")
 }
@@ -192,6 +221,7 @@ func (s *RestartService) start(reason string, minutes int, relaunch bool, window
 	s.mu.Unlock()
 	st := s.settle()
 	s.announce(st)
+	s.keepAsking()
 	return st
 }
 
@@ -339,11 +369,19 @@ func (s *RestartService) Respond(pane, verdict string, minutes int, note string)
 	if verdict != "go" && verdict != "wait" {
 		return fmt.Errorf("say go or wait, not %q", verdict)
 	}
+	s.recMu.Lock()
+	// Read again under the lock: the record may have changed since the checks above.
+	if rec, ok = readRestart(); !ok {
+		s.recMu.Unlock()
+		return fmt.Errorf("nothing is waiting on an answer")
+	}
 	rec.Answers[pane] = RestartAnswer{
 		Pane: pane, Verdict: verdict, Minutes: minutes, Note: note,
 		At: time.Now().Format(time.RFC3339),
 	}
-	if err := writeRestart(rec); err != nil {
+	err := writeRestart(rec)
+	s.recMu.Unlock()
+	if err != nil {
 		return err
 	}
 	slog.Info("restart answer", "pane", pane, "verdict", verdict, "minutes", minutes)
@@ -369,7 +407,7 @@ func (s *RestartService) Status() RestartStatus {
 		if !s.concerns(rec, sess.TabID, sess.PaneID) {
 			continue
 		}
-		row := RestartRow{Pane: sess.PaneID, Title: sess.Title, Status: string(sess.Status)}
+		row := RestartRow{Pane: sess.PaneID, Title: sess.Title, Status: string(sess.Status), Asked: rec.Notified[sess.PaneID] > 0}
 		if a, ok := rec.Answers[sess.PaneID]; ok {
 			row.Verdict, row.Minutes, row.Note = a.Verdict, a.Minutes, a.Note
 		}
@@ -387,6 +425,9 @@ func (s *RestartService) Status() RestartStatus {
 }
 
 func (s *RestartService) sessions() []agent.Session {
+	if s.listSessions != nil {
+		return s.listSessions()
+	}
 	if s.agents == nil {
 		return nil
 	}
@@ -395,40 +436,52 @@ func (s *RestartService) sessions() []agent.Session {
 
 // TellPane is the text to hand an agent in this pane, or "" when there is nothing to say.
 //
-// Called from the hook path, which is the only way into a running session that does not type
-// into its terminal. Each announcement reaches a pane twice at most: once when it is made and
-// once as the deadline comes up.
+// Called from the hook path, which reaches an agent while it works: at its next tool call, or
+// as its turn ends. An agent idle at its prompt has neither and is asked by keepAsking
+// instead. Each announcement reaches a pane twice at most, by either way: once when it is made
+// and once as the deadline comes up.
 func (s *RestartService) TellPane(pane string) string {
 	if pane == "" {
 		return ""
 	}
+	s.recMu.Lock()
+	defer s.recMu.Unlock()
 	rec, ok := readRestart()
 	if !ok {
 		return ""
 	}
-	if _, answered := rec.Answers[pane]; answered {
-		return ""
-	}
 	// Closing one window is no business of the agents in the others.
-	if !s.concerns(rec, "", pane) {
+	if !dueToBeTold(rec, pane, time.Now()) || !s.concerns(rec, "", pane) {
 		return ""
 	}
-	told := rec.Notified[pane]
-	if told >= howOftenToTell {
-		return ""
-	}
-	// The second telling is held back until the deadline is close, so the two do not land on
-	// top of each other during one busy minute.
-	if told == 1 {
-		t, err := time.Parse(time.RFC3339, rec.Deadline)
-		if err != nil || time.Until(t) > time.Minute {
-			return ""
-		}
-	}
-	rec.Notified[pane] = told + 1
+	rec.Notified[pane]++
 	if err := writeRestart(rec); err != nil {
 		slog.Warn("restart: could not record the telling", "err", err)
 	}
+	return question(rec, false)
+}
+
+// dueToBeTold says whether the pane should hear of the round now: it has not answered, and it
+// has not been told yet, or once and the deadline is close. The second telling is held back so
+// the two do not land on top of each other during one busy minute.
+func dueToBeTold(rec RestartRecord, pane string, now time.Time) bool {
+	if _, answered := rec.Answers[pane]; answered {
+		return false
+	}
+	switch told := rec.Notified[pane]; {
+	case told >= howOftenToTell:
+		return false
+	case told == 1:
+		t, err := time.Parse(time.RFC3339, rec.Deadline)
+		return err == nil && t.Sub(now) <= time.Minute
+	}
+	return true
+}
+
+// question is what an agent is asked. idle marks one that sits at its prompt: the question
+// reaches it typed in as a prompt of its own, so it is one line, and it says that nothing
+// else is wanted from that turn.
+func question(rec RestartRecord, idle bool) string {
 	// Closing a window needs no reason beyond itself; "no reason given" would read like one
 	// was being kept back.
 	why := ""
@@ -447,16 +500,123 @@ func (s *RestartService) TellPane(pane string) string {
 	case !rec.Relaunch:
 		what = "wate would like to quit"
 	}
-	return fmt.Sprintf(
-		"%s, which will end this session.%s The user is "+
-			"waiting for an answer until %s.\n"+
+	ask := fmt.Sprintf(
+		"%s, which will end this session.%s The user is waiting for an answer until %s. "+
 			"Answer once, now, with the wate_restart_respond tool, or by running "+
-			"`wate ctl restart-respond go` (or `wait <minutes>`) in a shell:\n"+
-			"  go — you are at a good stopping point\n"+
-			"  wait <minutes> — you need a little longer; say roughly how long\n"+
-			"Nothing will be ended without the user pressing the button, so an honest estimate "+
-			"is more useful than a quick yes. Carry on with your work either way.",
+			"`wate ctl restart-respond go` (or `wait <minutes>`) in a shell: "+
+			"go if you are at a good stopping point, wait <minutes> if you need a little longer, "+
+			"saying roughly how long. Nothing will be ended without the user pressing the button, "+
+			"so an honest estimate is more useful than a quick yes.",
 		what, why, when)
+	if idle {
+		return "[wate] " + ask + " If anything of yours still runs in the background (a command, " +
+			"an agent, a monitor), say wait. Only answer; do not pick up other work because of this message."
+	}
+	return ask + " Carry on with your work either way."
+}
+
+// keepAsking starts the loop that asks the agents the hook path cannot reach, unless it runs
+// already. It ends with the round.
+func (s *RestartService) keepAsking() {
+	s.mu.Lock()
+	if s.asking || s.prompt.write == nil {
+		s.mu.Unlock()
+		return
+	}
+	s.asking = true
+	s.mu.Unlock()
+	go func() {
+		for {
+			pending := s.askIdle()
+			// Decided under the lock that start takes before it would start another loop, so a
+			// round that begins just as this one ends is not left without one.
+			s.mu.Lock()
+			if !pending {
+				if _, pending = readRestart(); !pending {
+					s.asking = false
+					s.mu.Unlock()
+					return
+				}
+			}
+			s.mu.Unlock()
+			time.Sleep(askEvery)
+		}
+	}()
+}
+
+// askIdle types the question at the prompt of every agent in the round that is due to hear of
+// it and sits idle with an empty input box. Busy agents are left to the hook path, and an
+// agent with a dialog open or text in its input box is tried again on the next pass. It
+// reports whether a round is still pending.
+func (s *RestartService) askIdle() bool {
+	rec, ok := readRestart()
+	if !ok {
+		return false
+	}
+	if s.gone(rec) {
+		s.clear()
+		return false
+	}
+	var claimed []string
+	for _, sess := range s.sessions() {
+		pane := sess.PaneID
+		if pane == "" || !dueToBeTold(rec, pane, time.Now()) || !s.concerns(rec, sess.TabID, pane) {
+			continue
+		}
+		pid := s.prompt.pid(pane)
+		if pid == 0 {
+			continue
+		}
+		st, err := s.prompt.state(pid)
+		if err != nil || promptIsFree(s.prompt, pane, st) != nil {
+			continue
+		}
+		if s.claim(rec.StartedAt, pane, 1) {
+			claimed = append(claimed, pane)
+		}
+	}
+	if len(claimed) == 0 {
+		return true
+	}
+	// Each pane has a terminal of its own, so the typing goes on side by side: one after the
+	// other, thirty idle agents would wait their turn for several seconds.
+	line := question(rec, true)
+	var wg sync.WaitGroup
+	for _, pane := range claimed {
+		wg.Go(func() {
+			if err := submitLine(s.prompt, pane, line); err != nil {
+				slog.Warn("restart: could not ask at the prompt", "pane", pane, "err", err)
+				s.claim(rec.StartedAt, pane, -1)
+				return
+			}
+			slog.Info("restart: asked an idle agent at its prompt", "pane", pane)
+		})
+	}
+	wg.Wait()
+	s.announce(s.settle())
+	return true
+}
+
+// claim counts a telling of pane in the round that started at startedAt (by is 1), or takes
+// one back that did not go through (by is -1). Counting before the typing keeps the hook path
+// from telling the same agent at the same moment; it reports false when somebody got there
+// first, or the round has changed.
+func (s *RestartService) claim(startedAt, pane string, by int) bool {
+	s.recMu.Lock()
+	defer s.recMu.Unlock()
+	rec, ok := readRestart()
+	if !ok || rec.StartedAt != startedAt {
+		return false
+	}
+	if by > 0 && !dueToBeTold(rec, pane, time.Now()) {
+		return false
+	}
+	rec.Notified[pane] = max(0, rec.Notified[pane]+by)
+	if err := writeRestart(rec); err != nil {
+		slog.Warn("restart: could not record the telling", "err", err)
+		return false
+	}
+	return true
 }
 
 // MayQuit is Wails' ShouldQuit: it holds a quit back only while a restart the user started is

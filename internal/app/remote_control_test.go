@@ -21,8 +21,8 @@ type fakeSession struct {
 	typed         []string
 }
 
-func (f *fakeSession) ops() remoteControlOps {
-	return remoteControlOps{
+func (f *fakeSession) ops() promptOps {
+	return promptOps{
 		pid: func(pane string) int {
 			if pane == "p1" {
 				return 41

@@ -312,7 +312,14 @@ export class Sidebar {
           ? "ready"
           : r.verdict === "wait"
             ? `needs ${r.minutes || "a few"} more min${r.note ? ` · ${r.note}` : ""}`
-            : "no answer yet";
+            : r.asked
+              ? "asked, no answer yet"
+              : "not asked yet";
+      if (!r.verdict && !r.asked) {
+        // Not reached yet: a session in the middle of a turn hears of it at its next step, and
+        // an idle one as soon as its input box is empty and no dialog is open.
+        said.title = "wate asks at the session's next step, or types the question once its input box is empty";
+      }
       // .sidebar-main is what gives the title somewhere to be cut off: without its
       // min-width:0 the flex row grows to fit the whole session name and runs off the panel.
       const text = document.createElement("div");

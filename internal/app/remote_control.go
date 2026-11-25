@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Gerry3010/wate/internal/agent"
 	"github.com/Gerry3010/wate/internal/ctl"
 )
 
@@ -27,26 +26,10 @@ type RemoteControl struct {
 	Note    string `json:"note,omitempty"`
 }
 
-// remoteControlOps is what switching Remote Control on needs from the rest of wate, kept apart
-// so the decisions can be tested without a Claude Code to talk to.
-type remoteControlOps struct {
-	// pid is the Claude Code process in a pane, 0 for none.
-	pid   func(pane string) int
-	state func(pid int) (agent.ProcState, error)
-	// input says what the session's input box holds: "empty", "typed" or "none" (see the
-	// frontend's claudeInput).
-	input func(pane string) (string, error)
-	write func(pane, text string) error
-	sleep func(time.Duration)
-}
-
 // remoteControl switches Remote Control on in the Claude Code session in pane, the way the
-// sidebar's menu does: by typing /remote-control at its prompt. Typing into somebody's
-// session is only harmless when nothing else can catch the keys, so it happens only while
-// the session waits at its prompt (Claude Code's own word for it) and the input box is empty;
-// otherwise the command would end up in the middle of what the user is writing, or answer a
-// dialog. Once it is typed, the wait for the connection tells the root agent how it went.
-func remoteControl(ops remoteControlOps, pane, name string) (RemoteControl, error) {
+// sidebar's menu does: by typing /remote-control at its prompt, and only where promptIsFree
+// allows it. Once it is typed, the wait for the connection tells the root agent how it went.
+func remoteControl(ops promptOps, pane, name string) (RemoteControl, error) {
 	out := RemoteControl{Pane: pane}
 	pid := ops.pid(pane)
 	if pid == 0 {
@@ -60,36 +43,15 @@ func remoteControl(ops remoteControlOps, pane, name string) (RemoteControl, erro
 		out.On, out.URL, out.Already = true, url, true
 		return out, nil
 	}
-	switch {
-	case st.AtPrompt():
-	case st.Status == "busy":
-		return out, fmt.Errorf("busy: the session in pane %s is in the middle of a turn; try again when it is done", pane)
-	case st.Status == "waiting":
-		return out, fmt.Errorf("waiting: the session in pane %s shows a %s; try again once the user has answered it", pane, firstNonEmpty(st.WaitingFor, "dialog"))
-	default:
-		return out, fmt.Errorf("Claude Code in pane %s does not say it is at its prompt (status %q); the user can switch Remote Control on from the sidebar", pane, st.Status)
-	}
-	in, err := ops.input(pane)
-	if err != nil {
+	if err := promptIsFree(ops, pane, st); err != nil {
 		return out, err
-	}
-	switch in {
-	case "empty":
-	case "typed":
-		return out, fmt.Errorf("input not empty: there is text on the prompt in pane %s, the user may be typing; ask them, or try again later", pane)
-	default:
-		return out, fmt.Errorf("no empty prompt on screen in pane %s (a dialog, or Claude Code's bash mode?)", pane)
 	}
 
 	line := "/remote-control"
 	if name != "" {
 		line += " " + name
 	}
-	if err := ops.write(pane, line); err != nil {
-		return out, err
-	}
-	ops.sleep(submitDelay)
-	if err := ops.write(pane, "\r"); err != nil {
+	if err := submitLine(ops, pane, line); err != nil {
 		return out, err
 	}
 
@@ -125,22 +87,6 @@ func remoteControlName(name string) (string, error) {
 	return name, nil
 }
 
-// remoteControlOps is the real thing: the pane's Claude Code process, its state file, and the
-// window that draws its screen.
-func (c *CtlService) remoteControlOps() remoteControlOps {
-	return remoteControlOps{
-		pid: c.Root.agents.ClaudePid,
-		state: func(pid int) (agent.ProcState, error) {
-			return agent.ReadProcState(homeDir(), pid)
-		},
-		input: func(pane string) (string, error) {
-			return c.askPane(pane, "claude-input", map[string]any{})
-		},
-		write: c.pty.WriteToPane,
-		sleep: time.Sleep,
-	}
-}
-
 // switchRemoteControl is the root agent's session-remote-control.
 func (c *CtlService) switchRemoteControl(pane, name string) ctl.Response {
 	name, err := remoteControlName(name)
@@ -156,7 +102,7 @@ func (c *CtlService) switchRemoteControl(pane, name string) ctl.Response {
 	case !ok:
 		return ctl.Response{Error: "no such pane: " + pane}
 	}
-	rc, err := remoteControl(c.remoteControlOps(), pane, name)
+	rc, err := remoteControl(c.promptOps(c.Root.agents.ClaudePid), pane, name)
 	if err != nil {
 		return ctl.Response{Error: err.Error()}
 	}
