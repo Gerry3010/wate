@@ -221,6 +221,9 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- The Root button sat in the window's bottom-right corner whatever was there, and with the
+  Claude sidebar open it covered "+ New session". It now moves left of the sidebar, and of the
+  root agent's drawer while that is open, and goes back to the corner when they close.
 - Closing the last window lost every tab. It was handled as a window you are done with, whose
   tabs should not come back, although closing it ends wate. "Close now" in a close round goes
   that way too: on 25 Nov 2026 it ended a window with fourteen tabs and thirty-five agents, and

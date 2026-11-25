@@ -19,7 +19,7 @@ import { moveItem } from "./tabs/order";
 import type { Pane } from "./pane";
 import { Tab, nextId, noteId } from "./tabs/tab";
 import { findTab } from "./tabs/resolve";
-import { dockable, RootPanel, ROOT_LAYOUTS, rootLayout } from "./root/panel";
+import { dockable, fabRight, RootPanel, ROOT_LAYOUTS, rootLayout, type Obstacle } from "./root/panel";
 import { TabBar, TAB_COLORS, tabColorValue } from "./tabs/tabbar";
 import { TerminalPane, type PaneNotice } from "./terminal/pane";
 import { statusView, type StatusHost } from "./terminal/status";
@@ -116,7 +116,10 @@ export class WateApp {
       restartCancel: () => void RestartService.Cancel().catch((err) => console.warn("restart:", err)),
       launchLabel: this.keymap.label("launch_claude") || "Launch",
       toggleLabel: this.keymap.label("toggle_sidebar"),
-      onVisibility: () => this.active?.render(),
+      onVisibility: () => {
+        this.active?.render();
+        this.placeRootFab();
+      },
       sendToPane: (paneId, text) => void PtyService.WriteToPane(paneId, text).catch((err) => console.warn("write to pane:", err)),
       resume: (sessionId, cwd) => void this.resumeClaude(sessionId, cwd),
       windowId: () => this.windowId,
@@ -133,8 +136,11 @@ export class WateApp {
       // Closing it hands the keys back to whatever was in front before.
       if (!open) this.active?.focusPane();
       this.reportFocus();
+      this.placeRootFab();
     };
+    window.addEventListener("resize", () => this.placeRootFab());
     this.rootPanel.onResize = (sizes) => {
+      this.placeRootFab();
       const values = Object.fromEntries(Object.entries(sizes).map(([k, v]) => [`root.${k}`, v]));
       void ConfigService.Set(values).catch((err) => console.warn("root panel size:", err));
     };
@@ -1053,6 +1059,19 @@ export class WateApp {
     }
     // Moving an element takes the focus out of it.
     if (had && !el.contains(document.activeElement)) this.rootPanel.pane?.focus();
+    this.placeRootFab();
+  }
+
+  /** Keep the Root button clear of the sidebar and of the root panel itself (see fabRight). */
+  private placeRootFab() {
+    const obstacles: Obstacle[] = [];
+    for (const el of [this.sidebar?.element, this.rootPanel?.element]) {
+      if (!el || el.hidden) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0) obstacles.push({ left: r.left, right: r.right, bottom: r.bottom });
+    }
+    const right = `${fabRight(obstacles, window.innerWidth, window.innerHeight)}px`;
+    if (this.rootPanel && this.rootPanel.fab.style.right !== right) this.rootPanel.fab.style.right = right;
   }
 
   /** Show or hide the root agent's panel, wherever the agent lives, starting it if need be. */

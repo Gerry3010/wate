@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { dockable, dragSizes, edgesFor, rootLayout, sizeKeys, type PanelSizes } from "./panel";
+import { dockable, dragSizes, edgesFor, fabRight, rootLayout, sizeKeys, type PanelSizes } from "./panel";
+
+describe("fabRight", () => {
+  const w = 1600;
+  const h = 1000;
+  it("stays in the corner when nothing is there", () => {
+    expect(fabRight([], w, h)).toBe(16);
+  });
+  it("moves left of the sidebar, and of a drawer beside it", () => {
+    const sidebar = { left: 1320, right: 1600, bottom: 1000 };
+    expect(fabRight([sidebar], w, h)).toBe(296);
+    const drawer = { left: 880, right: 1600, bottom: 1000 };
+    expect(fabRight([sidebar, drawer], w, h)).toBe(736);
+  });
+  it("ignores what does not reach its corner", () => {
+    const dropDown = { left: 0, right: 1600, bottom: 500 };
+    const overlay = { left: 224, right: 1376, bottom: 890 };
+    expect(fabRight([dropDown, overlay], w, h)).toBe(16);
+  });
+});
 
 describe("rootLayout", () => {
   it("keeps a known layout and falls back to the drawer", () => {

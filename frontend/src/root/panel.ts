@@ -109,6 +109,28 @@ export function dragSizes(
   return out;
 }
 
+/** Where something on screen sits, as far as the Root button cares. */
+export interface Obstacle {
+  left: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * How far from the right edge the Root button goes so that it covers nothing: left of
+ * whatever reaches down into its corner from the right edge (the Claude sidebar, a drawer).
+ * It sat at a fixed 16 px and lay over the sidebar's "+ New session". Things that stop short
+ * of the corner (a drop-down, the centred overlay) leave it where it is.
+ */
+export function fabRight(obstacles: Obstacle[], width: number, height: number, margin = 16, reach = 56): number {
+  let right = margin;
+  for (const o of obstacles) {
+    if (o.right < width - margin || o.bottom < height - reach) continue;
+    right = Math.max(right, width - o.left + margin);
+  }
+  return right;
+}
+
 /**
  * The root agent's panel. It lies over the tabs rather than in one: the root agent belongs to no
  * project, and a tab of its own was one more thing to scroll past. A small button in the corner
