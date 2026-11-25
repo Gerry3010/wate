@@ -1165,7 +1165,7 @@ export class WateApp {
    */
   private resumeForRoot(data: string): string {
     const want = String((JSON.parse(data || "{}") as { session?: string }).session ?? "").trim();
-    const done: { tab: string; pane: string; session_id: string; title: string }[] = [];
+    const done: { tab: string; pane: string; session_id: string; title: string; cwd: string }[] = [];
     for (const t of this.tabs) {
       for (const p of t.panes.values()) {
         if (!(p instanceof TerminalPane) || !p.hasNotice()) continue;
@@ -1173,12 +1173,31 @@ export class WateApp {
         if (!c || (want && c.sessionId !== want)) continue;
         p.dismissNotice();
         void this.reopenIn(p, c);
-        done.push({ tab: t.title, pane: p.id, session_id: c.sessionId ?? "", title: c.title });
+        done.push({ tab: t.title, pane: p.id, session_id: c.sessionId ?? "", title: c.title, cwd: c.cwd ?? "" });
       }
     }
     // The "Reopen N agents?" question is answered once nothing is left to reopen.
     if (done.length && this.reopenCard?.isConnected && !this.anyReopenOffer()) closeConfirm();
     return JSON.stringify(done);
+  }
+
+  /**
+   * Offer a session for resuming again in a pane where resuming it did not take: Claude never
+   * came up, or ended at once. The backend watched; this puts the Resume block back.
+   */
+  private reofferIn(paneId: string, data: string): string {
+    const pane = this.paneById(paneId);
+    if (!(pane instanceof TerminalPane)) throw new Error(`no such pane ${paneId}`);
+    if (pane.hasNotice()) return "";
+    const r = JSON.parse(data || "{}") as { session_id?: string; title?: string; cwd?: string };
+    // The offer may have been retired by a Claude that ran for a moment; the backend's word
+    // is enough to make a new one.
+    const c = this.offers.offerFor(paneId) ?? (r.session_id ? { title: r.title || "Claude Code", sessionId: r.session_id, cwd: r.cwd || undefined } : undefined);
+    if (!c) throw new Error(`pane ${paneId} has no session to offer`);
+    this.offers.remember(paneId, c);
+    pane.setNotice(this.claudeNotice(pane, c));
+    this.scheduleSave();
+    return "";
   }
 
   /** Whether any restored pane in this window still offers its session. */
@@ -1297,6 +1316,7 @@ export class WateApp {
     if (req.kind === "move-to") return this.moveForRoot(req.pane, req.data);
     if (req.kind === "tab-color") return this.colorForRoot(req.data);
     if (req.kind === "resume") return this.resumeForRoot(req.data);
+    if (req.kind === "reoffer") return this.reofferIn(req.pane, req.data);
     // The root agent's pane lies over the tabs, in none of them; a restart round still has to
     // be able to see whether its input box is free.
     const root = this.rootPanel.pane;

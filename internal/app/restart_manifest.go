@@ -254,7 +254,7 @@ func (c *CtlService) resumeSessions(session string) ctl.Response {
 	}
 	session = strings.TrimSpace(session)
 	data, _ := json.Marshal(map[string]string{"session": session})
-	resumed := []json.RawMessage{}
+	resumed := []resumedSession{}
 	for _, info := range c.windows.Windows() {
 		win, ok := c.windows.byID(WindowID(info.ID))
 		if !ok {
@@ -265,7 +265,7 @@ func (c *CtlService) resumeSessions(session string) ctl.Response {
 			slog.Debug("resume: a window did not answer", "window", info.ID, "err", err)
 			continue
 		}
-		var got []json.RawMessage
+		var got []resumedSession
 		if json.Unmarshal([]byte(reply), &got) == nil {
 			resumed = append(resumed, got...)
 		}
@@ -274,5 +274,88 @@ func (c *CtlService) resumeSessions(session string) ctl.Response {
 		return ctl.Response{Error: errors.New("no pane offers session " + session +
 			" for resuming; it may be running already (see wate_sessions)").Error()}
 	}
-	return ctl.Response{OK: true, Data: resumed}
+	if len(resumed) > 0 && c.Root != nil && c.Root.agents != nil {
+		go confirmResumes(resumed, c.Root.agents.ClaudePid, resumeChecks, func(r resumedSession) { c.resumeFailed(r) })
+	}
+	return ctl.Response{OK: true, Data: map[string]any{
+		"resumed": resumed,
+		"note": "Claude is being started in these panes. wate watches each for half a minute: one where " +
+			"Claude does not come up, or ends at once, gets its Resume block back and a note in the bell.",
+	}}
+}
+
+// resumedSession is one session a pane was told to resume.
+type resumedSession struct {
+	Tab       string `json:"tab"`
+	Pane      string `json:"pane"`
+	SessionID string `json:"session_id"`
+	Title     string `json:"title"`
+	Cwd       string `json:"cwd,omitempty"`
+}
+
+// resumeTiming is how a resume is watched: Claude has to show up within Within and still be
+// there Settle after it did. Each pane is looked at every Every.
+type resumeTiming struct{ Within, Settle, Every time.Duration }
+
+var resumeChecks = resumeTiming{Within: 30 * time.Second, Settle: 8 * time.Second, Every: time.Second}
+
+// confirmResumes watches the panes a resume was typed into. Typing a command is no proof that
+// anything started: on 26 Nov 2026 one of 35 sessions never came up, and since its Resume
+// block was gone, nothing could bring it back in its pane. failed hears of each pane where
+// Claude did not appear in time, or appeared and was gone again before it had settled.
+func confirmResumes(list []resumedSession, claudePid func(pane string) int, t resumeTiming, failed func(resumedSession)) {
+	start := time.Now()
+	seen := make([]time.Time, len(list))
+	done := make([]bool, len(list))
+	left := len(list)
+	for left > 0 {
+		now := time.Now()
+		for i, r := range list {
+			if done[i] {
+				continue
+			}
+			running := claudePid(r.Pane) != 0
+			switch {
+			case running && seen[i].IsZero():
+				seen[i] = now
+			case running && now.Sub(seen[i]) >= t.Settle:
+				done[i], left = true, left-1
+			case !running && !seen[i].IsZero():
+				// It came up and is gone again.
+				done[i], left = true, left-1
+				failed(r)
+			case !running && now.Sub(start) >= t.Within:
+				done[i], left = true, left-1
+				failed(r)
+			case running && now.Sub(start) >= t.Within+t.Settle:
+				done[i], left = true, left-1
+			}
+		}
+		if left > 0 {
+			time.Sleep(t.Every)
+		}
+	}
+}
+
+// resumeFailed puts a session's Resume block back in its pane and says so in the bell.
+func (c *CtlService) resumeFailed(r resumedSession) {
+	slog.Warn("resume: Claude did not come up", "pane", r.Pane, "session", r.SessionID)
+	data, _ := json.Marshal(r)
+	if w := c.target(r.Pane, ""); w != nil {
+		if _, err := c.bridge.ask(w, "reoffer", r.Pane, string(data)); err != nil {
+			slog.Debug("resume: could not offer the session again", "pane", r.Pane, "err", err)
+		}
+	}
+	if c.Notices != nil {
+		title := firstNonEmpty(r.Title, r.SessionID)
+		where := ""
+		if r.Tab != "" {
+			where = " in tab " + r.Tab
+		}
+		c.Notices.post(Notice{
+			Kind: "wate", Key: "wate:resume:" + r.Pane, Pane: r.Pane,
+			Title: "A session did not come back",
+			Body:  title + where + ": Claude did not start, or ended at once. Its Resume block is back in the pane.",
+		})
+	}
 }

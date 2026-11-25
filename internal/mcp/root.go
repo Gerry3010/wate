@@ -145,7 +145,9 @@ func registerRoot(s *mcp.Server) {
 		Name: "wate_session_resume",
 		Description: "Bring back a Claude Code session in the pane it ran in, the way its Resume block does after a " +
 			"restart: by session id, or every session that is offered when you leave it empty. A session " +
-			"that is running already is not offered, so nothing runs twice. Lists what was resumed.",
+			"that is running already is not offered, so nothing runs twice. Lists what was started. wate " +
+			"then watches each pane for half a minute; where Claude does not come up or ends at once, the " +
+			"Resume block comes back and the bell says so (wate_notifications), so you can try again.",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in resumeIn) (*mcp.CallToolResult, any, error) {
 		return call(ctl.Request{Cmd: "session-resume", Name: in.SessionID})
 	})

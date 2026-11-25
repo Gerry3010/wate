@@ -195,7 +195,9 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   came back against the manifest (`wate_restart_manifest`). `wate_session_resume` brings a
   session back in its old pane the way its Resume block does, one by id or all that are offered.
   The "Reopen N agents?" question goes away once nothing is left to reopen, and its Reopen
-  skips the panes that are running again.
+  skips the panes that are running again. wate then watches each pane for half a minute: where
+  Claude does not come up, or ends at once, the Resume block comes back and the bell says so,
+  so the session can be tried again in its own pane.
 - A tab can take any colour: "Custom…" at the end of the colours in the tab menu opens the
   system's colour picker, and the tab shows each colour as you pick it. A colour of your own is
   marked there with its swatch and value.
