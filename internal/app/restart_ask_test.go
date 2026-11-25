@@ -223,7 +223,7 @@ func TestAClosingWindowOnlyTypesAtItsOwnAgents(t *testing.T) {
 		}
 		s.windows.paneWindow["p-idle"] = "w1"
 		s.windows.paneWindow["p-other"] = "w2"
-		s.start("", 5, false, "w1")
+		s.start("", 5, false, "w1", "")
 	})
 	s.askIdle()
 	got := p.got("p-idle")

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -165,7 +166,11 @@ func (c *ConfigService) RootArgs() ([]string, error) {
 		}
 	}
 	watch := watchCommand()
-	return root.Args(cfg, id, resume, root.Instructions(custom, watch), watch, mcpConfig(exe, true)), nil
+	var restart *root.Restart
+	if m, ok := freshManifest(time.Now()); ok {
+		restart = &root.Restart{ByRoot: m.RequestedBy == "root", Reason: m.Reason}
+	}
+	return root.Args(cfg, id, resume, restart, root.Instructions(custom, watch), watch, mcpConfig(exe, true)), nil
 }
 
 // rootSession is the root agent's session id: the saved one while its transcript is there to

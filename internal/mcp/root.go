@@ -29,6 +29,15 @@ type tabColorIn struct {
 	Color string `json:"color" jsonschema:"red, orange, yellow, green, cyan, blue, violet, purple, pink or gray, or #rrggbb; empty takes the colour away"`
 }
 
+type restartIn struct {
+	Minutes int    `json:"minutes,omitempty" jsonschema:"how long the agents get to answer; default the user's restart_deadline"`
+	Reason  string `json:"reason" jsonschema:"one line on why, shown to the user and to every agent that is asked"`
+}
+
+type resumeIn struct {
+	SessionID string `json:"session_id,omitempty" jsonschema:"the Claude Code session to bring back (from wate_restart_manifest); empty brings back every one that is offered"`
+}
+
 type sessionPaneIn struct {
 	Pane string `json:"pane" jsonschema:"the session's pane id (see wate_sessions)"`
 }
@@ -94,6 +103,51 @@ func registerRoot(s *mcp.Server) {
 			"your panel. This moves what the user is looking at: do it when they ask to see a session.",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in sessionPaneIn) (*mcp.CallToolResult, any, error) {
 		return call(ctl.Request{Cmd: "session-focus", Target: in.Pane})
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "wate_restart",
+		Description: "Ask for wate to be restarted, through the same round as the user's \"Prepare restart…\": every " +
+			"agent is asked and answers go or wait, and wate restarts by itself once all of them have said go. " +
+			"You count as having said go. If the deadline passes first, the user decides; you cannot force " +
+			"it. Before it quits, wate checks that the installed wate runs (and calls the restart off if not) " +
+			"and writes down what was running; when you are back, you are told so. Refused while another " +
+			"round is running. Only when the user wants it or agreed to it, for example to load a new build.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in restartIn) (*mcp.CallToolResult, any, error) {
+		return call(ctl.Request{Cmd: "restart-root", Lines: in.Minutes, Text: in.Reason})
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "wate_restart_status",
+		Description: "How a restart round stands: who asked, the deadline, and each agent's answer.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, any, error) {
+		return call(ctl.Request{Cmd: "restart-status"})
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "wate_restart_cancel",
+		Description: "Call off the restart round you started. A round the user started is theirs to call off.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, any, error) {
+		return call(ctl.Request{Cmd: "restart-cancel"})
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "wate_restart_manifest",
+		Description: "What was running when wate last restarted, written just before it quit: who asked and " +
+			"why, every window's tabs in order with title and colour, and per pane its directory, the Claude " +
+			"session in it (id and title), whether you opened it and whether Remote Control was on. Pane and " +
+			"tab ids change with a restart; match sessions by session_id and tabs by position and title.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, any, error) {
+		return call(ctl.Request{Cmd: "restart-manifest"})
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "wate_session_resume",
+		Description: "Bring back a Claude Code session in the pane it ran in, the way its Resume block does after a " +
+			"restart: by session id, or every session that is offered when you leave it empty. A session " +
+			"that is running already is not offered, so nothing runs twice. Lists what was resumed.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in resumeIn) (*mcp.CallToolResult, any, error) {
+		return call(ctl.Request{Cmd: "session-resume", Name: in.SessionID})
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

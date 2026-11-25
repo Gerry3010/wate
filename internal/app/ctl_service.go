@@ -245,7 +245,8 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		return c.notifications(r)
 	case "notifications-read":
 		return c.notificationsRead(r)
-	case "sessions", "attention", "session-open", "tabs", "session-focus", "session-move", "session-remote-control", "tab-color":
+	case "sessions", "attention", "session-open", "tabs", "session-focus", "session-move", "session-remote-control", "tab-color",
+		"restart-root", "restart-cancel", "restart-manifest", "session-resume":
 		return c.root(r)
 	default:
 		slog.Debug("ctl: unknown command", "cmd", r.Cmd)
@@ -317,6 +318,10 @@ func (c *CtlService) root(r ctl.Request) ctl.Response {
 		return c.moveSession(r.Target, r.Name)
 	case "tab-color":
 		return c.colorTab(r.Target, r.Name)
+	case "restart-root", "restart-cancel", "restart-manifest":
+		return c.restartRoot(r)
+	case "session-resume":
+		return c.resumeSessions(r.Name)
 	case "session-remote-control":
 		return c.switchRemoteControl(r.Target, r.Name)
 	}

@@ -152,9 +152,10 @@ typed and the agent tells you. A session it opens can start with Remote Control 
 session list shows which sessions have it on, with the link to continue them at.
 
 Its extra tools (`wate_sessions`, `wate_tabs`, `wate_session_open`, `wate_session_focus`,
-`wate_session_move`, `wate_session_remote_control`, `wate_tab_color`) are not offered to other
-sessions, and wate answers them only for the root agent's own pane, which it recognises by that
-pane's token. Its session is continued across restarts, and its auto-memory belongs to
+`wate_session_move`, `wate_session_remote_control`, `wate_tab_color`, `wate_restart`,
+`wate_restart_status`, `wate_restart_cancel`, `wate_restart_manifest`, `wate_session_resume`) are
+not offered to other sessions, and wate answers them only for the root agent's own pane, which it
+recognises by that pane's token. Its session is continued across restarts, and its auto-memory belongs to
 `[root] cwd`. `[root] instructions` replaces the built-in instructions with a file of your own,
 where `{{WATCH}}` stands for the watcher command.
 

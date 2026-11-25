@@ -44,6 +44,11 @@ running, start it. Do not use Monitor for this, and do not loop or sleep yoursel
   user is elsewhere). Name the pane, so a click leads there.
 - `wate_notifications`: what is in the bell and unread, from every session. Mark what you
   have dealt with with `wate_notifications_read`.
+- `wate_restart`: ask for wate to be restarted (see below). `wate_restart_status` shows how the
+  round stands, `wate_restart_cancel` calls off a round you started.
+- `wate_restart_manifest`: what was running before the last restart.
+- `wate_session_resume`: bring a session back in its old pane after a restart, by session id,
+  or all that are offered.
 - Claude Code's own `SendMessage` and `ListAgents` reach the other sessions on this machine.
   Sessions you open are named after their directory.
 - A session's transcript (a `.jsonl` file) shows what it is doing. Read it from the end; they
@@ -100,3 +105,20 @@ notification. Keep your turns short: you are woken often, and every turn costs.
 ## Language
 
 Talk to the user in the language they use with you.
+
+## Restarting wate
+
+Only when the user wants it or has agreed (a new build to load, say). `wate_restart` with a
+one-line reason asks every agent, as the user's "Prepare restart…" does; wate restarts once all
+have said go, and at the deadline the user decides. You cannot make it go sooner. Watch it with
+`wate_restart_status`; call it off with `wate_restart_cancel` if the reason goes away.
+
+When you come back, your first prompt says so. Then:
+1. Read `wate_restart_manifest` and compare it with `wate_sessions` and `wate_tabs`. Match
+   sessions by `session_id` and tabs by position and title; pane and tab ids are new.
+2. `wate_session_resume` brings back what is offered but not running (all at once with no id).
+   A session whose pane is gone: `wate_session_open` in its directory and tab.
+3. Put lost tab colours back with `wate_tab_color`, and Remote Control with
+   `wate_session_remote_control` where the manifest says it was on.
+4. Start your watcher, then tell the user in a few lines what is back and what is not.
+

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -45,6 +46,8 @@ type RestartRecord struct {
 	// Notified counts how often each pane has been told, so a busy agent is not reminded on
 	// every single tool call.
 	Notified map[string]int `json:"notified"`
+	// By is "root" when the root agent asked for the round, empty when the user did.
+	By string `json:"by,omitempty"`
 }
 
 // RestartRow is one line of the dialog: an agent, and what it said.
@@ -65,8 +68,10 @@ type RestartStatus struct {
 	Reason  string `json:"reason"`
 	// Relaunch and Window say what the round ends in — a restart, closing one window, or a
 	// quit — so the dialog can call it by its name.
-	Relaunch   bool         `json:"relaunch"`
-	Window     string       `json:"window"`
+	Relaunch bool   `json:"relaunch"`
+	Window   string `json:"window"`
+	// By is "root" when the root agent asked for the round.
+	By         string       `json:"by"`
 	Deadline   string       `json:"deadline"`
 	Expired    bool         `json:"expired"`
 	Rows       []RestartRow `json:"rows"`
@@ -122,6 +127,9 @@ type RestartService struct {
 	prompt promptOps
 	// listSessions stands in for the running sessions in tests.
 	listSessions func() []agent.Session
+	// beforeRelaunch runs just before a restart quits (PrepareRelaunch): it checks that the
+	// installed wate runs and writes down what was running. An error calls the restart off.
+	beforeRelaunch func(RestartRecord) error
 }
 
 // askEvery is how often a pending round looks for agents that sit idle at their prompt.
@@ -213,17 +221,44 @@ func AskAtPrompts(s *RestartService, c *CtlService) {
 // Announce starts the round: busy agents are told at their next hook, idle ones at their
 // prompt.
 func (s *RestartService) Announce(reason string, minutes int, relaunch bool) RestartStatus {
-	return s.start(reason, minutes, relaunch, "")
+	return s.start(reason, minutes, relaunch, "", "")
+}
+
+// announceForRoot starts a restart round the root agent asked for. The same round as the
+// user's: every agent is asked, and the restart happens only once all of them have said go,
+// or the user decides at the deadline. The root agent asked, so it counts as having said go.
+// It does not take over a round that is already running.
+func (s *RestartService) announceForRoot(reason string, minutes int) (RestartStatus, error) {
+	if rec, pending := readRestart(); pending {
+		what := "a restart"
+		if rec.Window != "" {
+			what = "closing a window"
+		}
+		return RestartStatus{}, fmt.Errorf("a round for %s is already running; wait for it, or ask the user", what)
+	}
+	return s.start(reason, minutes, true, "", "root"), nil
+}
+
+// cancelForRoot calls off a round the root agent asked for. One the user started is theirs.
+func (s *RestartService) cancelForRoot() (RestartStatus, error) {
+	rec, pending := readRestart()
+	if !pending {
+		return RestartStatus{}, errors.New("no restart round is running")
+	}
+	if rec.By != "root" {
+		return RestartStatus{}, errors.New("this round was started by the user; only they can call it off")
+	}
+	return s.Cancel(), nil
 }
 
 // AnnounceClose starts the round for closing the window it is called from — the close
 // dialog's "wait". The window's agents are asked the same question; wate is not restarted,
 // and the other windows are left out of it.
 func (s *RestartService) AnnounceClose(ctx context.Context, minutes int) RestartStatus {
-	return s.start("", minutes, false, callerWindow(ctx))
+	return s.start("", minutes, false, callerWindow(ctx), "")
 }
 
-func (s *RestartService) start(reason string, minutes int, relaunch bool, window WindowID) RestartStatus {
+func (s *RestartService) start(reason string, minutes int, relaunch bool, window WindowID, by string) RestartStatus {
 	if minutes <= 0 {
 		minutes = 5
 	}
@@ -236,6 +271,10 @@ func (s *RestartService) start(reason string, minutes int, relaunch bool, window
 		Notified:  map[string]int{},
 		Relaunch:  relaunch,
 		Window:    string(window),
+		By:        by,
+	}
+	if root := s.rootPane(); by == "root" && root != "" {
+		rec.Answers[root] = RestartAnswer{Pane: root, Verdict: "go", Note: "asked for this restart", At: now.Format(time.RFC3339)}
 	}
 	if err := writeRestart(rec); err != nil {
 		slog.Warn("restart: could not record the request", "err", err)
@@ -536,7 +575,7 @@ func (s *RestartService) Status() RestartStatus {
 		s.clear()
 		return RestartStatus{}
 	}
-	st := RestartStatus{Pending: true, Reason: rec.Reason, Deadline: rec.Deadline, Relaunch: rec.Relaunch, Window: rec.Window}
+	st := RestartStatus{Pending: true, Reason: rec.Reason, Deadline: rec.Deadline, Relaunch: rec.Relaunch, Window: rec.Window, By: rec.By}
 	if t, err := time.Parse(time.RFC3339, rec.Deadline); err == nil {
 		st.Expired = time.Now().After(t)
 	}
@@ -839,7 +878,19 @@ func (s *RestartService) Allow() {
 }
 
 // Proceed is the dialog's own button: stop holding the quit back, and quit.
+//
+// A restart first makes sure the wate that will start is one that runs, and writes down what
+// is running now (beforeRelaunch). Quitting into a binary that does not start would leave the
+// user with no terminal and nobody to tell them why.
 func (s *RestartService) Proceed(relaunch bool) {
+	if relaunch && s.beforeRelaunch != nil {
+		rec, _ := readRestart()
+		if err := s.beforeRelaunch(rec); err != nil {
+			slog.Warn("restart called off", "err", err)
+			s.calledOff(err)
+			return
+		}
+	}
 	s.mu.Lock()
 	s.allowed = true
 	s.relaunch = relaunch
@@ -847,6 +898,18 @@ func (s *RestartService) Proceed(relaunch bool) {
 	s.clear()
 	if app := application.Get(); app != nil {
 		app.Quit()
+	}
+}
+
+// calledOff ends a round whose restart could not go ahead, and says why in the bell.
+func (s *RestartService) calledOff(err error) {
+	s.Cancel()
+	if s.agents != nil {
+		why := err.Error()
+		if why != "" {
+			why = strings.ToUpper(why[:1]) + why[1:]
+		}
+		s.agents.Notify(restartNoticeKey, "Restart called off", why+". wate keeps running.", "")
 	}
 }
 

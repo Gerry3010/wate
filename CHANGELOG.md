@@ -181,6 +181,21 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 - A start that should have brought tabs back and came up with none offers the newest backup an
   earlier run left: "Reopen your last layout?", with its tabs listed. Reopen puts them into the
   window in place of its fresh shell, and the root agent stays where it is.
+- The root agent can restart wate itself (`wate_restart` with a reason), through the same round
+  as "Prepare restart…": every agent is asked, the restart happens once all have said go, and
+  at the deadline you decide. It counts as having said go itself, cannot start a round while
+  another one runs, and can call off only its own (`wate_restart_cancel`;
+  `wate_restart_status` shows how it stands). The Claude panel says when the root agent asked.
+- Before any restart quits, wate checks that the installed wate runs at all, and calls the
+  restart off with a word in the bell when it does not, instead of leaving you without a
+  terminal. Then it writes `restart-manifest.json`: who asked and why, every window's tabs in
+  order with title and colour, and per pane its directory, its Claude session, whether the root
+  agent opened it and whether Remote Control was on.
+- After a restart the root agent is told that it happened, who asked for it, and to check what
+  came back against the manifest (`wate_restart_manifest`). `wate_session_resume` brings a
+  session back in its old pane the way its Resume block does, one by id or all that are offered.
+  The "Reopen N agents?" question goes away once nothing is left to reopen, and its Reopen
+  skips the panes that are running again.
 - The root agent can colour tabs (`wate_tab_color`, by tab id or title, with the tab menu's
   colour names or `#rrggbb`; empty takes the colour away), and `wate_tabs` lists each tab's
   colour, so it can put them back.

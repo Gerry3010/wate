@@ -314,7 +314,7 @@ func closingIn(t *testing.T, panes map[string]WindowID) *RestartService {
 
 func TestAClosingWindowOnlyAsksItsOwnAgents(t *testing.T) {
 	s := closingIn(t, map[string]WindowID{"pane-a": "w1", "pane-b": "w2"})
-	s.start("", 5, false, "w1")
+	s.start("", 5, false, "w1", "")
 	if s.TellPane("pane-b") != "" {
 		t.Error("an agent in another window was asked about closing this one")
 	}
@@ -331,7 +331,7 @@ func TestAClosingWindowOnlyAsksItsOwnAgents(t *testing.T) {
 
 func TestAClosingWindowDoesNotHoldTheQuitBack(t *testing.T) {
 	s := closingIn(t, nil)
-	s.start("", 5, false, "w1")
+	s.start("", 5, false, "w1", "")
 	if !s.MayQuit() {
 		t.Error("closing one window held quitting the whole of wate back")
 	}
@@ -343,7 +343,7 @@ func TestTheStatusSaysWhatTheRoundEndsIn(t *testing.T) {
 		t.Errorf("a restart reads as relaunch=%v window=%q", st.Relaunch, st.Window)
 	}
 	s.Cancel()
-	if st := s.start("", 5, false, "w1"); st.Relaunch || st.Window != "w1" {
+	if st := s.start("", 5, false, "w1", ""); st.Relaunch || st.Window != "w1" {
 		t.Errorf("a close reads as relaunch=%v window=%q", st.Relaunch, st.Window)
 	}
 }
@@ -352,7 +352,7 @@ func TestARoundForAWindowThatIsGoneIsDropped(t *testing.T) {
 	// The window was closed some other way while its agents were being asked. Nobody can see
 	// the round any more to call it off, so it must not linger.
 	s := closingIn(t, nil)
-	s.start("", 5, false, "w-gone")
+	s.start("", 5, false, "w-gone", "")
 	if s.Status().Pending {
 		t.Error("a round for a window that no longer exists was still pending")
 	}
@@ -363,7 +363,7 @@ func TestARoundForAWindowThatIsGoneIsDropped(t *testing.T) {
 
 func TestFinishingACloseRoundDoesNotRestart(t *testing.T) {
 	s := closingIn(t, nil)
-	s.start("", 5, false, "w1")
+	s.start("", 5, false, "w1", "")
 	s.Finish()
 	if s.Relaunch() {
 		t.Error("closing a window restarted wate")

@@ -105,6 +105,7 @@ func main() {
 	restartSvc := app.NewRestartService(agentSvc, winSvc, cfgSvc.Current)
 	ctlSvc.Restart = restartSvc
 	app.AskAtPrompts(restartSvc, ctlSvc)
+	app.PrepareRelaunch(restartSvc, ctlSvc)
 	rootSvc := app.NewRootService(agentSvc, ptySvc, cfgSvc.Current)
 	ctlSvc.Root = rootSvc
 	rootStop := make(chan struct{})
