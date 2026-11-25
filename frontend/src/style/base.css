@@ -348,6 +348,18 @@ html, body {
 @media (prefers-reduced-motion: reduce) { .notice-banner { animation: none; } }
 .tabbar-settings:hover { background: rgba(255, 255, 255, 0.12); opacity: 1; }
 .tabbar-settings:hover svg { transform: rotate(30deg); }
+/* The input behind "Custom…" in the tab menu: in the page so it can open, never seen. */
+.tabbar-colorpicker {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  padding: 0;
+}
 .tabbar-drag {
   flex: 1 1 auto;
   --wails-draggable: drag;

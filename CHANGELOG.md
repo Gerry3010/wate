@@ -196,6 +196,9 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   session back in its old pane the way its Resume block does, one by id or all that are offered.
   The "Reopen N agents?" question goes away once nothing is left to reopen, and its Reopen
   skips the panes that are running again.
+- A tab can take any colour: "Custom…" at the end of the colours in the tab menu opens the
+  system's colour picker, and the tab shows each colour as you pick it. A colour of your own is
+  marked there with its swatch and value.
 - The root agent can colour tabs (`wate_tab_color`, by tab id or title, with the tab menu's
   colour names or `#rrggbb`; empty takes the colour away), and `wate_tabs` lists each tab's
   colour, so it can put them back.

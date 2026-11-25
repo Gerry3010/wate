@@ -66,6 +66,15 @@ export const TAB_COLORS: [string, string][] = [
   ["gray", "#9399b2"],
 ];
 
+/** A colour of the user's own (#rrggbb rather than one of TAB_COLORS), normalised; "" if not. */
+export function customColor(color: string): string {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return "";
+  return color.toLowerCase();
+}
+
+/** The swatch for "Custom…" before one is picked: every hue. */
+const ALL_HUES = "conic-gradient(#f38ba8, #f9e2af, #a6e3a1, #94e2d5, #89b4fa, #b006e3, #f38ba8)";
+
 export function tabColorValue(color: string): string {
   if (!color) return "";
   const named = TAB_COLORS.find(([n]) => n === color.toLowerCase());
@@ -96,6 +105,11 @@ export class TabBar {
   /** Everything render() reads, as one string: unchanged means the DOM can stay as it is. */
   private sig = "";
   private settings = document.createElement("button");
+  /** The colour picker behind "Custom…". It stays in the page while it is open: the system's
+   *  colour dialog takes the focus, which closes the menu, and an input taken out with the menu
+   *  would have nowhere to report the colour to. */
+  private picker = document.createElement("input");
+  private pickerTab: Tab | null = null;
 
   constructor(private host: TabBarHost) {
     this.element.className = "tabbar";
@@ -124,6 +138,18 @@ export class TabBar {
     settings.innerHTML = GEAR;
     settings.addEventListener("click", () => host.openSettings());
     this.element.append(this.list, add, drag, sessions, settings);
+    this.picker.type = "color";
+    this.picker.className = "tabbar-colorpicker";
+    this.picker.tabIndex = -1;
+    this.picker.setAttribute("aria-hidden", "true");
+    // Every step of the dialog shows on the tab at once; the last one is what stays.
+    for (const ev of ["input", "change"] as const) {
+      this.picker.addEventListener(ev, () => {
+        const color = customColor(this.picker.value);
+        if (this.pickerTab && color) this.host.colorTab(this.pickerTab, color);
+      });
+    }
+    document.body.appendChild(this.picker);
     // Right-click on empty bar space: the sessions menu.
     for (const el of [drag, this.list, this.element]) {
       el.addEventListener("contextmenu", (e) => {
@@ -384,6 +410,13 @@ export class TabBar {
         checked: tab.color === name,
         onSelect: () => this.host.colorTab(tab, name),
       })),
+      {
+        label: "Custom…",
+        swatch: customColor(tab.color) || ALL_HUES,
+        checked: !!customColor(tab.color),
+        hint: customColor(tab.color),
+        onSelect: () => this.pickColor(tab),
+      },
       "separator",
       ...others.map((w) => ({ label: `Move to window ${w.index}`, onSelect: () => this.host.moveTabToWindow(tab, w.id) })),
       { label: "Move to new window", onSelect: () => this.host.moveTabToWindow(tab, "") },
@@ -391,6 +424,14 @@ export class TabBar {
       { label: "Close tab", danger: true, onSelect: () => this.host.close(tab) },
     ];
     showMenu(x, y, entries);
+  }
+
+  /** Open the system's colour picker for a tab, starting from its colour. */
+  private pickColor(tab: Tab) {
+    this.pickerTab = tab;
+    this.picker.value = customColor(tabColorValue(tab.color)) || "#89b4fa";
+    // Still inside the menu item's click, so the browser lets the picker open.
+    this.picker.click();
   }
 
   /** The tab button under a point, for dropping a pane onto a tab. */
