@@ -194,6 +194,158 @@ html, body {
   transition: opacity 120ms;
 }
 .tabbar-settings svg { transition: transform 300ms; }
+
+/* ---- notification bell, its list and the banners ---------------------- */
+.tabbar-bell {
+  position: relative;
+  align-self: center;
+  margin-top: -6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  cursor: default;
+  transition: opacity 120ms;
+}
+.tabbar-bell:hover { background: rgba(255, 255, 255, 0.12); opacity: 1; }
+.tabbar-bell.unread { opacity: 1; color: var(--yellow); }
+.tabbar-bell-badge {
+  position: absolute;
+  top: -1px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: var(--yellow);
+  color: var(--bg);
+  font: 600 9px/14px var(--font-ui);
+  text-align: center;
+  pointer-events: none;
+}
+.notice-panel {
+  position: fixed;
+  z-index: 1000;
+  width: min(380px, calc(100vw - 16px));
+  max-height: min(70vh, calc(100vh - 60px));
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 94%, black);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  font: 13px/1.4 var(--font-ui);
+  color: var(--fg);
+}
+.notice-panel-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.notice-panel-title { flex: 1 1 auto; font-weight: 600; }
+.notice-panel-action {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.notice-panel-action:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.notice-panel-list { min-height: 0; overflow-y: auto; padding: 4px; }
+.notice-panel-empty { padding: 14px 10px; color: var(--tab-inactive-fg); }
+.notice-row {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.notice-row:hover { background: rgba(255, 255, 255, 0.07); }
+.notice-row.read { opacity: 0.55; }
+.notice-row.read .notice-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--notice-color); }
+.notice-body { display: flex; gap: 9px; align-items: flex-start; min-width: 0; }
+.notice-dot {
+  --notice-color: var(--accent);
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--notice-color);
+}
+.kind-waiting .notice-dot, .kind-wate .notice-dot { --notice-color: var(--yellow); }
+.kind-finished .notice-dot { --notice-color: var(--green); }
+.kind-root .notice-dot { --notice-color: #785cd4; }
+.notice-text { min-width: 0; flex: 1 1 auto; }
+.notice-title, .notice-detail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.notice-row:not(.read) .notice-title, .notice-banner .notice-title { font-weight: 600; }
+.notice-detail { color: var(--tab-inactive-fg); font-size: 12px; }
+.notice-meta { color: var(--tab-inactive-fg); font-size: 11px; opacity: 0.8; }
+.notice-banners {
+  position: fixed;
+  z-index: 90;
+  top: 46px;
+  right: 12px;
+  width: min(360px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+:root[data-platform="darwin"] .notice-banners { top: 60px; }
+.notice-banner {
+  position: relative;
+  pointer-events: auto;
+  padding: 9px 30px 9px 11px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--notice-accent, var(--accent));
+  border-radius: 9px;
+  background: rgba(var(--bg-rgb), 0.97);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  font: 13px/1.4 var(--font-ui);
+  color: var(--fg);
+  cursor: pointer;
+  animation: notice-in 160ms ease-out;
+}
+.notice-banner.kind-waiting, .notice-banner.kind-wate { --notice-accent: var(--yellow); }
+.notice-banner.kind-finished { --notice-accent: var(--green); }
+.notice-banner.kind-root { --notice-accent: #785cd4; }
+.notice-banner-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--tab-inactive-fg);
+  font: 15px/1 var(--font-ui);
+  cursor: pointer;
+}
+.notice-banner-close:hover { background: rgba(255, 255, 255, 0.1); color: var(--fg); }
+@keyframes notice-in { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .notice-banner { animation: none; } }
 .tabbar-settings:hover { background: rgba(255, 255, 255, 0.12); opacity: 1; }
 .tabbar-settings:hover svg { transform: rotate(30deg); }
 .tabbar-drag {
@@ -675,6 +827,25 @@ html, body {
 }
 .confirm-title { flex: none; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
 .confirm-detail { min-height: 0; overflow-y: auto; color: var(--tab-inactive-fg); margin-bottom: 14px; white-space: pre-line; }
+/* A card that lists things (agents to reopen, agents that have not answered) is wider, so
+   session titles fit on one line, and only its list scrolls. */
+.confirm-card.wide { width: min(640px, 100%); max-width: none; }
+.confirm-card.wide .confirm-detail { flex: none; margin-bottom: 8px; }
+.confirm-list {
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 0 14px;
+  padding: 4px 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.confirm-list li {
+  padding: 3px 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .confirm-row { flex: none; display: flex; gap: 8px; justify-content: flex-end; }
 .confirm-button {
   padding: 5px 12px;

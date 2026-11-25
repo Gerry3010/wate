@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -213,5 +214,52 @@ func TestASessionIsWorkingOnlyOnceAPromptComesIn(t *testing.T) {
 		if s.Phase != PhaseDone {
 			t.Errorf("%s started: %q", s.PaneID, s.Phase)
 		}
+	}
+}
+
+func TestATurnWateAskedForIsNobodysNews(t *testing.T) {
+	tr := NewTracker()
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"fix the build"}`))
+	tr.Hook("p1", "t1", "Stop", nil)
+	tr.Acknowledge("p1")
+	before := tr.List()[0]
+
+	var seen []Session
+	tr.OnChange = func(s Session) { seen = append(seen, s) }
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"[wate] The user would like to close this wate window…"}`))
+	tr.Hook("p1", "t1", "Stop", nil)
+	tr.Hook("p1", "t1", "Notification", []byte(`{"notification_type":"idle_prompt","message":"Claude is waiting for your input"}`))
+
+	s := tr.List()[0]
+	if !s.Quiet || s.Status != before.Status || s.Message != before.Message {
+		t.Errorf("after wate's question: quiet %v status %q message %q, want quiet and %q %q", s.Quiet, s.Status, s.Message, before.Status, before.Message)
+	}
+	for _, c := range seen {
+		if !c.Quiet || strings.Contains(c.Message, "[wate]") {
+			t.Errorf("a change during wate's turn was not marked quiet: %+v", c)
+		}
+		if c.Status == StatusWaiting {
+			t.Errorf("the idle reminder after wate's question counted as waiting: %+v", c)
+		}
+	}
+}
+
+func TestAPermissionPromptInAQuietTurnStillCounts(t *testing.T) {
+	tr := NewTracker()
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"[wate] restart?"}`))
+	tr.Hook("p1", "t1", "Notification", []byte(`{"notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}`))
+	if s := tr.List()[0]; s.Status != StatusWaiting || s.Phase != PhasePermission {
+		t.Errorf("status %q phase %q, want a permission prompt", s.Status, s.Phase)
+	}
+}
+
+func TestTheUsersNextPromptEndsTheQuiet(t *testing.T) {
+	tr := NewTracker()
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"[wate] restart?"}`))
+	tr.Hook("p1", "t1", "Stop", nil)
+	tr.Hook("p1", "t1", "UserPromptSubmit", []byte(`{"prompt":"go on"}`))
+	tr.Hook("p1", "t1", "Stop", nil)
+	if s := tr.List()[0]; s.Quiet || s.Status != StatusDone || s.Message != "go on" {
+		t.Errorf("quiet %v status %q message %q, want a normal finished turn", s.Quiet, s.Status, s.Message)
 	}
 }

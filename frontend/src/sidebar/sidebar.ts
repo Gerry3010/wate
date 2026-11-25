@@ -290,7 +290,10 @@ export class Sidebar {
     const why = document.createElement("div");
     why.className = "sidebar-restart-why";
     const until = st.deadline ? new Date(st.deadline).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-    why.textContent = [st.reason, until && `waiting until ${until}`].filter(Boolean).join(" · ");
+    // Past the deadline wate still ends nothing by itself: it is the user's call now.
+    const timeUp = st.expired && (st.unanswered > 0 || st.waiting > 0);
+    why.classList.toggle("expired", !!timeUp);
+    why.textContent = [st.reason, until && (timeUp ? `time's up since ${until} · your call` : `waiting until ${until}`)].filter(Boolean).join(" · ");
     body.appendChild(why);
 
     for (const r of st.rows ?? []) {

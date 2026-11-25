@@ -79,6 +79,22 @@ type Session struct {
 	transcriptTriedAt time.Time
 	// transcriptGuessed is set while TranscriptPath is a guess rather than a hook's word.
 	transcriptGuessed bool
+	// Quiet is set while the session's last prompt came from wate itself (WatePrompt): wate
+	// asked it something, and the turn that answers is nobody's news. It lasts until the next
+	// prompt from anyone else, so the idle reminder that follows a minute later stays quiet too.
+	Quiet bool `json:"quiet"`
+	// quietStatus and quietMessage are what the session showed before wate's prompt, put back
+	// when that turn ends.
+	quietStatus  Status
+	quietMessage string
+}
+
+// WatePrompt starts every prompt wate types into a session by itself.
+const WatePrompt = "[wate] "
+
+// fromWate says whether a submitted prompt is one wate typed itself.
+func fromWate(prompt string) bool {
+	return strings.HasPrefix(strings.TrimSpace(prompt), strings.TrimSpace(WatePrompt))
 }
 
 // setTranscript points s at path and forgets whatever was read from the previous one.
@@ -208,6 +224,18 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 		// resumes after a restart: it is working only once a prompt comes in.
 		t.setPhase(s, PhaseDone)
 	case "UserPromptSubmit":
+		if fromWate(p.Prompt) {
+			// The question stays out of the sidebar, and a question of the user's still open
+			// before it stays open.
+			if !s.Quiet {
+				s.quietStatus, s.quietMessage = s.Status, s.Message
+			}
+			s.Quiet = true
+			s.Status = StatusRunning
+			t.setPhase(s, PhaseWorking)
+			break
+		}
+		s.Quiet = false
 		s.Status = StatusRunning
 		s.Asking = false
 		t.setPhase(s, PhaseWorking)
@@ -217,6 +245,11 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 			s.Message = truncate(m, 120)
 		}
 	case "Notification":
+		if phase, ok := notificationPhase(p); s.Quiet && ok && phase == PhaseDone {
+			// Claude Code's idle reminder after answering wate: nothing is waiting on the user.
+			changed = false
+			break
+		}
 		s.Status = StatusWaiting
 		s.Message = firstNonEmpty(p.Message, p.Title, "Claude is waiting for you")
 		s.Asking = asking
@@ -235,6 +268,12 @@ func (t *Tracker) Hook(paneID, tabID, event string, data []byte) {
 		s.Message = ""
 		t.setPhase(s, PhaseWorking)
 	case "Stop":
+		if s.Quiet {
+			// Back to how it was before wate asked, as if the question had never come.
+			s.Status, s.Message = s.quietStatus, s.quietMessage
+			t.setPhase(s, PhaseDone)
+			break
+		}
 		s.Status = StatusDone
 		s.Message = firstNonEmpty(s.Message, "Finished")
 		s.Asking = asking

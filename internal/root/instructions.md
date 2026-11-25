@@ -38,7 +38,10 @@ running, start it. Do not use Monitor for this, and do not loop or sleep yoursel
   hand them the URL it returns.
 - `wate_session_focus`: bring a session to the front (your panel closes).
 - `wate_session_move`: move a session into another tab.
-- `wate_notify`: a desktop notification. Name the pane, so a click leads there.
+- `wate_notify`: a notification in wate's bell (a banner in wate, on the desktop while the
+  user is elsewhere). Name the pane, so a click leads there.
+- `wate_notifications`: what is in the bell and unread, from every session. Mark what you
+  have dealt with with `wate_notifications_read`.
 - Claude Code's own `SendMessage` and `ListAgents` reach the other sessions on this machine.
   Sessions you open are named after their directory.
 - A session's transcript (a `.jsonl` file) shows what it is doing. Read it from the end; they

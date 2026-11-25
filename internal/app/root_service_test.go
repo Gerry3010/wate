@@ -77,7 +77,6 @@ func TestOnlyTheRootTokenOpensTheRootCommands(t *testing.T) {
 		{Cmd: "attention", Pane: "root"},
 		{Cmd: "attention", Pane: "root", Token: "tok-p1"},
 		{Cmd: "sessions", Token: "root"},
-		{Cmd: "notify", Name: "x", Token: "tok-p1"},
 		{Cmd: "tabs", Token: "tok-p1"},
 		{Cmd: "session-focus", Target: "p1", Pane: "root"},
 		{Cmd: "session-move", Target: "p1", Name: "Other", Token: "tok-p1"},
@@ -188,5 +187,38 @@ func TestRootHostIsTheWindowThatSaysSo(t *testing.T) {
 	}
 	if got := RootHost(blobs[:1]); got != "" {
 		t.Fatalf("no window said so, got %q", got)
+	}
+}
+
+func TestAnySessionMayRingTheBell(t *testing.T) {
+	r, p := rootIn(t, map[string]string{"root": "t0", "p1": "t1"}, config.Root{Enabled: true})
+	c := NewCtlService(p, nil, nil, nil, nil)
+	c.Root = r
+	b := newBell()
+	b.setFocus(true)
+	c.Notices = b.NoticeService
+	r.agents = &AgentService{notices: b.NoticeService}
+
+	if resp := c.handle(ctl.Request{Cmd: "notify", Name: "Tests are red", Text: "3 failures", Token: "tok-p1"}); !resp.OK {
+		t.Fatalf("a session was refused: %+v", resp)
+	}
+	if resp := c.handle(ctl.Request{Cmd: "notify", Name: "Stuck", Target: "p1", Token: "tok-root"}); !resp.OK {
+		t.Fatalf("the root agent was refused: %+v", resp)
+	}
+	l := b.List()
+	if len(l.Notices) != 2 || l.Notices[1].Kind != "agent" || l.Notices[1].From != "p1" || l.Notices[1].Pane != "p1" || l.Notices[0].Kind != "root" {
+		t.Fatalf("bell: %+v", l.Notices)
+	}
+
+	// A session sees what is about it or from it; the root agent sees everything.
+	b.post(Notice{Kind: "finished", Title: "elsewhere", Pane: "p9"})
+	mine := c.handle(ctl.Request{Cmd: "notifications", Token: "tok-p1"}).Data.(NoticeList)
+	all := c.handle(ctl.Request{Cmd: "notifications", Token: "tok-root"}).Data.(NoticeList)
+	if len(mine.Notices) != 2 || len(all.Notices) != 3 {
+		t.Errorf("session saw %d, root saw %d; want 2 and 3", len(mine.Notices), len(all.Notices))
+	}
+	resp := c.handle(ctl.Request{Cmd: "notifications-read", Text: "all", Token: "tok-p1"})
+	if !resp.OK || b.List().Unread != 1 {
+		t.Errorf("marking all read from a session: %+v, unread now %d (the other pane's must stay)", resp, b.List().Unread)
 	}
 }

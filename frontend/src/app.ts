@@ -1,11 +1,12 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
-import { AccessService, AgentService, ConfigService, OpenerService, PaneBridge, RestartService, PtyService, SessionService, StateService, ThemeService, WindowService, type Access, type AccessState, type Config, type Resolved, type Session, type Target } from "./api";
+import { AccessService, AgentService, ConfigService, NoticeService, OpenerService, PaneBridge, RestartService, PtyService, SessionService, StateService, ThemeService, WindowService, type Access, type AccessState, type Config, type NoticeChange, type Resolved, type RestartStatus, type Session, type Target } from "./api";
 import { backupOf, fromImported, parseWindow, remapTree, ResumeOffers, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
 import { closeMenu, type MenuEntry } from "./ui/menu";
-import { showConfirm } from "./ui/confirm";
+import { closeConfirm, showConfirm } from "./ui/confirm";
+import { NoticeBell } from "./notices/bell";
 import { Sidebar, shortPath } from "./sidebar/sidebar";
 import { applyTheme, xtermTheme } from "./theme/apply";
 import { Keymap, claimsChord } from "./keymap/keymap";
@@ -58,6 +59,10 @@ export class WateApp {
   readonly agents = new AgentStore();
   /** The root agent's panel, over the tabs (see RootPanel). */
   readonly rootPanel: RootPanel;
+  /** wate's notification list, in the tab bar (see NoticeBell). */
+  readonly bell: NoticeBell;
+  /** The "time's up" question while it is on screen, so the round ending can take it away. */
+  private expiredCard: HTMLElement | null = null;
   private sidebar: Sidebar;
   private keymap: Keymap;
   private fontDelta = 0;
@@ -130,7 +135,14 @@ export class WateApp {
       const values = Object.fromEntries(Object.entries(sizes).map(([k, v]) => [`root.${k}`, v]));
       void ConfigService.Set(values).catch((err) => console.warn("root panel size:", err));
     };
-    root.append(this.tabBar.element, this.main, this.rootPanel.element, this.rootPanel.fab);
+    this.bell = new NoticeBell({
+      open: (id) => void NoticeService.Open(id).catch((err) => console.warn("open notice:", err)),
+      markAllRead: () => void NoticeService.MarkAllRead().catch((err) => console.warn("notices:", err)),
+      clear: () => void NoticeService.Clear().catch((err) => console.warn("notices:", err)),
+    });
+    this.tabBar.addTool(this.bell.button);
+    NoticeService.List().then((l) => this.bell.update(l)).catch(() => {});
+    root.append(this.tabBar.element, this.main, this.rootPanel.element, this.rootPanel.fab, this.bell.banners);
     this.placeRootPanel();
     // Docked, the root panel and the terminals are on screen together, and moving between them
     // need not change any tab's focus: only the DOM's focus says which one has the keys.
@@ -410,8 +422,7 @@ export class WateApp {
     const n = waiting.length;
     showConfirm(
       n === 1 ? "Reopen the agent?" : `Reopen ${n} agents?`,
-      `Claude Code was running in ${n === 1 ? "one pane" : `${n} panes`} of this window:\n` +
-        waiting.map(([, c]) => `· ${c.title}`).join("\n"),
+      `Claude Code was running in ${n === 1 ? "one pane" : `${n} panes`} of this window:`,
       [
         { label: "Not now", onSelect: () => {} },
         {
@@ -427,6 +438,7 @@ export class WateApp {
           },
         },
       ],
+      { list: waiting.map(([, c]) => c.title) },
     );
   }
 
@@ -500,9 +512,56 @@ export class WateApp {
   onRestartChanged(st: Parameters<typeof this.sidebar.setRestart>[0]) {
     // A window being closed asks only its own agents; the other windows have no part in it.
     const mine = st?.pending && (!st.window || st.window === this.windowId) ? st : null;
+    // The time's-up question is moot once the round is over, more time was given, or everyone
+    // has agreed after all.
+    if (this.expiredCard?.isConnected && (!mine || !mine.expired || (!mine.unanswered && !mine.waiting))) closeConfirm();
     // The panel is where the round is shown, so it has to be open to be of any use.
     if (mine) this.sidebar.toggle(true);
     this.sidebar.setRestart(mine);
+  }
+
+  /** A notice came in or was read: the bell follows, and a new one shows as a banner. */
+  onNotices(ch: NoticeChange) {
+    this.bell.update(ch);
+    if (ch.banner) this.bell.banner(ch.banner);
+  }
+
+  /** A click on the desktop summary: wate comes up with the list open. */
+  openBell() {
+    this.bell.openPanel();
+  }
+
+  /**
+   * The round's deadline ran out with agents still silent or asking for more time. wate does
+   * not end them by itself; it asks, in the middle of the window, what now.
+   */
+  onRestartExpired(st: RestartStatus) {
+    const verb = st.window ? "Close" : st.relaunch ? "Restart" : "Quit";
+    const what = st.window ? "close this window" : st.relaunch ? "restart wate" : "quit wate";
+    const open = (st.rows ?? []).filter((r) => r.verdict !== "go");
+    const until = st.deadline ? new Date(st.deadline).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    const minutes = this.config.claude.restart_deadline || 5;
+    const silent = open.filter((r) => r.verdict !== "wait").length;
+    const title = silent && open.length === silent
+      ? `${silent} ${silent === 1 ? "agent has" : "agents have"} not answered`
+      : `${open.length} ${open.length === 1 ? "agent is" : "agents are"} not ready`;
+    this.expiredCard = showConfirm(
+      `Time's up: ${title}`,
+      `You wanted to ${what}${until ? ` at ${until}` : ""}. Still open:`,
+      [
+        { label: "Cancel", onSelect: () => void RestartService.Cancel().catch((err) => console.warn("restart:", err)) },
+        { label: `Wait ${minutes} more min`, onSelect: () => void RestartService.Extend(minutes).catch((err) => console.warn("restart:", err)) },
+        { label: `${verb} now`, danger: true, onSelect: () => void RestartService.Finish().catch((err) => console.warn("restart:", err)) },
+      ],
+      {
+        list: open.map((r) => {
+          const said = r.verdict === "wait"
+            ? `needs ${r.minutes || "a few"} more min${r.note ? ` · ${r.note}` : ""}`
+            : r.asked ? "asked, no answer" : "could not be asked";
+          return `${r.title || r.pane} — ${said}`;
+        }),
+      },
+    );
   }
 
   /** Ask every running session whether wate may restart (the Sessions menu). */
@@ -1113,6 +1172,10 @@ export class WateApp {
     if (req.kind === "open-session") return this.openSessionFor(req.data);
     if (req.kind === "tabs") return this.listTabsFor();
     if (req.kind === "move-to") return this.moveForRoot(req.pane, req.data);
+    // The root agent's pane lies over the tabs, in none of them; a restart round still has to
+    // be able to see whether its input box is free.
+    const root = this.rootPanel.pane;
+    if (req.kind === "claude-input" && root && root.id === req.pane) return root.claudeInput();
     const pane = this.paneById(req.pane);
     const tab = this.tabOfPane(req.pane);
     if (!pane || !tab) throw new Error(`no such pane ${req.pane}`);

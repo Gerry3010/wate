@@ -14,10 +14,19 @@ import (
 func restartIn(t *testing.T) *RestartService {
 	t.Helper()
 	t.Setenv("WATE_CONFIG_DIR", t.TempDir())
-	return NewRestartService(nil, nil, func() config.Config {
+	s := NewRestartService(nil, nil, func() config.Config {
 		// No countdown by default in these tests: the ones about it set their own.
 		return config.Config{Claude: config.Claude{RestartCountdown: 0}}
 	})
+	// The deadline's timer must not outlive the test's state directory.
+	t.Cleanup(func() {
+		s.mu.Lock()
+		if s.expiry != nil {
+			s.expiry.Stop()
+		}
+		s.mu.Unlock()
+	})
+	return s
 }
 
 func TestNothingIsPendingUntilSomebodyAsks(t *testing.T) {

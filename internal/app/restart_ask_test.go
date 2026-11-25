@@ -29,7 +29,7 @@ func newPrompts(status map[string]string) *prompts {
 }
 
 // pids are made up from the pane's position in a fixed list, so the state can find its pane.
-var promptPanes = []string{"p-idle", "p-shell", "p-busy", "p-dialog", "p-typing", "p-other"}
+var promptPanes = []string{"p-idle", "p-shell", "p-busy", "p-dialog", "p-typing", "p-other", "p-6", "p-7", "p-8", "p-9"}
 
 func (p *prompts) ops() promptOps {
 	return promptOps{
@@ -265,4 +265,95 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("waited in vain for %s", what)
+}
+
+func (p *prompts) askedCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.typed)
+}
+
+func TestOnlyAFewIdleAgentsAreAskedAtOnce(t *testing.T) {
+	status := map[string]string{}
+	for _, pane := range []string{"p-idle", "p-shell", "p-other", "p-6", "p-7", "p-8", "p-9"} {
+		status[pane] = "idle"
+	}
+	p := newPrompts(status)
+	s := asking(t, p, restarting)
+
+	s.askIdle()
+	if n := p.askedCount(); n != askAtOnce {
+		t.Fatalf("%d asked in the first pass, want %d", n, askAtOnce)
+	}
+	s.askIdle()
+	if n := p.askedCount(); n != askAtOnce {
+		t.Fatalf("%d asked before anyone answered, want still %d", n, askAtOnce)
+	}
+	// An answer makes room for the next one.
+	var first string
+	for _, pane := range promptPanes {
+		if len(p.got(pane)) > 0 {
+			first = pane
+			break
+		}
+	}
+	if err := s.Respond(first, "go", 0, ""); err != nil {
+		t.Fatal(err)
+	}
+	s.askIdle()
+	if n := p.askedCount(); n != askAtOnce+1 {
+		t.Fatalf("%d asked after one answer, want %d", n, askAtOnce+1)
+	}
+	// One that keeps quiet for answerWithin stops holding up the rest.
+	s.mu.Lock()
+	for pane, at := range s.typedAt {
+		s.typedAt[pane] = at.Add(-answerWithin)
+	}
+	s.mu.Unlock()
+	s.askIdle()
+	if n := p.askedCount(); n != len(status) {
+		t.Fatalf("%d asked once the first ones had their time, want all %d", n, len(status))
+	}
+}
+
+func TestWhenTimeIsUpTheUserDecides(t *testing.T) {
+	p := newPrompts(map[string]string{"p-idle": "idle", "p-shell": "idle"})
+	s := asking(t, p, restarting)
+	var mu sync.Mutex
+	var asked []RestartStatus
+	s.onExpired = func(st RestartStatus) { mu.Lock(); asked = append(asked, st); mu.Unlock() }
+	count := func() int { mu.Lock(); defer mu.Unlock(); return len(asked) }
+
+	if err := s.Respond("p-idle", "go", 0, ""); err != nil {
+		t.Fatal(err)
+	}
+	rec, _ := readRestart()
+	s.expire(rec.StartedAt, rec.Deadline)
+	if count() != 1 || asked[0].Unanswered != 1 || !asked[0].Pending {
+		t.Fatalf("time up with one agent silent: asked %+v", asked)
+	}
+	if _, ok := readRestart(); !ok {
+		t.Fatal("the round was dropped at the deadline; it has to wait for the user")
+	}
+
+	// Waiting longer moves the deadline (the round asked for 5 minutes, this for 9, so the two
+	// differ even within the same second); the old timer has nothing more to say.
+	st := s.Extend(9)
+	if st.Deadline == rec.Deadline || st.Expired {
+		t.Errorf("deadline after extending: %s (was %s), expired %v", st.Deadline, rec.Deadline, st.Expired)
+	}
+	s.expire(rec.StartedAt, rec.Deadline)
+	if count() != 1 {
+		t.Error("a deadline that had been moved still asked the user")
+	}
+
+	// Everyone agreed by the time it runs out: the countdown has it, nobody needs asking.
+	if err := s.Respond("p-shell", "go", 0, ""); err != nil {
+		t.Fatal(err)
+	}
+	rec, _ = readRestart()
+	s.expire(rec.StartedAt, rec.Deadline)
+	if count() != 1 {
+		t.Error("the user was asked although every agent had agreed")
+	}
 }

@@ -45,7 +45,7 @@ func toolNames(t *testing.T, cs *mcp.ClientSession) []string {
 }
 
 func TestOnlyTheRootServerOffersTheRootTools(t *testing.T) {
-	rootTools := []string{"wate_sessions", "wate_tabs", "wate_session_open", "wate_session_focus", "wate_session_move", "wate_notify", "wate_session_remote_control"}
+	rootTools := []string{"wate_sessions", "wate_tabs", "wate_session_open", "wate_session_focus", "wate_session_move", "wate_session_remote_control"}
 	plain := toolNames(t, connect(t, false))
 	withRoot := toolNames(t, connect(t, true))
 	for _, name := range rootTools {
@@ -58,6 +58,12 @@ func TestOnlyTheRootServerOffersTheRootTools(t *testing.T) {
 	}
 	if !slices.Contains(withRoot, "wate_pane_split") {
 		t.Error("the root agent lost the pane tools")
+	}
+	// The bell is everybody's.
+	for _, name := range []string{"wate_notify", "wate_notifications", "wate_notifications_read"} {
+		if !slices.Contains(plain, name) || !slices.Contains(withRoot, name) {
+			t.Errorf("%s is not offered to every session", name)
+		}
 	}
 }
 

@@ -54,8 +54,10 @@ type CtlService struct {
 	// needs this one.
 	Restart *RestartService
 	// Root is set after construction too, for the same reason.
-	Root   *RootService
-	server *ctl.Server
+	Root *RootService
+	// Notices is the bell, set after construction like the two above.
+	Notices *NoticeService
+	server  *ctl.Server
 	// OnHook is set by the agent service.
 	OnHook func(HookEvent)
 }
@@ -237,7 +239,13 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 			return ctl.Response{OK: true, Data: text}
 		}
 		return ctl.Response{OK: true}
-	case "sessions", "attention", "session-open", "notify", "tabs", "session-focus", "session-move", "session-remote-control":
+	case "notify":
+		return c.notify(r)
+	case "notifications":
+		return c.notifications(r)
+	case "notifications-read":
+		return c.notificationsRead(r)
+	case "sessions", "attention", "session-open", "tabs", "session-focus", "session-move", "session-remote-control":
 		return c.root(r)
 	default:
 		slog.Debug("ctl: unknown command", "cmd", r.Cmd)
@@ -299,12 +307,6 @@ func (c *CtlService) root(r ctl.Request) ctl.Response {
 		return ctl.Response{OK: true, Data: c.Root.Sessions()}
 	case "attention":
 		return ctl.Response{OK: true, Data: c.Root.Attention()}
-	case "notify":
-		if strings.TrimSpace(r.Name+r.Text) == "" {
-			return ctl.Response{Error: "a notification needs a title or a body"}
-		}
-		c.Root.Notify(r.Name, r.Text, r.Target)
-		return ctl.Response{OK: true}
 	case "session-open":
 		return c.openSession(r)
 	case "tabs":

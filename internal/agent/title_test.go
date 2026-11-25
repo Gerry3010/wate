@@ -55,3 +55,19 @@ func TestReadTitleMissingFile(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestWatesOwnQuestionIsNoTitle(t *testing.T) {
+	p := writeTranscript(t,
+		`{"type":"user","message":{"role":"user","content":"[wate] wate would like to restart, which will end this session."}}`,
+	)
+	if got := ReadTitle(p); got != "" {
+		t.Errorf("a session only wate has spoken to got the title %q", got)
+	}
+	p = writeTranscript(t,
+		`{"type":"user","message":{"role":"user","content":"[wate] The user would like to close this wate window"}}`,
+		`{"type":"user","message":{"role":"user","content":"Fix the login"}}`,
+	)
+	if got := ReadTitle(p); got != "Fix the login" {
+		t.Errorf("got %q, want the user's first prompt", got)
+	}
+}

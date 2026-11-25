@@ -24,12 +24,6 @@ type remoteControlIn struct {
 	Name string `json:"name,omitempty" jsonschema:"the name the session shows under in Remote Control; empty leaves it to Claude Code"`
 }
 
-type notifyIn struct {
-	Title string `json:"title" jsonschema:"a few words: what needs the user"`
-	Body  string `json:"body,omitempty" jsonschema:"one or two sentences: what happened and what the user should do"`
-	Pane  string `json:"pane,omitempty" jsonschema:"the pane the notification is about; a click on it takes the user there"`
-}
-
 type sessionPaneIn struct {
 	Pane string `json:"pane" jsonschema:"the session's pane id (see wate_sessions)"`
 }
@@ -103,18 +97,6 @@ func registerRoot(s *mcp.Server) {
 			"layout: propose a move first and only make it once the user has agreed.",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in sessionMoveIn) (*mcp.CallToolResult, any, error) {
 		return call(ctl.Request{Cmd: "session-move", Target: in.Pane, Name: in.Tab})
-	})
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name: "wate_notify",
-		Description: "Put up a desktop notification for the user. Name the pane it is about, so a " +
-			"click takes them there. A newer notification about the same pane replaces the older. " +
-			"Use it for what needs the user, not for news.",
-	}, func(_ context.Context, _ *mcp.CallToolRequest, in notifyIn) (*mcp.CallToolResult, any, error) {
-		if _, err := send(ctl.Request{Cmd: "notify", Name: in.Title, Text: in.Body, Target: in.Pane}); err != nil {
-			return nil, nil, err
-		}
-		return text("Notified."), nil, nil
 	})
 }
 

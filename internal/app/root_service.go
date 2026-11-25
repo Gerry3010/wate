@@ -184,16 +184,14 @@ func (r *RootService) Opened(pane string) {
 // Notify puts up the root agent's notification; a click leads to pane, if it names one.
 // One per pane: a newer word about the same session replaces the older.
 func (r *RootService) Notify(title, body, pane string) {
-	tab := ""
 	id := rootNotificationPrefix + "general"
 	if pane != "" {
-		tab, _ = r.pty.TabForPane(pane)
 		id = rootNotificationPrefix + pane
 	}
 	if title == "" {
 		title = "Root agent"
 	}
-	r.agents.Notify(id, title, body, pane, tab)
+	r.agents.Notify(id, title, body, pane)
 }
 
 // Hint is what the root agent is told on one of its own hooks, "" for nothing: that its

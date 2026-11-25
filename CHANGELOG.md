@@ -7,6 +7,21 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 ## [Unreleased]
 
 ### Added
+- A notification bell in the tab bar, next to the settings gear, with the number of unread
+  notifications on it. Everything wate has to tell you about the Claude sessions lands there:
+  a session that finished or waits for you, the root agent's word, and whatever a session
+  reports itself. While a wate window has the focus, a new notification shows as a banner in the
+  top-right corner for a few seconds, and a click leads to the pane it is about. With wate in the
+  background, the desktop gets one notification that sums up what is unread ("12 notifications
+  in wate"), and a click on it brings wate up with the bell open. GNOME holds an app's
+  notifications back while that app has the focus and shows them all when you leave it, which
+  is how closing a window used to leave a stack of "Claude Code finished" behind. Looking at a
+  pane marks its notifications as read.
+- Every session can post to the bell, as only the root agent could before: `wate_notify`, or
+  `wate ctl notify <title> [<body>]` from a shell. `wate_notifications` and
+  `wate ctl notifications [all]` list what is unread, as JSON. A session sees what concerns its
+  own pane, the root agent sees everything. `wate_notifications_read` and
+  `wate ctl notifications-read all|<id>…` mark notifications as read.
 - A root agent (`[root] enabled`): one long-lived Claude Code session that keeps an eye on all
   the others, in a panel over the tabs (the Root button in the corner, the Claude sidebar or
   `Ctrl+Shift+O`; `[root] layout` makes it a drawer, a centred overlay or a drop-down). wate
@@ -55,11 +70,15 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
 - wate can ask the agents before it restarts. "Prepare restart…" in the Sessions menu (or
   `wate ctl restart`) puts the question to every running Claude Code session; each can answer
   `go`, or `wait` with a rough number of minutes and a line about what it is in the middle of.
-  The answers appear in the Claude panel as they come in, with two buttons. The deadline only
-  changes what the panel says — nothing is ever ended without you pressing the button, which is
-  why an estimate is worth asking for in the first place.
+  The answers appear in the Claude panel as they come in, with two buttons. When the deadline
+  passes with agents still silent or asking for more time, a question comes up in the middle of
+  the window: wait a few minutes longer, restart (or close) now, or cancel. The bell gets an
+  entry too, in case you are elsewhere. Nothing is ever ended without you pressing a button,
+  which is why an estimate is worth asking for in the first place.
   A busy session hears the question through wate's own hooks, an idle one has it typed at its
-  prompt, and each session is told once and reminded once as the deadline comes up. `PostToolUse` joins the installed hooks for this: it is the one event
+  prompt, and each session is told once and reminded once as the deadline comes up. Idle
+  sessions are asked four at a time, the next one as soon as one has answered: thirty sessions
+  starting a turn in the same second kept every core busy while you were waiting to close. `PostToolUse` joins the installed hooks for this: it is the one event
   that fires while an agent is busy, and a busy agent is exactly the one worth asking.
   Restarting means quitting and starting again, with the session restored — so the new build is
   the one that comes back. `[claude] restart_deadline` sets how long the agents get.
@@ -193,6 +212,17 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- The root agent was never asked in a restart or close round, so the round waited for it until
+  you pressed the button. Before typing, wate checks that the session's input box is empty, and
+  that check looked for the pane in the tabs only. The root agent's panel lies above them. In
+  the Claude panel the root agent's row now reads "Root agent" instead of the prompt it was
+  started with.
+- The turn in which a session answers wate's question is no longer news. It used to end in a
+  "Claude Code finished" notification and, a minute later, "waiting for your input". Now the
+  sidebar shows the session as it was before the question, and the question does not become the
+  title of a session that had no prompt of its own yet.
+- `wate ctl` prints a reply's data as JSON. `restart-status` came out in Go's `map[…]`
+  notation, which no script could read.
 - "Wait, then close" and "Prepare restart…" now reach the agents that sit idle at their prompt.
   The question went out only through wate's hooks, at an agent's next tool call or at the end of
   its turn. An agent that had finished and was waiting for input never heard of it, and the round
@@ -205,8 +235,9 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   yet" before that.
 - The dialog that offers to reopen the agents after a start grew with its list. With 30 agents
   it filled the window from top to bottom, and a few more would have pushed its title and
-  buttons out of sight. The list now scrolls inside the dialog. The `⌄` menu scrolls as well
-  once saved sessions and backups make it taller than the window.
+  buttons out of sight. The list now scrolls inside the dialog, which is wider and gives each
+  agent one line (the whole title is in the tooltip). The `⌄` menu scrolls as well once saved
+  sessions and backups make it taller than the window.
 - wate took the context window of Opus 5.5 to be 200k until a session grew past it, and the
   same for every other model that Claude Code runs with 1M from the start. The sidebar showed
   177k as 89 %, and the root agent was woken at 85 % for sessions that were far from full:

@@ -42,13 +42,20 @@ function onKey(e: KeyboardEvent) {
   closeConfirm();
 }
 
-/** Show the card. Escape and the backdrop both mean "do nothing". */
-export function showConfirm(title: string, detail: string, choices: ConfirmChoice[]): void {
+export interface ConfirmOptions {
+  /** Items the question is about, one line each (cut off with an ellipsis, whole in the
+   *  tooltip). The card grows wider for them and the list scrolls once it runs long. */
+  list?: string[];
+}
+
+/** Show the card. Escape and the backdrop both mean "do nothing". Returns the card's backdrop,
+ *  so a caller can tell later whether its question is still the one on screen. */
+export function showConfirm(title: string, detail: string, choices: ConfirmChoice[], opts: ConfirmOptions = {}): HTMLElement {
   closeConfirm();
   const back = document.createElement("div");
   back.className = "confirm-back";
   const card = document.createElement("div");
-  card.className = "confirm-card";
+  card.className = "confirm-card" + (opts.list?.length ? " wide" : "");
 
   const h = document.createElement("div");
   h.className = "confirm-title";
@@ -68,7 +75,19 @@ export function showConfirm(title: string, detail: string, choices: ConfirmChoic
     });
     row.appendChild(b);
   }
-  card.append(h, d, row);
+  card.append(h, d);
+  if (opts.list?.length) {
+    const ul = document.createElement("ul");
+    ul.className = "confirm-list";
+    for (const item of opts.list) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      li.title = item;
+      ul.appendChild(li);
+    }
+    card.appendChild(ul);
+  }
+  card.appendChild(row);
   back.appendChild(card);
   // A click that misses the card is not an answer; it must not reach what is behind it either.
   back.addEventListener("pointerdown", (e) => {
@@ -79,4 +98,5 @@ export function showConfirm(title: string, detail: string, choices: ConfirmChoic
   open = back;
   onEnter = choices.find((c) => c.primary)?.onSelect ?? null;
   window.addEventListener("keydown", onKey, true);
+  return back;
 }

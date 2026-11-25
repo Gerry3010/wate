@@ -99,7 +99,9 @@ func main() {
 	ctlSvc := app.NewCtlService(ptySvc, cfgSvc, winSvc, paneBridge, accessSvc)
 	themeSvc := app.NewThemeService(cfgSvc.Current)
 	notifySvc := notifications.New()
-	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, notifySvc, winSvc)
+	noticeSvc := app.NewNoticeService(notifySvc, winSvc, ptySvc)
+	ctlSvc.Notices = noticeSvc
+	agentSvc := app.NewAgentService(ptySvc, ctlSvc, cfgSvc.Current, noticeSvc, winSvc)
 	restartSvc := app.NewRestartService(agentSvc, winSvc, cfgSvc.Current)
 	ctlSvc.Restart = restartSvc
 	app.AskAtPrompts(restartSvc, ctlSvc)
@@ -139,6 +141,9 @@ func main() {
 	application.RegisterEvent[app.PaneRequest]("pane:request")
 	application.RegisterEvent[app.AccessState]("access:changed")
 	application.RegisterEvent[app.RestartStatus]("restart:changed")
+	application.RegisterEvent[app.RestartStatus]("restart:expired")
+	application.RegisterEvent[app.NoticeChange]("notices:changed")
+	application.RegisterEvent[app.BellRequest]("notices:open")
 	application.RegisterEvent[app.CloseRequest]("window:confirm-close")
 
 	wapp := application.New(application.Options{
@@ -154,6 +159,7 @@ func main() {
 			application.NewService(themeSvc),
 			application.NewService(notifySvc),
 			application.NewService(agentSvc),
+			application.NewService(noticeSvc),
 			application.NewService(&app.LogService{}),
 			application.NewService(&app.OpenerService{}),
 			application.NewService(&app.FileService{}),

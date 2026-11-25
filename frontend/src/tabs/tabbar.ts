@@ -95,6 +95,7 @@ export class TabBar {
   private caretAt = "";
   /** Everything render() reads, as one string: unchanged means the DOM can stay as it is. */
   private sig = "";
+  private settings = document.createElement("button");
 
   constructor(private host: TabBarHost) {
     this.element.className = "tabbar";
@@ -117,7 +118,7 @@ export class TabBar {
       e.stopPropagation();
       void this.showSessionMenu(r.right, r.bottom + 2, true);
     });
-    const settings = document.createElement("button");
+    const settings = this.settings;
     settings.className = "tabbar-settings";
     settings.title = "Settings";
     settings.innerHTML = GEAR;
@@ -131,6 +132,11 @@ export class TabBar {
         void this.showSessionMenu(e.clientX, e.clientY, false);
       });
     }
+  }
+
+  /** Put a button of the app's (the notification bell) next to the settings gear. */
+  addTool(el: HTMLElement) {
+    this.element.insertBefore(el, this.settings);
   }
 
   render(tabs: Tab[], active: Tab | null) {

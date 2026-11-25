@@ -142,6 +142,21 @@ type runIn struct {
 
 type emptyIn struct{}
 
+type notifyIn struct {
+	Title string `json:"title" jsonschema:"a few words: what needs the user"`
+	Body  string `json:"body,omitempty" jsonschema:"one or two sentences: what happened and what the user should do"`
+	Pane  string `json:"pane,omitempty" jsonschema:"the pane the notification is about, so a click takes the user there; leave empty for your own"`
+}
+
+type noticesIn struct {
+	All bool `json:"all,omitempty" jsonschema:"also list the ones already read"`
+}
+
+type noticesReadIn struct {
+	IDs []string `json:"ids,omitempty" jsonschema:"the ids of the notifications to mark as read (from wate_notifications)"`
+	All bool     `json:"all,omitempty" jsonschema:"mark every notification you can see as read"`
+}
+
 // dirOf maps the words a model reaches for onto the layout's two directions.
 func dirOf(s string, fallback string) string {
 	switch strings.TrimSpace(strings.ToLower(s)) {
@@ -238,6 +253,57 @@ func register(s *mcp.Server) {
 			return nil, nil, err
 		}
 		return text("Closed."), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "wate_notify",
+		Description: "Tell the user something needs them, through wate's notification bell: a banner " +
+			"while they are in wate, a desktop notification while they are elsewhere. A click takes " +
+			"them to the pane it names (your own by default). A newer notification of yours replaces " +
+			"your older one. Use it for what needs the user, not for news, and not to report the end " +
+			"of a turn: wate already says when a session finishes or waits.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in notifyIn) (*mcp.CallToolResult, any, error) {
+		if _, err := send(ctl.Request{Cmd: "notify", Name: in.Title, Text: in.Body, Target: in.Pane}); err != nil {
+			return nil, nil, err
+		}
+		return text("Notified."), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "wate_notifications",
+		Description: "List the notifications in wate's bell that the user has not read yet (all: the read " +
+			"ones too), newest first, as JSON: id, kind (waiting, finished, root, agent), title, body, " +
+			"the pane it is about, who posted it, when, and whether it was read. A session sees the " +
+			"ones about its own pane or posted by it; the root agent sees all.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in noticesIn) (*mcp.CallToolResult, any, error) {
+		r := ctl.Request{Cmd: "notifications"}
+		if in.All {
+			r.Name = "all"
+		}
+		out, err := send(r)
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(out), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "wate_notifications_read",
+		Description: "Mark notifications in wate's bell as read, by id or all at once, once what they " +
+			"were about has been dealt with. Only the ones wate_notifications shows you can be marked.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in noticesReadIn) (*mcp.CallToolResult, any, error) {
+		words := in.IDs
+		if in.All {
+			words = []string{"all"}
+		}
+		if len(words) == 0 {
+			return nil, nil, fmt.Errorf("say which: ids, or all")
+		}
+		out, err := send(ctl.Request{Cmd: "notifications-read", Text: strings.Join(words, " ")})
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(out), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

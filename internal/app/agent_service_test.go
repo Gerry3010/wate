@@ -1,7 +1,9 @@
 package app
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
@@ -24,10 +26,10 @@ func TestTheNotificationSaysWhatAndWhere(t *testing.T) {
 }
 
 func TestAClickOnlyGoesWhereThePaneIs(t *testing.T) {
-	a := &AgentService{windows: NewWindowService(nil)}
+	n := &NoticeService{windows: NewWindowService(nil), now: time.Now}
 	click := func(action string, info map[string]interface{}) {
-		a.onNotificationResponse(notifications.NotificationResult{Response: notifications.NotificationResponse{
-			ID: "wate-p1", ActionIdentifier: action, UserInfo: info,
+		n.onDesktopClick(notifications.NotificationResult{Response: notifications.NotificationResponse{
+			ID: summaryID, ActionIdentifier: action, UserInfo: info,
 		}})
 	}
 	// Neither a pane wate no longer knows nor some other action may get anywhere near a window;
@@ -52,5 +54,16 @@ func TestTheRootAgentIsNewsOnlyWhenStuck(t *testing.T) {
 		if got := worthNotifying(c.s, "root"); got != c.want {
 			t.Errorf("%s: got %v", c.name, got)
 		}
+	}
+}
+
+func TestABellEntryNamesTheSession(t *testing.T) {
+	n := claudeNotice(agent.Session{PaneID: "p1", Status: agent.StatusDone, Title: "Fix the login", Message: "run the tests", Cwd: "/home/g/work"}, "/home/g")
+	if n.Title != "Fix the login" || n.Kind != "finished" || n.Body != "Finished: run the tests — ~/work" || n.Key != "claude:p1" {
+		t.Errorf("got %+v", n)
+	}
+	n = claudeNotice(agent.Session{PaneID: "p2", Status: agent.StatusWaiting, Message: "Claude needs your permission to use Bash"}, "/home/g")
+	if n.Title != "Claude Code" || n.Kind != "waiting" || !strings.HasPrefix(n.Body, "Waiting for you: Claude needs") {
+		t.Errorf("got %+v", n)
 	}
 }

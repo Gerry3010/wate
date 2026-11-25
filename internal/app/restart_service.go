@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -105,6 +106,14 @@ type RestartService struct {
 	goAt      time.Time
 	// asking is set while the loop that types the question at idle prompts runs (keepAsking).
 	asking bool
+	// typedRound and typedAt remember, for the round that started at typedRound, when the
+	// question was typed at each prompt; that is what askAtOnce counts.
+	typedRound string
+	typedAt    map[string]time.Time
+	// expiry fires at the deadline, to put the decision in front of the user.
+	expiry *time.Timer
+	// onExpired stands in for telling the user in tests.
+	onExpired func(RestartStatus)
 
 	// recMu serialises changes to the record on disk: the hook path, the answers and the
 	// asking loop all read it, change it and write it back.
@@ -117,6 +126,15 @@ type RestartService struct {
 
 // askEvery is how often a pending round looks for agents that sit idle at their prompt.
 const askEvery = 2 * time.Second
+
+// askAtOnce is how many idle agents are asked at the same time. Each one asked starts a turn
+// of its own; thirty of them starting in the same second kept every core busy and the desktop
+// stuttering. The next one is asked as soon as one answers.
+const askAtOnce = 4
+
+// answerWithin is how long an asked agent keeps its place among askAtOnce. One that has not
+// answered by then is not holding up the rest any longer.
+const answerWithin = 30 * time.Second
 
 func NewRestartService(agents *AgentService, windows *WindowService, cfg func() config.Config) *RestartService {
 	return &RestartService{agents: agents, windows: windows, cfg: cfg, allowClose: map[WindowID]bool{}}
@@ -171,6 +189,12 @@ func writeRestart(r RestartRecord) error {
 
 func (s *RestartService) clear() {
 	_ = os.Remove(restartPath())
+	s.mu.Lock()
+	if s.expiry != nil {
+		s.expiry.Stop()
+		s.expiry = nil
+	}
+	s.mu.Unlock()
 }
 
 // AskAtPrompts lets the round type its question at the prompt of agents that sit idle, through
@@ -219,10 +243,121 @@ func (s *RestartService) start(reason string, minutes int, relaunch bool, window
 	s.mu.Lock()
 	s.allowed = false
 	s.mu.Unlock()
+	s.armExpiry(rec)
 	st := s.settle()
 	s.announce(st)
 	s.keepAsking()
 	return st
+}
+
+// Extend gives the agents more time: the deadline moves to minutes from now, and the user is
+// asked again when that runs out. The expired dialog's "wait".
+func (s *RestartService) Extend(minutes int) RestartStatus {
+	if minutes <= 0 {
+		minutes = 5
+	}
+	s.recMu.Lock()
+	rec, ok := readRestart()
+	if ok {
+		rec.Deadline = time.Now().Add(time.Duration(minutes) * time.Minute).Format(time.RFC3339)
+		if err := writeRestart(rec); err != nil {
+			slog.Warn("restart: could not move the deadline", "err", err)
+		}
+	}
+	s.recMu.Unlock()
+	if !ok {
+		return RestartStatus{}
+	}
+	s.armExpiry(rec)
+	s.resolveExpiry()
+	st := s.settle()
+	s.announce(st)
+	return st
+}
+
+// armExpiry sets the timer for rec's deadline, replacing any earlier one.
+func (s *RestartService) armExpiry(rec RestartRecord) {
+	at, err := time.Parse(time.RFC3339, rec.Deadline)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.expiry != nil {
+		s.expiry.Stop()
+	}
+	s.expiry = time.AfterFunc(max(0, time.Until(at)), func() { s.expire(rec.StartedAt, rec.Deadline) })
+}
+
+// expire is the deadline running out. wate does not end anything by itself: an agent that has
+// not answered is a reason to look, not a reason to cut it off. So the round stays, and the
+// user is asked, in the middle of the window and, with wate in the background, in the bell.
+func (s *RestartService) expire(startedAt, deadline string) {
+	rec, ok := readRestart()
+	if !ok || rec.StartedAt != startedAt || rec.Deadline != deadline {
+		return
+	}
+	st := s.settle()
+	s.announce(st)
+	if !st.Pending || (st.Waiting == 0 && st.Unanswered == 0) {
+		// Everyone agreed after all; the countdown takes it from here.
+		return
+	}
+	slog.Info("restart: deadline passed", "waiting", st.Waiting, "unanswered", st.Unanswered)
+	if s.onExpired != nil {
+		s.onExpired(st)
+		return
+	}
+	var w *application.WebviewWindow
+	if s.windows != nil {
+		if rec.Window != "" {
+			w, _ = s.windows.byID(WindowID(rec.Window))
+		} else {
+			w, _ = s.windows.windowFor("", "")
+		}
+	}
+	emitTo(w, "restart:expired", st)
+	if s.agents != nil {
+		s.agents.Notify(restartNoticeKey, expiredTitle(st), expiredBody(st), "")
+	}
+}
+
+// restartNoticeKey is the bell's entry for a round whose time is up.
+const restartNoticeKey = "wate:restart"
+
+func (s *RestartService) resolveExpiry() {
+	if s.agents != nil && s.agents.notices != nil {
+		s.agents.notices.resolve(restartNoticeKey)
+	}
+}
+
+// expiredTitle and expiredBody are the bell's words for a round whose time is up.
+func expiredTitle(st RestartStatus) string {
+	switch {
+	case st.Window != "":
+		return "Time's up: close the window?"
+	case st.Relaunch:
+		return "Time's up: restart wate?"
+	}
+	return "Time's up: quit wate?"
+}
+
+func expiredBody(st RestartStatus) string {
+	var parts []string
+	if st.Unanswered > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s not answered", st.Unanswered, plural(st.Unanswered, "agent has", "agents have")))
+	}
+	if st.Waiting > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s for more time", st.Waiting, plural(st.Waiting, "agent asks", "agents ask")))
+	}
+	return strings.Join(parts, ", ") + ". wate is waiting for your decision."
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // countdownSeconds is how long to leave between the last agent agreeing and the restart.
@@ -314,6 +449,7 @@ func (s *RestartService) closeWindow(id WindowID) {
 	s.goAt = time.Time{}
 	s.mu.Unlock()
 	s.clear()
+	s.resolveExpiry()
 	s.allowCloseFor(id)
 	s.announce(RestartStatus{})
 	if s.windows != nil {
@@ -344,6 +480,7 @@ func (s *RestartService) gone(rec RestartRecord) bool {
 // Cancel drops the pending restart; everything carries on.
 func (s *RestartService) Cancel() RestartStatus {
 	s.clear()
+	s.resolveExpiry()
 	s.mu.Lock()
 	s.allowed = false
 	if s.countdown != nil {
@@ -408,6 +545,10 @@ func (s *RestartService) Status() RestartStatus {
 			continue
 		}
 		row := RestartRow{Pane: sess.PaneID, Title: sess.Title, Status: string(sess.Status), Asked: rec.Notified[sess.PaneID] > 0}
+		if sess.PaneID != "" && sess.PaneID == s.rootPane() {
+			// Its title is the prompt wate started it with, which says nothing in this list.
+			row.Title = "Root agent"
+		}
 		if a, ok := rec.Answers[sess.PaneID]; ok {
 			row.Verdict, row.Minutes, row.Note = a.Verdict, a.Minutes, a.Note
 		}
@@ -422,6 +563,14 @@ func (s *RestartService) Status() RestartStatus {
 		st.Rows = append(st.Rows, row)
 	}
 	return st
+}
+
+// rootPane is the root agent's pane, "" when none runs.
+func (s *RestartService) rootPane() string {
+	if s.agents == nil || s.agents.pty == nil {
+		return ""
+	}
+	return s.agents.pty.RootPane()
 }
 
 func (s *RestartService) sessions() []agent.Session {
@@ -509,7 +658,7 @@ func question(rec RestartRecord, idle bool) string {
 			"so an honest estimate is more useful than a quick yes.",
 		what, why, when)
 	if idle {
-		return "[wate] " + ask + " If anything of yours still runs in the background (a command, " +
+		return agent.WatePrompt + ask + " If anything of yours still runs in the background (a command, " +
 			"an agent, a monitor), say wait. Only answer; do not pick up other work because of this message."
 	}
 	return ask + " Carry on with your work either way."
@@ -557,8 +706,15 @@ func (s *RestartService) askIdle() bool {
 		s.clear()
 		return false
 	}
+	room := s.roomToAsk(rec, time.Now())
+	if room == 0 {
+		return true
+	}
 	var claimed []string
 	for _, sess := range s.sessions() {
+		if len(claimed) == room {
+			break
+		}
 		pane := sess.PaneID
 		if pane == "" || !dueToBeTold(rec, pane, time.Now()) || !s.concerns(rec, sess.TabID, pane) {
 			continue
@@ -578,23 +734,54 @@ func (s *RestartService) askIdle() bool {
 	if len(claimed) == 0 {
 		return true
 	}
-	// Each pane has a terminal of its own, so the typing goes on side by side: one after the
-	// other, thirty idle agents would wait their turn for several seconds.
+	// Each pane has a terminal of its own, so the few asked at once are typed at side by side.
 	line := question(rec, true)
-	var wg sync.WaitGroup
+	now := time.Now()
+	s.mu.Lock()
 	for _, pane := range claimed {
+		s.typedAt[pane] = now
+	}
+	s.mu.Unlock()
+	failed := make([]bool, len(claimed))
+	var wg sync.WaitGroup
+	for i, pane := range claimed {
 		wg.Go(func() {
 			if err := submitLine(s.prompt, pane, line); err != nil {
 				slog.Warn("restart: could not ask at the prompt", "pane", pane, "err", err)
-				s.claim(rec.StartedAt, pane, -1)
+				failed[i] = true
 				return
 			}
 			slog.Info("restart: asked an idle agent at its prompt", "pane", pane)
 		})
 	}
 	wg.Wait()
+	for i, pane := range claimed {
+		if failed[i] {
+			s.claim(rec.StartedAt, pane, -1)
+			s.mu.Lock()
+			delete(s.typedAt, pane)
+			s.mu.Unlock()
+		}
+	}
 	s.announce(s.settle())
 	return true
+}
+
+// roomToAsk is how many more idle agents may be asked now: askAtOnce, less the ones typed at
+// in this round that have neither answered nor had answerWithin to do so.
+func (s *RestartService) roomToAsk(rec RestartRecord, now time.Time) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.typedRound != rec.StartedAt || s.typedAt == nil {
+		s.typedRound, s.typedAt = rec.StartedAt, map[string]time.Time{}
+	}
+	busy := 0
+	for pane, at := range s.typedAt {
+		if _, answered := rec.Answers[pane]; !answered && now.Sub(at) < answerWithin {
+			busy++
+		}
+	}
+	return max(0, askAtOnce-busy)
 }
 
 // claim counts a telling of pane in the round that started at startedAt (by is 1), or takes

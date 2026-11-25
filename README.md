@@ -106,7 +106,10 @@ No AI inside wate — just a good seat for Claude Code:
 - Copying out of Claude Code works: it hands the text to the terminal with OSC 52, and wate puts
   it on the clipboard (`[terminal] osc52 = false` turns that off; a program can never *read* the
   clipboard). Claude Code owns the mouse, so drag with `Shift` held to select text yourself.
-- A desktop notification fires when Claude needs you and you are looking elsewhere.
+- When a session finishes or needs you while you are looking elsewhere, it goes into the bell in
+  the tab bar. In wate it shows as a banner for a few seconds; with wate in the background, the
+  desktop gets one notification that counts what is unread. Sessions can post to the bell
+  themselves (`wate_notify`, `wate ctl notify`) and read it (`wate_notifications`).
 
 Process detection works out of the box. For precise states run **`wate install-hooks`** once:
 it registers `wate hook <event>` for `SessionStart`, `UserPromptSubmit`, `Notification`, `Stop`
@@ -149,7 +152,7 @@ typed and the agent tells you. A session it opens can start with Remote Control 
 session list shows which sessions have it on, with the link to continue them at.
 
 Its extra tools (`wate_sessions`, `wate_tabs`, `wate_session_open`, `wate_session_focus`,
-`wate_session_move`, `wate_session_remote_control`, `wate_notify`) are not offered to other
+`wate_session_move`, `wate_session_remote_control`) are not offered to other
 sessions, and wate answers them only for the root agent's own pane, which it recognises by that
 pane's token. Its session is continued across restarts, and its auto-memory belongs to
 `[root] cwd`. `[root] instructions` replaces the built-in instructions with a file of your own,
@@ -196,6 +199,8 @@ Every shell started by wate has `$WATE_SOCKET`, `$WATE_PANE_ID` and `$WATE_TAB_I
 wate open README.md:12      # open in an editor pane next to this terminal
 wate ctl action split_down  # run any keybinding action by name
 wate ctl input 'ls\n'       # type into the current pane
+wate ctl notify 'Build failed' 'three tests are red'   # a notification in the bell
+wate ctl notifications      # what is unread, as JSON
 ```
 
 ## Configuration

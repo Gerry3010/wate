@@ -61,6 +61,9 @@ async function boot() {
   Events.On("restart:changed", (ev: { data: Parameters<typeof app.onRestartChanged>[0] }) => app.onRestartChanged(ev.data));
   Events.On("access:changed", (ev: { data: Parameters<typeof app.onAccessChanged>[0] }) => app.onAccessChanged(ev.data));
   Events.On("agent:status", (ev: { data: Parameters<typeof app.onAgentStatus>[0] }) => app.onAgentStatus(ev.data));
+  Events.On("notices:changed", (ev: { data: Parameters<typeof app.onNotices>[0] }) => app.onNotices(ev.data));
+  onMine("notices:open", () => app.openBell());
+  onMine("restart:expired", (d: Parameters<typeof app.onRestartExpired>[0]) => app.onRestartExpired(d));
   onMine("window:activate-tab", (d: { tab: string; pane: string }) => app.activateTab(d.tab, d.pane));
   onMine("window:adopt-tab", (d: Parameters<typeof app.adoptTab>[0]) => void app.adoptTab(d));
   onMine("window:release-tab", (d: { tab: string }) => app.releaseTab(d.tab));

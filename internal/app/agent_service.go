@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
 	"github.com/Gerry3010/wate/internal/agent"
 	"github.com/Gerry3010/wate/internal/config"
@@ -22,7 +21,7 @@ type AgentService struct {
 	pty     *PtyService
 	ctl     *CtlService
 	cfg     func() config.Config
-	notify  *notifications.NotificationService
+	notices *NoticeService
 
 	windows *WindowService
 
@@ -38,15 +37,15 @@ type windowFocus struct {
 	focused bool
 }
 
-func NewAgentService(pty *PtyService, ctl *CtlService, cfg func() config.Config, notify *notifications.NotificationService, windows *WindowService) *AgentService {
+func NewAgentService(pty *PtyService, ctl *CtlService, cfg func() config.Config, notices *NoticeService, windows *WindowService) *AgentService {
 	a := &AgentService{
-		tracker: agent.NewTracker(), pty: pty, ctl: ctl, cfg: cfg, notify: notify, windows: windows,
+		tracker: agent.NewTracker(), pty: pty, ctl: ctl, cfg: cfg, notices: notices, windows: windows,
 		focus: map[WindowID]windowFocus{}, stop: make(chan struct{}),
 	}
 	a.tracker.OnChange = a.onChange
 	ctl.OnHook = func(ev HookEvent) { a.tracker.Hook(ev.Pane, ev.Tab, ev.Event, ev.Data) }
-	if notify != nil {
-		notify.OnNotificationResponse(a.onNotificationResponse)
+	if notices != nil {
+		notices.focused = a.anyFocused
 	}
 	return a
 }
@@ -105,7 +104,17 @@ func (a *AgentService) poll() {
 func (a *AgentService) onChange(s agent.Session) {
 	// Stays a broadcast: the sidebar deliberately lists sessions from every window.
 	application.Get().Event.Emit("agent:status", a.stamp(s))
+	key := claudeNoticeKey(s.PaneID)
 	if s.Status != agent.StatusWaiting && s.Status != agent.StatusDone {
+		// Back at work on something new, or gone: whatever it was waiting for is over. wate's
+		// own question is not something new; it leaves an unread "finished" standing.
+		if a.notices != nil && (s.Status == agent.StatusIdle || (s.Phase == agent.PhaseWorking && !s.Quiet)) {
+			a.notices.resolve(key)
+		}
+		return
+	}
+	if s.Quiet && s.Phase != agent.PhasePermission {
+		// The turn answered a question wate itself typed in (a restart round): nobody waits.
 		return
 	}
 	if a.InView(s.PaneID) {
@@ -116,15 +125,31 @@ func (a *AgentService) onChange(s agent.Session) {
 	if !worthNotifying(s, a.pty.RootPane()) {
 		return
 	}
-	if !a.cfg().Claude.Notify {
+	if !a.cfg().Claude.Notify || a.notices == nil {
 		return
 	}
-	title := "Claude Code is waiting"
-	if s.Status == agent.StatusDone {
-		title = "Claude Code finished"
-	}
-	a.Notify("wate-"+s.PaneID, title, notificationBody(s.Message, s.Cwd, homeDir()), s.PaneID, s.TabID)
+	a.notices.post(claudeNotice(s, homeDir()))
 }
+
+// claudeNotice is the bell's word on a session that waits or has finished. With thirty
+// sessions in the list, "Claude Code finished" says nothing, so the title is the session's
+// own and the state goes into the body.
+func claudeNotice(s agent.Session, home string) Notice {
+	n := Notice{Key: claudeNoticeKey(s.PaneID), Kind: "waiting", Title: firstNonEmpty(s.Title, "Claude Code"), Pane: s.PaneID}
+	state := "Waiting for you"
+	if s.Status == agent.StatusDone {
+		n.Kind, state = "finished", "Finished"
+	}
+	body := state
+	if s.Message != "" && s.Message != state && s.Message != n.Title {
+		body += ": " + s.Message
+	}
+	n.Body = notificationBody(body, s.Cwd, home)
+	return n
+}
+
+// claudeNoticeKey groups a session's status notices: one entry per pane in the bell.
+func claudeNoticeKey(pane string) string { return "claude:" + pane }
 
 // worthNotifying says whether a waiting or finished session is news. For the root agent it
 // rarely is: it finishes a turn every time it has dealt with something, and a minute later
@@ -135,6 +160,18 @@ func worthNotifying(s agent.Session, rootPane string) bool {
 		return true
 	}
 	return s.Status == agent.StatusWaiting && s.Phase == agent.PhasePermission
+}
+
+// anyFocused reports whether one of wate's windows has the focus.
+func (a *AgentService) anyFocused() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, f := range a.focus {
+		if f.focused {
+			return true
+		}
+	}
+	return false
 }
 
 // InView reports whether a focused window is showing this very pane.
@@ -149,22 +186,20 @@ func (a *AgentService) InView(pane string) bool {
 	return false
 }
 
-// Notify puts up a desktop notification; a click on it leads to pane (if any). Notifications
-// with the same id replace each other.
-func (a *AgentService) Notify(id, title, body, pane, tab string) {
-	if a.notify == nil {
+// Notify puts a notice in the bell (and, with wate in the background, on the desktop). A
+// newer notice with the same key replaces the older; a click leads to pane, if it names one.
+func (a *AgentService) Notify(key, title, body, pane string) {
+	if a.notices == nil {
 		return
 	}
-	err := a.notify.SendNotification(notifications.NotificationOptions{
-		ID:    id,
-		Title: title,
-		Body:  body,
-		// Read back when it is clicked, to find the pane again.
-		Data: map[string]interface{}{"pane": pane, "tab": tab},
-	})
-	if err != nil {
-		slog.Debug("notification", "err", err)
+	kind := "agent"
+	switch {
+	case strings.HasPrefix(key, rootNotificationPrefix):
+		kind = "root"
+	case strings.HasPrefix(key, "wate:"):
+		kind = "wate"
 	}
+	a.notices.post(Notice{Key: key, Kind: kind, Title: title, Body: body, Pane: pane})
 }
 
 // notificationBody says what the session was doing and where: "<message> — ~/<dir>", leaving
@@ -180,31 +215,6 @@ func notificationBody(message, cwd, home string) string {
 		}
 	}
 	return strings.Join(parts, " — ")
-}
-
-// onNotificationResponse brings the pane a clicked notification is about to the front: its
-// window, its tab, and the focus in it.
-func (a *AgentService) onNotificationResponse(r notifications.NotificationResult) {
-	if r.Error != nil || r.Response.ActionIdentifier != notifications.DefaultActionIdentifier {
-		return
-	}
-	pane, _ := r.Response.UserInfo["pane"].(string)
-	tab, _ := r.Response.UserInfo["tab"].(string)
-	if pane == "" && !strings.HasPrefix(r.Response.ID, rootNotificationPrefix) {
-		pane = strings.TrimPrefix(r.Response.ID, "wate-")
-	}
-	if pane == "" || a.windows == nil {
-		return
-	}
-	// The pane may have moved tab or window since the notification went out; the window
-	// service knows where it is now, and the frontend finds the pane by its id.
-	win := a.windows.windowForTab(tab, pane)
-	if win == "" {
-		return
-	}
-	if err := a.windows.FocusPane(string(win), tab, pane); err != nil {
-		slog.Debug("notification click", "pane", pane, "err", err)
-	}
 }
 
 // StopSessions ends every Claude Code session running in a pane and waits for it (bounded by
@@ -282,6 +292,10 @@ func (a *AgentService) SetFocus(ctx context.Context, paneID string, windowFocuse
 	a.mu.Lock()
 	a.focus[id] = windowFocus{pane: paneID, focused: windowFocused}
 	a.mu.Unlock()
+	if windowFocused && a.notices != nil {
+		a.notices.focusGained()
+		a.notices.seen(paneID)
+	}
 	if windowFocused && paneID != "" {
 		a.tracker.Acknowledge(paneID)
 	}

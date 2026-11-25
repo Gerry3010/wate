@@ -42,6 +42,12 @@ usage:
   wate ctl restart-now [quit]     stop waiting: restart, or just quit
   wate ctl restart-respond go|wait [<min>] [<note>]
                                   answer, from inside the session that was asked
+  wate ctl notify <title> [<body>]
+                                  put a notification in wate's bell (--target <id>: the pane a
+                                  click leads to; default this one)
+  wate ctl notifications [all]    the unread notifications (all: read ones too), as JSON
+  wate ctl notifications-read all|<id>...
+                                  mark notifications as read
   wate ctl new-window [<dir>]     open another window
   wate ctl watch [--once]         print what needs the root agent's attention, one JSON line
                                   per event (--once: end after the first batch); root agent only
@@ -139,6 +145,16 @@ func Run(args []string) int {
 			req.Text = strings.Join(words, " ")
 		case "restart-now":
 			req.Name = rest
+		case "notify":
+			// `notify <title> [<body…>]`: the title is one word unless quoted.
+			if len(words) > 0 {
+				req.Name = words[0]
+				req.Text = strings.Join(words[1:], " ")
+			}
+		case "notifications":
+			req.Name = rest
+		case "notifications-read":
+			req.Text = rest
 		case "restart-respond":
 			// `restart-respond go|wait [<minutes>] [<note…>]`
 			if len(words) == 0 {
@@ -223,10 +239,25 @@ func send(req ctl.Request) int {
 		fmt.Fprintln(os.Stderr, "wate:", resp.Error)
 		return 1
 	}
-	if resp.Data != nil {
-		fmt.Println(resp.Data)
-	}
+	printData(os.Stdout, resp.Data)
 	return 0
+}
+
+// printData prints a reply's data: text as it is, anything else as JSON. Printed with %v, a
+// status came out as Go's map[…] notation, which nothing downstream can read.
+func printData(w io.Writer, data any) {
+	switch d := data.(type) {
+	case nil:
+	case string:
+		fmt.Fprintln(w, d)
+	default:
+		b, err := json.Marshal(d)
+		if err != nil {
+			fmt.Fprintln(w, d)
+			return
+		}
+		fmt.Fprintln(w, string(b))
+	}
 }
 
 // runHook forwards a Claude Code hook payload to the app. Outside a wate shell

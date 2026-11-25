@@ -49,8 +49,10 @@ func ReadTitle(path string) string {
 				return s
 			}
 		case "user":
-			if prompt == "" {
-				prompt = clean(userText(entry.Message.Content))
+			// wate's own question (a restart round, typed at an idle prompt) names nothing the
+			// session is about; a session that had no prompt before it stays untitled.
+			if text := userText(entry.Message.Content); prompt == "" && !fromWate(text) {
+				prompt = clean(text)
 			}
 		}
 	}
