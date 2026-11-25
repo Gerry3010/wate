@@ -25,6 +25,10 @@ type StateService struct {
 	// clock and openWindow stand in for time.Now and WindowService.Open in tests.
 	clock      func() time.Time
 	openWindow func(OpenWindowOptions) (WindowID, error)
+
+	// run names this process in the backups it writes (see backup.go); set once, on first use.
+	run     string
+	runOnce sync.Once
 }
 
 func NewStateService(windows *WindowService) *StateService { return &StateService{windows: windows} }
@@ -125,11 +129,13 @@ func (s *StateService) Save(ctx context.Context, data string) error {
 	return writeState(f)
 }
 
-// Remove forgets one window's slot — it was closed, so it should not reopen next time.
+// Remove forgets one window's slot — it was closed, so it should not reopen next time. Its
+// backup stays, sealed: the tabs can still be brought back from the dropdown.
 func (s *StateService) Remove(key string) {
 	if key == "" {
 		return
 	}
+	s.sealBackups(key)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	f := readState()

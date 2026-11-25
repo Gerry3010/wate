@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { leaf, leaves, splitLeaf } from "./layout/tree";
-import { backupOf, describeBackup, parseSession, parseWindow, remapTree, ResumeOffers, type SavedWindow } from "./session";
+import { backupOf, describeBackup, parseSession, parseWindow, remapTree, ResumeOffers, worthKeeping, type SavedWindow } from "./session";
 
 describe("session", () => {
   it("rejects garbage and old versions", () => {
@@ -173,5 +173,23 @@ describe("window backups", () => {
     expect(s).toEqual({ label: "Homepage, yate, ~ +1", tabs: 5, agents: 2 });
     expect(describeBackup("")).toBeNull();
     expect(describeBackup("{broken")).toBeNull();
+  });
+});
+
+describe("worthKeeping", () => {
+  const shell = (id: string, extra: object = {}) => ({ id, kind: "terminal" as const, cwd: "/home/g", ...extra });
+  const tab = (panes: ReturnType<typeof shell>[] | { id: string; kind: "editor"; path: string }[]) => ({
+    tree: leaf(panes[0].id),
+    focused: panes[0].id,
+    panes,
+  });
+  it("leaves out a start that came up with one plain shell", () => {
+    expect(worthKeeping({ key: "w-1", active: 0, tabs: [tab([shell("a")])] })).toBe(false);
+    expect(worthKeeping({ key: "w-1", active: 0, tabs: [tab([shell("a"), shell("b")])], root: true })).toBe(false);
+  });
+  it("keeps several tabs, a Claude session or an open file", () => {
+    expect(worthKeeping({ key: "w-1", active: 0, tabs: [tab([shell("a")]), tab([shell("b")])] })).toBe(true);
+    expect(worthKeeping({ key: "w-1", active: 0, tabs: [tab([shell("a", { claude: { title: "x" } })])] })).toBe(true);
+    expect(worthKeeping({ key: "w-1", active: 0, tabs: [tab([{ id: "e", kind: "editor", path: "/x" }])] })).toBe(true);
   });
 });

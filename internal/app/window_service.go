@@ -224,6 +224,13 @@ func (s *WindowService) track(id WindowID, win *application.WebviewWindow) {
 func (s *WindowService) forget(id WindowID) {
 	s.mu.Lock()
 	e, known := s.windows[id]
+	// The last window closing takes wate with it (ApplicationShouldTerminateAfterLastWindowClosed),
+	// so that is a quit, and a quit keeps the tabs for the next start. Treating it as "this
+	// window is done with" dropped the only slot there was: on 25 Nov 2026 "Close now" in a
+	// close round ended wate, and the next start came up with one empty tab.
+	if known && len(s.order) == 1 && s.order[0] == id {
+		s.quitting = true
+	}
 	drop := ""
 	if known && !s.quitting && e.boot.Persist {
 		drop = e.boot.StateKey

@@ -167,14 +167,23 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   clipboard is never answered.
 - The Claude sidebar can sort sessions by context use (Context used in its sort menu). The
   fullest context comes first, and sessions with none known yet come last.
-- Window backups. wate keeps one per window in `backups.json`, next to `session.json`: the
-  window's tabs with their layouts, directories, open files, titles, colours and the Claude Code
-  session in each pane, without the scrollback. It follows the window as it changes and stays
-  when the window is closed, so a window closed by mistake, or one a start did not bring back,
-  can still be reopened. The `⌄` menu in the tab bar lists them under Window backups. A click
-  opens the backup in a new window, where the usual dialog offers to reopen its agents and
-  leaves out any session that is running right now, so none runs twice. Backups of closed
-  windows go after 30 days, and at most 20 are kept.
+- Window backups in `backups.json`, next to `session.json`: the window's tabs with their
+  layouts, directories, open files, titles, colours and the Claude Code session in each pane,
+  without the scrollback. A window's backup follows it for five minutes, then the next one
+  begins, and closing the window seals the one it was writing. Up to twelve generations of each
+  window are kept, and no later start of wate ever writes over an earlier one's. A window that
+  holds only one tab of plain shells (a start that came up empty) is not backed up at all, so
+  it cannot push out a good one. The window saves every three minutes besides every change. The
+  `⌄` menu in the tab bar lists the backups under Window backups. A click opens one in a new
+  window, where the usual dialog offers to reopen its agents and leaves out any session that is
+  running right now, so none runs twice. Backups of closed windows go after 30 days, and at most
+  100 are kept.
+- A start that should have brought tabs back and came up with none offers the newest backup an
+  earlier run left: "Reopen your last layout?", with its tabs listed. Reopen puts them into the
+  window in place of its fresh shell, and the root agent stays where it is.
+- The root agent can colour tabs (`wate_tab_color`, by tab id or title, with the tab menu's
+  colour names or `#rrggbb`; empty takes the colour away), and `wate_tabs` lists each tab's
+  colour, so it can put them back.
 
 ### Changed
 - The Claude sidebar spans windows: a session running in another window is listed with
@@ -212,6 +221,13 @@ Each `## [x.y.z]` section becomes the body of the matching GitHub release.
   DataTransfer: it advertises `text/uri-list` and then hands out nothing.
 
 ### Fixed
+- Closing the last window lost every tab. It was handled as a window you are done with, whose
+  tabs should not come back, although closing it ends wate. "Close now" in a close round goes
+  that way too: on 25 Nov 2026 it ended a window with fourteen tabs and thirty-five agents, and
+  the next start had one empty tab. Its one backup went within seconds, overwritten by that
+  empty start under the same window key. The last window closing now counts as quitting and
+  keeps its tabs, and backups come in generations that a later start cannot touch (see Window
+  backups above).
 - The root agent was never asked in a restart or close round, so the round waited for it until
   you pressed the button. Before typing, wate checks that the session's input box is empty, and
   that check looked for the pane in the tabs only. The root agent's panel lies above them. In

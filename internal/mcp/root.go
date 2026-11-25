@@ -24,6 +24,11 @@ type remoteControlIn struct {
 	Name string `json:"name,omitempty" jsonschema:"the name the session shows under in Remote Control; empty leaves it to Claude Code"`
 }
 
+type tabColorIn struct {
+	Tab   string `json:"tab" jsonschema:"the tab, by id or by its title (see wate_tabs)"`
+	Color string `json:"color" jsonschema:"red, orange, yellow, green, cyan, blue, violet, purple, pink or gray, or #rrggbb; empty takes the colour away"`
+}
+
 type sessionPaneIn struct {
 	Pane string `json:"pane" jsonschema:"the session's pane id (see wate_sessions)"`
 }
@@ -89,6 +94,16 @@ func registerRoot(s *mcp.Server) {
 			"your panel. This moves what the user is looking at: do it when they ask to see a session.",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in sessionPaneIn) (*mcp.CallToolResult, any, error) {
 		return call(ctl.Request{Cmd: "session-focus", Target: in.Pane})
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "wate_tab_color",
+		Description: "Give a tab a colour, as the tab's own menu does, or take it away with an empty " +
+			"colour. wate_tabs lists every tab's colour, so you can note them and put them back after " +
+			"a tab was lost. The colours belong to the user's way of sorting their tabs: set them when " +
+			"the user asks, or to restore what they had.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in tabColorIn) (*mcp.CallToolResult, any, error) {
+		return call(ctl.Request{Cmd: "tab-color", Target: in.Tab, Name: in.Color})
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

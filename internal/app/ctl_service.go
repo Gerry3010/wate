@@ -245,7 +245,7 @@ func (c *CtlService) handle(r ctl.Request) ctl.Response {
 		return c.notifications(r)
 	case "notifications-read":
 		return c.notificationsRead(r)
-	case "sessions", "attention", "session-open", "tabs", "session-focus", "session-move", "session-remote-control":
+	case "sessions", "attention", "session-open", "tabs", "session-focus", "session-move", "session-remote-control", "tab-color":
 		return c.root(r)
 	default:
 		slog.Debug("ctl: unknown command", "cmd", r.Cmd)
@@ -315,6 +315,8 @@ func (c *CtlService) root(r ctl.Request) ctl.Response {
 		return c.focusSession(r.Target)
 	case "session-move":
 		return c.moveSession(r.Target, r.Name)
+	case "tab-color":
+		return c.colorTab(r.Target, r.Name)
 	case "session-remote-control":
 		return c.switchRemoteControl(r.Target, r.Name)
 	}
@@ -432,6 +434,40 @@ func (c *CtlService) listTabs() ctl.Response {
 		out = append(out, windowTabs{Window: info.ID, Index: info.Index, Tabs: json.RawMessage(reply)})
 	}
 	return ctl.Response{OK: true, Data: out}
+}
+
+// colorTab gives a tab (by id or title) a colour, or takes it away with an empty one. Each
+// window is asked in turn, since only the window knows its tabs' titles; the first that has
+// the tab answers.
+func (c *CtlService) colorTab(tab, color string) ctl.Response {
+	tab = strings.TrimSpace(tab)
+	if tab == "" {
+		return ctl.Response{Error: "tab-color needs a tab, by id or title"}
+	}
+	if c.windows == nil {
+		return ctl.Response{Error: "no windows"}
+	}
+	data, _ := json.Marshal(map[string]string{"tab": tab, "color": strings.TrimSpace(color)})
+	var last error
+	for _, info := range c.windows.Windows() {
+		win, ok := c.windows.byID(WindowID(info.ID))
+		if !ok {
+			continue
+		}
+		reply, err := c.bridge.ask(win, "tab-color", "", string(data))
+		if err != nil {
+			last = err
+			continue
+		}
+		if !json.Valid([]byte(reply)) {
+			return ctl.Response{OK: true, Data: reply}
+		}
+		return ctl.Response{OK: true, Data: json.RawMessage(reply)}
+	}
+	if last == nil {
+		last = fmt.Errorf("no tab %q", tab)
+	}
+	return ctl.Response{Error: last.Error()}
 }
 
 // focusSession brings a session's pane to the front, in whichever window it is.

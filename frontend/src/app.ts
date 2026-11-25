@@ -1,7 +1,7 @@
 import { Clipboard, Window } from "@wailsio/runtime";
 
 import { AccessService, AgentService, ConfigService, NoticeService, OpenerService, PaneBridge, RestartService, PtyService, SessionService, StateService, ThemeService, WindowService, type Access, type AccessState, type Config, type NoticeChange, type Resolved, type RestartStatus, type Session, type Target } from "./api";
-import { backupOf, fromImported, parseWindow, remapTree, ResumeOffers, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
+import { backupOf, describeBackup, worthKeeping, fromImported, parseWindow, remapTree, ResumeOffers, type ImportedTab, type SavedClaude, type SavedPane, type SavedTab, type SavedWindow } from "./session";
 import { AgentStore } from "./agent/store";
 import { updateBadge } from "./agent/badge";
 import { closeMenu, type MenuEntry } from "./ui/menu";
@@ -20,7 +20,7 @@ import type { Pane } from "./pane";
 import { Tab, nextId, noteId } from "./tabs/tab";
 import { findTab } from "./tabs/resolve";
 import { dockable, RootPanel, ROOT_LAYOUTS, rootLayout } from "./root/panel";
-import { TabBar } from "./tabs/tabbar";
+import { TabBar, TAB_COLORS, tabColorValue } from "./tabs/tabbar";
 import { TerminalPane, type PaneNotice } from "./terminal/pane";
 import { statusView, type StatusHost } from "./terminal/status";
 import { EditorPane } from "./editor/pane";
@@ -49,6 +49,9 @@ const SPRING_MS = 400;
 /** Where the backend files the root agent's pane: it is in no tab, and the id is only a name. */
 const ROOT_TAB = "tab-root";
 const RESTORE_SCROLLBACK = 48 * 1024;
+
+/** How often a window saves its state even when nothing told it to (see the constructor). */
+const PERIODIC_SAVE_MS = 3 * 60 * 1000;
 
 export class WateApp {
   readonly tabs: Tab[] = [];
@@ -101,8 +104,8 @@ export class WateApp {
       openSession: (id) => void this.openNamedSession(id),
       deleteSession: (id) => void SessionService.Delete(id).catch((err) => console.warn("delete session:", err)),
       listBackups: async () => (await StateService.Backups().catch(() => null)) ?? [],
-      restoreBackup: (key) => void StateService.RestoreBackup(key).catch((err) => console.warn("restore backup:", err)),
-      deleteBackup: (key) => void StateService.DeleteBackup(key).catch((err) => console.warn("delete backup:", err)),
+      restoreBackup: (id) => void StateService.RestoreBackup(id).catch((err) => console.warn("restore backup:", err)),
+      deleteBackup: (id) => void StateService.DeleteBackup(id).catch((err) => console.warn("delete backup:", err)),
       openImport: () => this.openSettings("import"),
       agentStatus: (t) => this.agents.forTab(t.id),
     });
@@ -165,6 +168,9 @@ export class WateApp {
     this.agents.subscribe(() => this.onAgentsChanged());
     AgentService.List().then((l) => this.agents.replaceAll(l ?? [])).catch(() => {});
     window.addEventListener("beforeunload", () => void this.saveSession(true));
+    // Besides every change: every few minutes, so session.json and the backup never lag far
+    // behind what is on screen (a session's title or context moves without a layout change).
+    window.setInterval(() => void this.saveSession(), PERIODIC_SAVE_MS);
   }
 
   // ---- session persistence ------------------------------------------------
@@ -215,7 +221,7 @@ export class WateApp {
     // The window's backup, which outlives it (tab bar dropdown). Written only when it changed:
     // most saves are about terminal text, which the backup leaves out.
     const backup = backupOf(state);
-    const json = backup && JSON.stringify(backup);
+    const json = backup && worthKeeping(backup) && JSON.stringify(backup);
     if (json && json !== this.lastBackup) {
       this.lastBackup = json;
       await StateService.SaveBackup(json).catch((err) => console.warn("backup save:", err));
@@ -283,6 +289,50 @@ export class WateApp {
     const opened = await this.openTabs(fromImported(tabs));
     if (opened[0]) this.activate(opened[0]);
     return opened.length;
+  }
+
+  /**
+   * The start came up without any tabs to restore, yet an earlier run left a backup: offer it.
+   * This is the way back when session.json lost a window (on 25 Nov 2026 closing the last
+   * window dropped its slot, and the next start had one empty tab).
+   */
+  async offerLastLayout(): Promise<void> {
+    const last = await StateService.LastBackup().catch(() => null);
+    const saved = last && parseWindow(last.data);
+    const summary = last && describeBackup(last.data);
+    if (!last || !saved || !summary || !worthKeeping(saved)) return;
+    const when = new Date(last.saved_at);
+    const at = Number.isNaN(when.getTime())
+      ? ""
+      : ` from ${when.toDateString() === new Date().toDateString() ? "" : `${when.toLocaleDateString([], { day: "numeric", month: "short" })} `}${when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    const count = [`${summary.tabs} tab${summary.tabs === 1 ? "" : "s"}`, summary.agents ? `${summary.agents} agent${summary.agents === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ");
+    showConfirm(
+      "Reopen your last layout?",
+      `wate started without its tabs. The newest backup${at} holds ${count}:`,
+      [
+        { label: "Not now", onSelect: () => {} },
+        { label: "Reopen", primary: true, onSelect: () => void this.adoptLayout(saved) },
+      ],
+      { list: saved.tabs.map((t, i) => t.title || describeBackup(JSON.stringify({ ...saved, tabs: [t] }))?.label || `Tab ${i + 1}`) },
+    );
+  }
+
+  /** Open a backup's tabs in this window, in place of the one fresh shell it started with. */
+  private async adoptLayout(saved: SavedWindow): Promise<void> {
+    const fresh = this.tabs.length === 1 && this.tabs[0].panes.size === 1 ? this.tabs[0] : null;
+    this.restoring = true;
+    let opened: Tab[] = [];
+    try {
+      opened = await this.openTabs(saved.tabs);
+      const active = opened[saved.active] ?? opened[0];
+      if (active) this.activate(active);
+      this.active?.focusPane();
+    } finally {
+      this.restoring = false;
+    }
+    if (fresh && opened.length) this.closeTab(fresh);
+    this.offerReopen(opened);
+    this.scheduleSave();
   }
 
   /** Rebuild tabs from the saved state; returns false when nothing was restored. */
@@ -1071,6 +1121,7 @@ export class WateApp {
       this.tabs.map((t, i) => ({
         id: t.id,
         title: t.title,
+        color: t.color,
         index: i + 1,
         active: t === this.active,
         panes: [...t.panes.values()].map((p) => ({
@@ -1082,6 +1133,24 @@ export class WateApp {
         })),
       })),
     );
+  }
+
+  /** Colour the tab the root agent named (by id or title); an empty colour takes it away. */
+  private colorForRoot(data: string): string {
+    const args = JSON.parse(data || "{}") as { tab?: string; color?: string };
+    // The colour first: every window gives the same answer to a wrong one, so it is the one
+    // that comes back, not "no such tab" from whichever window was asked last.
+    const color = String(args.color ?? "").trim().toLowerCase();
+    if (color && !tabColorValue(color)) {
+      throw new Error(`unknown colour ${JSON.stringify(color)}: use ${TAB_COLORS.map(([n]) => n).join(", ")}, or #rrggbb`);
+    }
+    const at = findTab(this.tabs.map((t) => ({ id: t.id, title: t.title })), String(args.tab ?? ""));
+    const tab = this.tabs[at];
+    if (!tab) throw new Error(`no tab ${JSON.stringify(args.tab ?? "")} in this window`);
+    tab.color = color;
+    tab.onChange?.();
+    this.refreshChrome();
+    return JSON.stringify({ tab: tab.id, title: tab.title, color });
   }
 
   /** Move a pane into the tab the root agent named; a title nobody has yet makes a new tab. */
@@ -1172,6 +1241,7 @@ export class WateApp {
     if (req.kind === "open-session") return this.openSessionFor(req.data);
     if (req.kind === "tabs") return this.listTabsFor();
     if (req.kind === "move-to") return this.moveForRoot(req.pane, req.data);
+    if (req.kind === "tab-color") return this.colorForRoot(req.data);
     // The root agent's pane lies over the tabs, in none of them; a restart round still has to
     // be able to see whether its input box is free.
     const root = this.rootPanel.pane;

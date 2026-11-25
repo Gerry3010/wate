@@ -227,6 +227,17 @@ export function backupOf(w: SavedWindow): SavedWindow | null {
   };
 }
 
+/**
+ * Whether a window's state is worth a backup. A start that came up empty (one tab of plain
+ * shells, maybe the root agent beside it, which lives outside the tabs) is not: written as a
+ * backup, it is what pushed out the last good one. Several tabs, a Claude session or an open
+ * file make it worth keeping.
+ */
+export function worthKeeping(w: SavedWindow): boolean {
+  if (w.tabs.length >= 2) return true;
+  return w.tabs.some((t) => t.panes.some((p) => p.kind === "editor" || !!p.claude));
+}
+
 /** A backup as the tab bar's dropdown names it. */
 export interface BackupSummary {
   /** The first tabs' names: their own title, else the directory they are in. */

@@ -45,7 +45,7 @@ func toolNames(t *testing.T, cs *mcp.ClientSession) []string {
 }
 
 func TestOnlyTheRootServerOffersTheRootTools(t *testing.T) {
-	rootTools := []string{"wate_sessions", "wate_tabs", "wate_session_open", "wate_session_focus", "wate_session_move", "wate_session_remote_control"}
+	rootTools := []string{"wate_sessions", "wate_tabs", "wate_session_open", "wate_session_focus", "wate_session_move", "wate_session_remote_control", "wate_tab_color"}
 	plain := toolNames(t, connect(t, false))
 	withRoot := toolNames(t, connect(t, true))
 	for _, name := range rootTools {

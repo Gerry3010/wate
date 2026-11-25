@@ -44,11 +44,11 @@ export interface TabBarHost {
   saveSession(name: string): void;
   openSession(id: string): void;
   deleteSession(id: string): void;
-  /** Window backups (one per window, kept when it closes), newest first. */
+  /** Window backups (generations of each window, kept when it closes), newest first. */
   listBackups(): Promise<WindowBackup[]>;
-  /** Open a backup's tabs in a new window. */
-  restoreBackup(key: string): void;
-  deleteBackup(key: string): void;
+  /** Open a backup generation's tabs in a new window (by its id). */
+  restoreBackup(id: string): void;
+  deleteBackup(id: string): void;
   openImport(): void;
 }
 
@@ -456,14 +456,16 @@ export class TabBar {
     if (restorable.length) {
       entries.push("separator", { header: "Window backups" });
       for (const { b, s } of restorable) {
-        const where = b.current ? "this window" : b.open ? "open" : savedAt(b.saved_at);
+        // The generation a window is still writing is "this window" or "open"; every other one
+        // is a snapshot, named by when it was taken.
+        const where = b.live ? (b.current ? "this window" : "open") : savedAt(b.saved_at);
         const count = [plural(s.tabs, "tab"), s.agents ? plural(s.agents, "agent") : ""].filter(Boolean).join(", ");
         entries.push({
           label: s.label,
           hint: `${count} · ${where}`,
-          onSelect: () => this.host.restoreBackup(b.key),
-          // An open window's backup is rewritten with its next change; deleting it gains nothing.
-          action: b.open ? undefined : { label: "×", title: "Delete backup", onSelect: () => this.host.deleteBackup(b.key) },
+          onSelect: () => this.host.restoreBackup(b.id),
+          // The live generation is rewritten with the window's next change; deleting it gains nothing.
+          action: b.live ? undefined : { label: "×", title: "Delete backup", onSelect: () => this.host.deleteBackup(b.id) },
         });
       }
     }

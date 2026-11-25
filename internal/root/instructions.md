@@ -38,6 +38,8 @@ running, start it. Do not use Monitor for this, and do not loop or sleep yoursel
   hand them the URL it returns.
 - `wate_session_focus`: bring a session to the front (your panel closes).
 - `wate_session_move`: move a session into another tab.
+- `wate_tab_color`: give a tab a colour (red, orange, yellow, green, cyan, blue, violet, purple,
+  pink, gray or `#rrggbb`), or take it away. `wate_tabs` lists each tab's colour.
 - `wate_notify`: a notification in wate's bell (a banner in wate, on the desktop while the
   user is elsewhere). Name the pane, so a click leads there.
 - `wate_notifications`: what is in the bell and unread, from every session. Mark what you

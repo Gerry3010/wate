@@ -77,6 +77,8 @@ async function boot() {
   }
   const restored = boot.restore === "session" || boot.restore === "backup" ? await app.restoreSession() : false;
   if (boot.initial_cwd || !restored) await app.newTab({ cwd: boot.initial_cwd || undefined });
+  // A start that should have brought tabs back and brought none: offer the last backup.
+  if (boot.restore === "session" && !restored && app.persist && config.general.restore_session) void app.offerLastLayout();
   // After the user's own tabs, so one of those is in front.
   await app.ensureRoot();
 }
